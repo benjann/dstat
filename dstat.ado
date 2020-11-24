@@ -2185,21 +2185,12 @@ void dstat_parse_stats_hasdens(`Int' n)
     if ((p = strpos(s,"("))) {
         if (substr(s, strlen(s), 1)==")") {
             o = substr(s, p, .)
-            // o = substr(s, p+1, .)
-            // o = substr(o, 1, strlen(o)-1)
-            // o = "{"+o+"}"
             s = substr(s, 1, p-1)
         }
     }
-    // else if (p = strpos(s,"{")) {
-    //     if (substr(s, strlen(s), 1)=="}") {
-    //         o = substr(s, p, .)
-    //         s = substr(s, 1, p-1)
-    //     }
-    // }
     else if (regexm(s, rexp)) {
         o = regexs(0)
-        s = regexr(s, rexp, "")
+        s = substr(s, 1, strlen(s)-strlen(o))
     }
     return(o)
 }
@@ -2690,7 +2681,6 @@ void dstat_parse_stats_hasdens(`Int' n)
 
     s = o
     if (substr(s,1,1)=="(") {
-    //if (substr(s,1,1)=="{") {
         s = substr(s, 2, strlen(s)-2)
         br = `TRUE'
     }
@@ -2708,8 +2698,6 @@ void dstat_parse_stats_hasdens(`Int' n)
     if (s=="") return(s)
     if (br)                       return("("+s+")")
     if (!(regexm(s, "^[0-9]+$"))) return("("+s+")")
-    //if (br)                       return("{"+s+"}")
-    //if (!(regexm(s, "^[0-9]+$"))) return("{"+s+"}")
     return(s)
 }
 
@@ -4648,14 +4636,13 @@ void dstat_sum(`Data' D)
     
     rexp = "[0-9]+$"
     if ((p=strpos(s,"("))) {
-    //if ((p=strpos(s,"{"))) {
         o = substr(s, p+1, .)
         o = subinstr(substr(o, 1, strlen(o)-1), ",", " ") // remove pars and ,
         s = substr(s, 1, p-1)
     }
     else if (regexm(s, rexp)) {
         o = regexs(0)
-        s = regexr(s, rexp, "")
+        s = substr(s, 1, strlen(s)-strlen(o))
     }
     s = strlower(s)
     return(o)

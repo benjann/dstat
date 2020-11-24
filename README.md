@@ -30,6 +30,9 @@ package is required. To install `moremata`, type
 
 Main changes:
 
+    24nov2020
+    - issues encountered with regexr() in Stata 14; no longer using regexr()
+
     24nov2020 (version 1.0.0):
     - reldist released on GitHub
 
