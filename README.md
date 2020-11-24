@@ -19,7 +19,7 @@ for further analysis, for example, using RIF regression.
 
 To install `dstat`, type
 
-    . net install reldist, replace from(https://raw.githubusercontent.com/benjann/reldist/main/)
+    . net install dstat, replace from(https://raw.githubusercontent.com/benjann/dstat/main/)
 
 in Stata. Stata version 14 or newer is required. Furthermore, the `moremata` 
 package is required. To install `moremata`, type
