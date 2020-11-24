@@ -1,4 +1,4 @@
-*! version 1.0.0  23nov2020  Ben Jann
+*! version 1.0.1  23nov2020  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
