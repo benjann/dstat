@@ -32,7 +32,8 @@ Main changes:
 
     24nov2020
     - issues encountered with regexr() in Stata 14; no longer using regexr()
+    - fixed another awkward Stata 14 issue
 
     24nov2020 (version 1.0.0):
-    - reldist released on GitHub
+    - dstat released on GitHub
 

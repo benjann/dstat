@@ -52,7 +52,19 @@ program dstat, eclass properties(svyb svyj)
             jkopts(noheader notable force) : `subcmd' `00'
     }
     else {
+        if c(stata_version)<15 {
+            // active e()-returns can cause confusion of Mata views in some
+            // special cases in Stata 14; I only observed this when applying 
+            // balance(ipw:) while results from balance(eb:) are in memory; it
+            // is puzzling where the problem comes from, but clearing e() solves
+            // it; the problem does not seem to occur in Stata 15 or newer 
+            tempname ecurrent
+            _estimates hold `ecurrent', restore nullok
+        }
         Estimate `subcmd' `00'
+        if c(stata_version)<15 {
+            _estimates unhold `ecurrent', not
+        }
     }
     eret local cmdline `"dstat `0'"'
     Set_CI, `diopts'
