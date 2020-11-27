@@ -17,20 +17,34 @@ including appropriate correction of standard errors. Standard error estimation
 is implemented in terms of influence functions, which can be stored 
 for further analysis, for example, using RIF regression.
 
-To install `dstat`, type
+To install `dstat` from the SSC Archive, type
+
+    . ssc install dstat, replace
+
+in Stata. Stata version 14 or newer is required. Furthermore, `moremata` and
+`coefplot` are required. To install these packages from the SSC Archive, type
+
+    . ssc install moremata, replace
+    . ssc install coefplot, replace
+
+---
+
+Installation from GitHub:
 
     . net install dstat, replace from(https://raw.githubusercontent.com/benjann/dstat/main/)
-
-in Stata. Stata version 14 or newer is required. Furthermore, the `moremata` 
-package is required. To install `moremata`, type
-
     . net install moremata, replace from(https://raw.githubusercontent.com/benjann/moremata/master/)
+    . net install coefplot, replace from(https://raw.githubusercontent.com/benjann/coefplot/master/)
 
 ---
 
 Main changes:
 
-    24nov2020
+    27nov2020 (version 1.0.2)
+    - graph option -merge- added
+    - added code to circumvent the "version, user" error that appears to occur
+      in some variants of Stata installations
+
+    24nov2020 (version 1.0.1)
     - issues encountered with regexr() in Stata 14; no longer using regexr()
     - fixed another awkward Stata 14 issue
 

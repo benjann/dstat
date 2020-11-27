@@ -1,4 +1,4 @@
-*! version 1.0.1  23nov2020  Ben Jann
+*! version 1.0.2  27nov2020  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -729,7 +729,7 @@ program Graph
     
     // syntax
     syntax [, Level(passthru) citype(passthru) VERTical HORizontal ///
-        flip BYStats BYStats2(str) NOSTEP STEP NOREFline REFline(str) ///
+        MERge flip BYStats BYStats2(str) NOSTEP STEP NOREFline REFline(str) ///
         BYOPTs(str) PLOTLabels(str asis) * ]
     local options `vertical' `horizontal' `options'
     if `"`bystats2'"'=="" & "`bystats'"!="" local bystats2 main
@@ -860,7 +860,7 @@ program Graph
             }
         }
     }
-    if (`nj'>1 & "`flip'"!="") | (`nj'==1 & "`flip'"=="") {
+    if (`nj'>1 & "`flip'"!="") | (`nj'==1 & "`flip'`merge'"=="") {
         local ii j
         local jj i
     }
@@ -3019,14 +3019,16 @@ void dstat_rstripe(`SS' nm, `SM' S) _dstat_cstripe(nm, S, 1)
 
 void _dstat_cstripe(`SS' nm, `SM' S, `Bool' row)
 {
-    `RS' br, uv
+    `RS' br, uv, rc
 
     br = setbreakintr(0)
     uv = st_numscalar("c(userversion)")
-    if (uv>14.2) stata("version 14.2, user")
+    if (uv>14.2) rc = _stata("version 14.2, user")
     if (row) st_matrixrowstripe(nm, S)
     else     st_matrixcolstripe(nm, S)
-    if (uv>14.2) stata(sprintf("version %g, user", uv))
+    if (uv>14.2) {
+        if (rc==0) stata(sprintf("version %g, user", uv))
+    }
     (void) setbreakintr(br)
 }
 

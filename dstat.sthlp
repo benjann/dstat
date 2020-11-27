@@ -1,5 +1,5 @@
 {smcl}
-{* 23nov2020}{...}
+{* 27nov2020}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -111,6 +111,8 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{cmd:nose}}alias for {cmd:vce(none)}
     {p_end}
+{synopt:{cmdab:g:enerate(}{it:names}[{cmd:,} {it:opts}]{cmd:)}}store influence functions
+    {p_end}
 {synopt:{cmd:rif(}{it:names}[{cmd:,} {it:opts}]{cmd:)}}store recentered influence functions
     {p_end}
 {synopt:{opt r:eplace}}allow replacing existing variables
@@ -206,6 +208,8 @@ help for {hi:dstat}{...}
 
 {marker graph_opts}{col 5}{help dstat##graph_options:{it:graph_options}}{col 33}Description
 {synoptline}
+{synopt:{cmdab:mer:ge}}merge results into a single subgraph
+    {p_end}
 {synopt:{cmd:flip}}change how results are allocated to plots and subgraphs
     {p_end}
 {synopt:{cmdab:bys:tats}[{cmd:(}{it:arg}{cmd:)}]}group results by statistics; only relevant for {cmd:dstat summarize}
@@ -216,7 +220,7 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opth ref:line(line_options)}}affect rendition of equality line; only relevant for {cmd:dstat lorenz}
     {p_end}
-{synopt:{help coefplot:{it:coefplot_options}}}options to be passed through to {helpb coefplot}
+{synopt:{help dstat##coefplot:{it:coefplot_options}}}options to be passed through to {helpb coefplot}
     {p_end}
 {synoptline}
 
@@ -491,12 +495,12 @@ help for {hi:dstat}{...}
 {synopt:{opt aci}[{cmd:(}{it:df}{cmd:)}]}{cmd:aci} using sort variable from option {cmd:zvar()}
     {p_end}
 {synopt:*{cmd:ccurve}{cmd:(}{it:p}[{cmd:,}{it:{help varname:zvar}}]{cmd:)}}concentration curve ordinate,
-    {it:p} in [0,100]; prefix {it:*} is empty for default, {cmd:g} for generalized, {cmd:t} for total,
+    {it:p} in [0,100]; prefix {it:*} is empty for default, {cmd:g} for generalized,
     {cmd:a} for absolute, {cmd:e} for equality gap
     {p_end}
 {synopt:*{cmd:cshare}{cmd:(}{it:p1}{cmd:,}{it:p2}[{cmd:,}{it:{help varname:zvar}}]{cmd:)}}concentration share,
     {it:p1} and {it:p2} in [0,100]; prefix {it:*} is empty for default, {cmd:d} for density,
-    {cmd:g} for generalized, {cmd:t} for total, {cmd:a} for average
+    {cmd:g} for generalized, {cmd:a} for average
     {p_end}
 
 {syntab:Poverty measures}
@@ -605,7 +609,6 @@ help for {hi:dstat}{...}
     {it:display_options} are standard reporting options such as {cmd:cformat()} or
     {cmd:coeflegend}; see the Reporting options
     in {helpb estimation options:[R] Estimation options}.
-    {synoptset 26 tabbed}{...}
 
 {phang2}
     {opt gr:aph}[{cmd:(}{help dstat##graph_options:{it:graph_options}}{cmd:)}]
@@ -618,7 +621,7 @@ help for {hi:dstat}{...}
     {opt qdef(#)} sets the quantile definition to be used when computing
     quantiles, with {it:#} in {c -(}0,...,9{c )-}. The default is
     {cmd:qdef(2)}. Definitions 1-9 are as described in Hyndman and Fan
-    (1996), definition 0 is the "hight" quantile; see
+    (1996), definition 0 is the "high" quantile; see
     {helpb mf_mm_quantile:mm_quantile()} for more information.
 
 {marker densopts}{...}
@@ -890,7 +893,7 @@ help for {hi:dstat}{...}
     subpopulations).
 
 {phang}
-    {opt nocat:egorical} allows outcome variables that do not comply to
+    {opt nocategorical} allows outcome variables that do not comply to
     Stata's rules for factor variables (e.g. variables that contain negative
     or noninteger values). This also affects how the coefficients are
     labeled in the output.
@@ -1000,22 +1003,23 @@ help for {hi:dstat}{...}
 {dlgtab:Graph options}
 
 {phang}
-    {cmd:flip} changes how results allocated to plots and subgraphs. This is
-    only relevant if the results contain multiple equations. The behavior
-    depends on whether equations represent one or two dimensions.
+    {cmd:merge} causes results from different equations to be placed 
+    in a single graph (as separate "plots", i.e. as separate series of results
+    displayed in a common style) instead of creating a separate subgraph for
+    each equation. This is only relevant if the results contain multiple 
+    equations and if the equations are one-dimensional
+    (e.g. subpopulations); {cmd:merge} has no effect if the 
+    equations are two-dimensional (subpopulations and variables).
 
-{phang2}
-    {space 2}o One equation dimension (subpopulations or variables): By default, one subgraph is
-    created for each equation. Specify option {cmd:flip} to include all results
-    in a single graph without creating subgraphs. Equations will be rendered as
-    separate "plots" (series of results displayed in a common style) in this
-    case.
-
-{phang2}
-    {space 2}o Two equation dimensions: By default, subgraphs correspond to
-    the secondary dimension (typically variables) and plots within subgraphs
-    correspond to the main dimension (typically subpopulations). Specify
-    {cmd:flip} to reverse this behavior.
+{phang}
+    {cmd:flip} changes how results are allocated to plots and subgraphs. This is
+    only relevant if the results contain multiple equations. If the equations
+    are two-dimensional (subpopulations and variables), the default is to 
+    create subgraphs by the secondary dimension (variables) and create 
+    "plots" (series of results displayed in a common style) within subgraphs by
+    the main dimension (subpopulations). Specify {cmd:flip} to reverse this 
+    behavior. If equations are one-dimensional, {cmd:flip} has the same effect
+    as {cmd:merge}.
 
 {phang}
     {cmd:bystats}[{cmd:(}{it:arg}{cmd:)}] treats coefficients as equations and
@@ -1047,6 +1051,7 @@ help for {hi:dstat}{...}
     the equality line; see {it:{help line_options}}. This is only relevant after
     {cmd:dstat lorenz}.
 
+{marker coefplot}{...}
 {phang}
     {it:coefplot_options} are options to be passed through to
     {helpb coefplot}. Use these options, for example, to set titles and axis
@@ -1054,7 +1059,11 @@ help for {hi:dstat}{...}
     also be used to change the rendering of the plotted results (e.g. colors,
     line patterns, marker symbols, etc.). If a graph contains multiple "plots"
     (multiple series of results displayed in a common style), option
-    {cmd:p}{it:#}{cmd:()} can be used to address the {it:#}th plot.
+    {cmd:p}{it:#}{cmd:()} can be used to address the {it:#}th plot. For example,
+    you could type {cmd:p2(recast(dropline) pstyle(p5) noci)} to change the 
+    {it:plottype} of the 2nd plot to {cmd:dropline}, change its {it:pstyle}
+    to {cmd:p5} (instead of the default {cmd:p2}), and suppress its confidence
+    intervals.
 
 {marker predict_options}{...}
 {dlgtab:Predict options}
@@ -1071,7 +1080,7 @@ help for {hi:dstat}{...}
     statistic.
 
 {phang}
-    {opt com:pact} generates influence functions in compact form. {cmd:compact}
+    {opt compact} generates influence functions in compact form. {cmd:compact}
     only has an effect if {cmd:over()} has been specified and is not allowed
     if {cmd:balance()} has been specified.
 
@@ -1084,7 +1093,7 @@ help for {hi:dstat}{...}
     analyzing the influence functions.
 
 {phang}
-    {opt qui:etly} suppresses the list of generated variables that is displayed by
+    {opt quietly} suppresses the list of generated variables that is displayed by
     default.
 
 {pstd}
@@ -1461,9 +1470,10 @@ help for {hi:dstat}{...}
     {helpb table}, {helpb histogram}, {helpb teffects ipw}
 
 {psee}
-    Commands from the SSC Archive (type {cmd:ssc describe} {it:name} for
+    Packages from the SSC Archive (type {cmd:ssc describe} {it:name} for
     more information): {helpb rif}, {helpb kdens}, {helpb kmatch}, {helpb lorenz},
-    {helpb pshare}, {helpb glcurve}, {helpb svylorenz}, {helpb robstat},
+    {helpb pshare}, {helpb glcurve}, {helpb svylorenz}, {helpb svygei:svygei_svyatk},
+    {helpb ineqdeco}, {helpb povdeco}, {helpb sumdist}, {helpb robstat},
     {helpb fre}, {helpb catplot}, {helpb cdfplot}, {helpb distplot},
     {helpb reldist}, {helpb moremata}
 
