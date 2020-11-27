@@ -1,4 +1,4 @@
-*! version 1.0.3  27nov2020  Ben Jann
+*! version 1.0.4  27nov2020  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -2720,8 +2720,8 @@ void dstat_slist_collect(`Int' n)
     
     slist = J(1, 2*n, "")
     for (i=1;i<=n;i++) {
-        slist[2*i-1] = st_local(sprintf("stats_%g", i))
-        slist[2*i]   = st_local(sprintf("vars_%g", i))
+        slist[2*i-1] = st_local("stats_"+strofreal(i))
+        slist[2*i]   = st_local("vars_"+strofreal(i))
     }
     slist = ("`" + `"""') :+ slist :+  (`"""' + "'")
     st_local("slist", invtokens(slist))
@@ -3023,16 +3023,10 @@ void _dstat_cstripe(`SS' nm, `SM' S, `Bool' row)
 
     br = setbreakintr(0)
     uv = st_numscalar("c(userversion)")
-    if (uv>14.2) {
-        (void) _stata("version 14.2, user", 1)
-    }
+    if (uv>14.2) stata("version 14.2, user")
     if (row) st_matrixrowstripe(nm, S)
     else     st_matrixcolstripe(nm, S)
-    if (uv>14.2) {
-        if (uv!=st_numscalar("c(userversion)")) {
-            (void) _stata(sprintf("version %g, user", uv), 1)
-        }
-    }
+    if (uv>14.2) stata("version "+strofreal(uv)+", user")
     (void) setbreakintr(br)
 }
 
@@ -3818,14 +3812,14 @@ void dstat_init_EY(`Data' D, `Grp' G)
     preserve = (st_nobs()<N)
     if (preserve) {
         stata("preserve")
-        stata(sprintf("quietly set obs %g", N))
+        stata("quietly set obs "+strofreal(N,"%18.0g"))
     }
     (void) st_addvar("double", y  = st_tempname()); st_store((1,n), y, Y)
     (void) st_addvar("double", z  = st_tempname()); st_store((1,n), z, Z)
     (void) st_addvar("double", at = st_tempname()); st_store((1,r), at, AT)
     // set weights (note: fweights are relevant only for bandwidth estimation)
     if (rows(W)==1) {
-        if (fw & bw>=.) w = sprintf("[fw = %g]", W)
+        if (fw & bw>=.) w = "[fw = "+strofreal(W)+"]"
         else            w = ""
     }
     else {
@@ -3835,9 +3829,9 @@ void dstat_init_EY(`Data' D, `Grp' G)
     }
     // run lpoly
     ey = st_tempname()
-    cmd = sprintf("lpoly %s %s %s in 1/%g", y, z, w, n) +
+    cmd = sprintf("lpoly %s %s %s in 1/"+strofreal(n,"%18.0g"), y, z, w) +
           sprintf(", nograph degree(1) at(%s) generate(%s)", at, ey) +
-          (bw<. ? sprintf(" bwidth(%g)", bw) : "")
+          (bw<. ? (" bwidth("+strofreal(bw)+")") : "")
     (void) _stata(cmd)
     if (_st_varindex(ey)<.) {
         EY = st_data((1,r), ey)
@@ -5762,7 +5756,7 @@ void dstat_sum_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     m = _dstat_mean(G)
     c = 1 / (a * (a - 1))
     z = G.Y:^a
-    _dstat_sum_isvalid(z, D.yvars[G.j], sprintf("ge(%g)", a))
+    _dstat_sum_isvalid(z, D.yvars[G.j], "ge("+strofreal(a)+")")
     mz = mean(z, G.w)
     D.b[i] = c * (mz/m^a - 1)
     if (D.noIF) return
@@ -5802,7 +5796,7 @@ void _dstat_sum_atkinson(`Data' D, `Grp' G, `Int' i, `RS' e)
     
     m  = _dstat_mean(G)
     z  = G.Y:^(1-e)
-    _dstat_sum_isvalid(z, D.yvars[G.j], sprintf("atkinson(%g)", e))
+    _dstat_sum_isvalid(z, D.yvars[G.j], "atkinson("+strofreal(e)+")")
     lm = mean(z, G.w)
     D.b[i] = 1 - lm^(1/(1-e)) / m
     if (D.noIF) return

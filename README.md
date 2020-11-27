@@ -39,6 +39,10 @@ Installation from GitHub:
 
 Main changes:
 
+    27nov2020 (version 1.0.4)
+    - "version, user" issue now finally fixed (hopefully); the issue was related
+      to -set dp comma-
+
     27nov2020 (version 1.0.3)
     - yet another try to fix the "version, user" issue
 
