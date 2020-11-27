@@ -1,4 +1,4 @@
-*! version 1.0.2  27nov2020  Ben Jann
+*! version 1.0.3  27nov2020  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -3019,15 +3019,19 @@ void dstat_rstripe(`SS' nm, `SM' S) _dstat_cstripe(nm, S, 1)
 
 void _dstat_cstripe(`SS' nm, `SM' S, `Bool' row)
 {
-    `RS' br, uv, rc
+    `RS' br, uv
 
     br = setbreakintr(0)
     uv = st_numscalar("c(userversion)")
-    if (uv>14.2) rc = _stata("version 14.2, user")
+    if (uv>14.2) {
+        (void) _stata("version 14.2, user", 1)
+    }
     if (row) st_matrixrowstripe(nm, S)
     else     st_matrixcolstripe(nm, S)
     if (uv>14.2) {
-        if (rc==0) stata(sprintf("version %g, user", uv))
+        if (uv!=st_numscalar("c(userversion)")) {
+            (void) _stata(sprintf("version %g, user", uv), 1)
+        }
     }
     (void) setbreakintr(br)
 }

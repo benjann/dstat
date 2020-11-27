@@ -1,4 +1,4 @@
-*! version 1.0.1  27nov2020  Ben Jann
+*! version 1.0.2  27nov2020  Ben Jann
 
 program dstat_svyr, eclass properties(svyr)
     version 14
@@ -27,14 +27,18 @@ void dstat_svyr_lbl_b()
 
 void dstat_svyr_cstripe(string scalar nm, string matrix S)
 {
-    real scalar br, uv, rc
+    real scalar br, uv
 
     br = setbreakintr(0)
     uv = st_numscalar("c(userversion)")
-    if (uv>14.2) rc = _stata("version 14.2, user")
+    if (uv>14.2) {
+        (void) _stata("version 14.2, user", 1)
+    }
     st_matrixcolstripe(nm, S)
     if (uv>14.2) {
-        if (rc==0) stata(sprintf("version %g, user", uv))
+        if (uv!=st_numscalar("c(userversion)")) {
+            (void) _stata(sprintf("version %g, user", uv), 1)
+        }
     }
     (void) setbreakintr(br)
 }

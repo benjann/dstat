@@ -39,6 +39,9 @@ Installation from GitHub:
 
 Main changes:
 
+    27nov2020 (version 1.0.3)
+    - yet another try to fix the "version, user" issue
+
     27nov2020 (version 1.0.2)
     - graph option -merge- added
     - added code to circumvent the "version, user" error that appears to occur
