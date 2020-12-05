@@ -1,5 +1,5 @@
 {smcl}
-{* 27nov2020}{...}
+{* 05dec2020}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -44,8 +44,9 @@ help for {hi:dstat}{...}
 {p2colset 15 28 30 2}{...}
 {p2col:{opt d:ensity}}density function{p_end}
 {p2col:{opt h:istogram}}histogram{p_end}
-{p2col:{opt p:roportion}}frequency distribution{p_end}
-{p2col:{opt c:df}}cumulative distribution{p_end}
+{p2col:{opt p:roportion}}probability distribution{p_end}
+{p2col:{opt c:df}}cumulative distribution function{p_end}
+{p2col:{opt cc:df}}complementary CDF/survival function{p_end}
 {p2col:{opt q:uantile}}quantile function{p_end}
 {p2col:{opt l:orenz}}lorenz curve{p_end}
 {p2col:{opt sh:are}}percentile shares{p_end}
@@ -156,14 +157,22 @@ help for {hi:dstat}{...}
     for factor variables
     {p_end}
 
-{syntab:{help dstat##cdf:Subcommand {bf:cdf}}}
-{synopt:{opt mid}}apply mid-distribution adjustment
+{syntab:{help dstat##cdf:Subcommands {bf:cdf} and {bf:ccdf}}}
+{synopt:{opt per:cent}}estimate percent instead of probabilities
+    {p_end}
+{synopt:{opt freq:uency}}estimate frequencies instead of probabilities
+    {p_end}
+{synopt:{opt mid}}apply midpoint adjustment
+    {p_end}
+{synopt:{opt fl:oor}}use "lower-than" definition
     {p_end}
 {synopt:{opt n(#)}}size of evaluation grid; default is {cmd:n(99)}
     {p_end}
 {synopt:{opth at(numlist)}}custom grid of evaluation points
     {p_end}
 {synopt:{opt disc:rete}}treat data as discrete
+    {p_end}
+{synopt:{opt ip:olate}}obtain CDF by linear interpolation
     {p_end}
 
 {syntab:{help dstat##quantile:Subcommand {bf:quantile}}}
@@ -176,6 +185,8 @@ help for {hi:dstat}{...}
 {synopt:{opt per:cent}}report percent instead of proportions
     {p_end}
 {synopt:{opt general:ized}}estimate generalized Lorenz curve
+    {p_end}
+{synopt:{opt sum}}estimate total (unnormalized) Lorenz curve
     {p_end}
 {synopt:{opt gap}}estimate equality gap curve
     {p_end}
@@ -194,6 +205,8 @@ help for {hi:dstat}{...}
 {synopt:{opt per:cent}}estimate percent instead of densities
     {p_end}
 {synopt:{opt general:ized}}estimate generalized shares instead of densities
+    {p_end}
+{synopt:{opt sum}}estimate totals instead of density
     {p_end}
 {synopt:{opt ave:rage}}estimate averages instead of densities
     {p_end}
@@ -229,6 +242,8 @@ help for {hi:dstat}{...}
 {synopt:{opt rif}}store recentered influence functions
     {p_end}
 {synopt:{opt com:pact}}store influence functions in compact form; not allowed with {cmd:balance()}
+    {p_end}
+{synopt:{opt svy}}store scores for survey estimation instead of influence functions
     {p_end}
 {synopt:{opt qui:etly}}do not display list of generated variables
     {p_end}
@@ -316,7 +331,7 @@ help for {hi:dstat}{...}
 {marker stats}{col 5}{it:stats}{col 33}Description
 {synoptline}
 {syntab:Points in the distribution}
-{synopt:{opt quantile}{cmd:(}{it:p}{cmd:)}}{it:p}/100-quantile; {it:p} in [0,100]
+{synopt:{opt quantile}{cmd:(}{it:p}{cmd:)}}{it:p}/100 quantile; {it:p} in [0,100]
     {p_end}
 {synopt:{opt p}{cmd:(}{it:p}{cmd:)}}alias for {cmd:quantile()}
     {p_end}
@@ -324,21 +339,19 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt hist}{cmd:(}{it:x1}{cmd:,}{it:x2}{cmd:)}}histogram density of data within ({it:x1},{it:x2}]
     {p_end}
-{synopt:{opt cdf}{cmd:(}{it:x}{cmd:)}}cumulative distribution (CDF) at value {it:x}
+{synopt:{opt cdf}*{cmd:(}{it:x}{cmd:)}}cumulative distribution (CDF) at value {it:x}; suffix {it:*} is empty for default,
+    {cmd:m} for mid-adjusted CDF, {cmd:f} for floor CDF
     {p_end}
-{synopt:{opt cdfm}{cmd:(}{it:x}{cmd:)}}mid-adjusted CDF at value {it:x}
+{synopt:{opt ccdf}*{cmd:(}{it:x}{cmd:)}}complementary CDF at value {it:x}; suffix {it:*} is empty for default,
+    {cmd:m} for mid-adjusted CCDF, {cmd:f} for floor CCDF
     {p_end}
-{synopt:{opt prop}{cmd:(}{it:x}{cmd:)}}proportion of data equal to value {it:x}
+{synopt:{opt prop}{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}}proportion of data equal to {it:x1} or within [{it:x1},{it:x2}]
     {p_end}
-{synopt:{opt prop}{cmd:(}{it:x1}{cmd:,}{it:x2}{cmd:)}}proportion of data within [{it:x1},{it:x2}]
+{synopt:{opt pct}{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}}percent of data equal to {it:x1} or within [{it:x1},{it:x2}]
     {p_end}
-{synopt:{opt pct}{cmd:(}{it:x}{cmd:)}}percent of data equal to value {it:x}
+{synopt:{opt freq}{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}}frequency of data equal to {it:x1} or within [{it:x1},{it:x2}]
     {p_end}
-{synopt:{opt pct}{cmd:(}{it:x1}{cmd:,}{it:x2}{cmd:)}}percent of data within [{it:x1},{it:x2}]
-    {p_end}
-{synopt:{opt freq}{cmd:(}{it:x}{cmd:)}}frequency of data equal to value {it:x}
-    {p_end}
-{synopt:{opt freq}{cmd:(}{it:x1}{cmd:,}{it:x2}{cmd:)}}frequency of data within [{it:x1},{it:x2}]
+{synopt:{opt total}[{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}]}overall total, or total of data equal to {it:x1} or within [{it:x1},{it:x2}]
     {p_end}
 
 {syntab:Location measures}
@@ -348,11 +361,17 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt hmean}}harmonic mean (data must be positive)
     {p_end}
-{synopt:{opt trim}[{cmd:(}{it:alpha}{cmd:)}]}{it:alpha} trimmed mean; {it:alpha}
-    in [0,50]; default is {it:alpha}=25
+{synopt:{opt trim}[{cmd:(}{it:p}{cmd:)}]}{it:p}/100 trimmed mean; {it:p} in
+    [0,50]; default is {it:p}=25
     {p_end}
-{synopt:{opt winsor}[{cmd:(}{it:alpha}{cmd:)}]}{it:alpha} winsorized mean; {it:alpha}
-    in [0,50]; default is {it:alpha}=25
+{synopt:{cmd:trim(}{it:p1}{cmd:,}{it:p2}{cmd:)}}trimmed mean with
+    {it:p1}/100 lower trimming and {it:p2}/100 upper trimming
+    {p_end}
+{synopt:{opt winsor}[{cmd:(}{it:p}{cmd:)}]}{it:p}/100 winsorized mean; {it:p}
+    in [0,50]; default is {it:p}=25
+    {p_end}
+{synopt:{cmd:winsor(}{it:p1}{cmd:,}{it:p2}{cmd:)}}winsorized mean with
+    {it:p1}/100 lower winsorizing and {it:p2}/100 upper winsorizing
     {p_end}
 {synopt:{opt median}}median; equal to {cmd:q50}
     {p_end}
@@ -371,11 +390,11 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt variance}[{cmd:(}{it:df}{cmd:)}]}variance; default is {it:df}=1
     {p_end}
-{synopt:{opt mse}[{cmd:(}{it:t}[{cmd:,}{it:df}]{cmd:)}]}mean squared error from target
-    {it:t}; default is {it:t}=0 and {it:df}=0
+{synopt:{opt mse}[{cmd:(}{it:x}[{cmd:,}{it:df}]{cmd:)}]}mean squared deviation from value
+    {it:x} (mean squared error); default is {it:x}=0 and {it:df}=0
     {p_end}
-{synopt:{opt smse}[{cmd:(}{it:t}[{cmd:,}{it:df}]{cmd:)}]}square-root of mean
-    squared error; default is {it:t}=0 and {it:df}=0
+{synopt:{opt smse}[{cmd:(}{it:x}[{cmd:,}{it:df}]{cmd:)}]}square-root of mean
+    squared deviation from value {it:x}; default is {it:x}=0 and {it:df}=0
     {p_end}
 {synopt:{opt iqr}[{cmd:(}{it:p1}{cmd:,}{it:p2}{cmd:)}]}interquantile range; default
     is {cmd:iqr(25,75)} (interquartile range)
@@ -389,10 +408,10 @@ help for {hi:dstat}{...}
 {synopt:{opt madn}[{cmd:(}{it:l}[{cmd:,}{it:t}]{cmd:)}]}normalized MAD; equal to
     1/invnormal(0.75) * {cmd:mad} (or sqrt(pi/2) * {cmd:mad} if {it:l}!=0)
     {p_end}
-{synopt:{opt mae}[{cmd:(}{it:l}[{cmd:,}{it:t}]{cmd:)}]}median (or mean if {it:l}!=0)
-    absolute error from target {it:t}; default is {it:t}=0
+{synopt:{opt mae}[{cmd:(}{it:l}[{cmd:,}{it:x}]{cmd:)}]}median (or mean if {it:l}!=0)
+    absolute deviation from value {it:x}; default is {it:x}=0
     {p_end}
-{synopt:{opt maen}[{cmd:(}{it:l}[{cmd:,}{it:t}]{cmd:)}]}normalized MAE; equal to
+{synopt:{opt maen}[{cmd:(}{it:l}[{cmd:,}{it:x}]{cmd:)}]}normalized MAE; equal to
     1/invnormal(0.75) * {cmd:mae} or (sqrt(pi/2) * {cmd:mae} if {it:l}!=0)
     {p_end}
 {synopt:{opt md}}mean absolute pairwise difference; equal to 2 * {cmd:mean} * {cmd:gini}
@@ -475,12 +494,12 @@ help for {hi:dstat}{...}
     share ratio; default is {it:l1}=0, {it:u1}=10, {it:l2}=90, {it:u2}=100
     {p_end}
 {synopt:*{cmd:lorenz}{cmd:(}{it:p}{cmd:)}}Lorenz ordinate, {it:p} in [0,100];
-    prefix {it:*} is empty for default, {cmd:g} for generalized,
+    prefix {it:*} is empty for default, {cmd:g} for generalized, {cmd:t} for total,
     {cmd:a} for absolute, {cmd:e} for equality gap
     {p_end}
 {synopt:*{cmd:share}{cmd:(}{it:p1}{cmd:,}{it:p2}{cmd:)}}percentile
     share, {it:p1} and {it:p2} in [0,100]; prefix {it:*} is empty for default,
-    {cmd:d} for density, {cmd:g} for generalized, {cmd:a} for average
+    {cmd:d} for density, {cmd:g} for generalized, {cmd:t} for total, {cmd:a} for average
     {p_end}
 
 {syntab:Concentration measures}
@@ -495,12 +514,12 @@ help for {hi:dstat}{...}
 {synopt:{opt aci}[{cmd:(}{it:df}{cmd:)}]}{cmd:aci} using sort variable from option {cmd:zvar()}
     {p_end}
 {synopt:*{cmd:ccurve}{cmd:(}{it:p}[{cmd:,}{it:{help varname:zvar}}]{cmd:)}}concentration curve ordinate,
-    {it:p} in [0,100]; prefix {it:*} is empty for default, {cmd:g} for generalized,
+    {it:p} in [0,100]; prefix {it:*} is empty for default, {cmd:g} for generalized, {cmd:t} for total,
     {cmd:a} for absolute, {cmd:e} for equality gap
     {p_end}
 {synopt:*{cmd:cshare}{cmd:(}{it:p1}{cmd:,}{it:p2}[{cmd:,}{it:{help varname:zvar}}]{cmd:)}}concentration share,
     {it:p1} and {it:p2} in [0,100]; prefix {it:*} is empty for default, {cmd:d} for density,
-    {cmd:g} for generalized, {cmd:a} for average
+    {cmd:g} for generalized, {cmd:t} for total, {cmd:a} for average
     {p_end}
 
 {syntab:Poverty measures}
@@ -718,7 +737,7 @@ help for {hi:dstat}{...}
     {cmd:d} in case of {cmd:dstat density},
     {cmd:h} in case of {cmd:dstat histogram},
     {cmd:p} in case of {cmd:dstat proportion},
-    {cmd:c} in case of {cmd:dstat cdf},
+    {cmd:c} in case of {cmd:dstat cdf} and {cmd:dstat ccdf},
     {cmd:q} in case of {cmd:dstat quantile},
     {cmd:l} in case of {cmd:dstat lorenz},
     {cmd:s} in case of {cmd:dstat share} (and for {cmd:dstat histogram} and
@@ -899,15 +918,29 @@ help for {hi:dstat}{...}
     labeled in the output.
 
 {marker cdf}{...}
-{dlgtab:Subcommand cdf}
+{dlgtab:Subcommands cdf and ccdf}
 
 {phang}
-    {opt mid} applies mid-distribution adjustment to the estimated CDF. The
-    empirical distribution function is a step function with a step at each
-    observed level in the data and step sizes proportional to the
-    observed frequencies of the levels. If {cmd:mid} is specified, the empirical
-    distribution function is shifted downwards at each level by half the
-    relevant step size.
+    {opt percent} estimates percent instead of proportions.
+
+{phang}
+    {opt frequency} estimates frequencies instead of proportions.
+
+{phang}
+    {opt mid} applies midpoint adjustment to the estimated CDF. By default, the
+    CDF at evaluation point {it:x} is defined as the proportion of data that is
+    lower than or equal to {it:x}. If {cmd:mid} is specified, the CDF at
+    point {it:x} is reduced by one half the proportion of data equal to
+    {it:x}. {cmd:mid} only has an effect on the results for evaluation points
+    that have a match in the data (unless {cmd:ipolate} is specified; see below). Only
+    one of {cmd:mid} and {cmd:floor} is allowed.
+
+{phang}
+    {opt floor} defines the CDF at evaluation point {it:x} as the proportion
+    of data that is lower than {it:x}, rather than lower than or equal to
+    {it:x}. {cmd:floor} only has an effect on the results for evaluation points
+    that have a match in the data (unless {cmd:ipolate} is specified;
+    see below). Only one of {cmd:floor} and {cmd:mid} is allowed.
 
 {phang}
     {opt n(#)} sets the number of points at which the CDF is to be
@@ -924,6 +957,15 @@ help for {hi:dstat}{...}
     be estimated at each level observed in the data
     (across all subpopulations). Option {cmd:n()} is not allowed if
     {cmd:discrete} is specified.
+
+{phang}
+    {cmd:ipolate} obtains the estimates of the CDF by linearly interpolating
+    the values of the empirical CDF. That is, the estimates will lie
+    on the curve that linearly connects the points of the CDF if the CDF is
+    evaluated at each observed level in the data (within subpopulation; options
+    {cmd:mid} and {cmd:floor} have an effect on the location of these
+    points). By default, the estimates of the CDF are obtained according to the definitions
+    described above (see {cmd:mid} and {cmd:floor}).
 
 {marker quantile}{...}
 {dlgtab:Subcommand quantile}
@@ -948,6 +990,9 @@ help for {hi:dstat}{...}
 
 {phang}
     {opt generalized} estimates the generalized Lorenz curve.
+
+{phang}
+    {opt sum} estimates the total (unnormalized) Lorenz curve.
 
 {phang}
     {opt gap} estimates the equality gap curve.
@@ -982,6 +1027,9 @@ help for {hi:dstat}{...}
     {opt generalized} estimates generalized shares instead of densities.
 
 {phang}
+    {opt sum} estimates totals instead of densities.
+
+{phang}
     {opt average} estimates averages instead of densities.
 
 {phang}
@@ -1003,21 +1051,21 @@ help for {hi:dstat}{...}
 {dlgtab:Graph options}
 
 {phang}
-    {cmd:merge} causes results from different equations to be placed 
+    {cmd:merge} causes results from different equations to be placed
     in a single graph (as separate "plots", i.e. as separate series of results
     displayed in a common style) instead of creating a separate subgraph for
-    each equation. This is only relevant if the results contain multiple 
+    each equation. This is only relevant if the results contain multiple
     equations and if the equations are one-dimensional
-    (e.g. subpopulations); {cmd:merge} has no effect if the 
+    (e.g. subpopulations); {cmd:merge} has no effect if the
     equations are two-dimensional (subpopulations and variables).
 
 {phang}
     {cmd:flip} changes how results are allocated to plots and subgraphs. This is
     only relevant if the results contain multiple equations. If the equations
-    are two-dimensional (subpopulations and variables), the default is to 
-    create subgraphs by the secondary dimension (variables) and create 
+    are two-dimensional (subpopulations and variables), the default is to
+    create subgraphs by the secondary dimension (variables) and create
     "plots" (series of results displayed in a common style) within subgraphs by
-    the main dimension (subpopulations). Specify {cmd:flip} to reverse this 
+    the main dimension (subpopulations). Specify {cmd:flip} to reverse this
     behavior. If equations are one-dimensional, {cmd:flip} has the same effect
     as {cmd:merge}.
 
@@ -1036,10 +1084,11 @@ help for {hi:dstat}{...}
 
 {phang}
     [{cmd:no}]{cmd:step} enforces or prevents using a step function to display
-    the distribution function. This is only relevant after {cmd:dstat cdf}. The
-    default is to display the CDF as a step function if option {cmd:discrete}
-    has been specified, and else use straight lines. Specify
-    {cmd:nostep} or {cmd:step}, respectively, to override the default.
+    the distribution function. This is only relevant after {cmd:dstat cdf}
+    and {cmd:dstat ccdf}. The default is to display the CDF as a step function
+    if option {cmd:discrete} (but not {cmd:ipolate}) has been specified, and
+    else use straight lines. Specify {cmd:nostep} or {cmd:step}, respectively,
+    to override the default.
 
 {phang}
     {cmd:norefline} suppresses the equality line (diagonal) that is printed
@@ -1060,7 +1109,7 @@ help for {hi:dstat}{...}
     line patterns, marker symbols, etc.). If a graph contains multiple "plots"
     (multiple series of results displayed in a common style), option
     {cmd:p}{it:#}{cmd:()} can be used to address the {it:#}th plot. For example,
-    you could type {cmd:p2(recast(dropline) pstyle(p5) noci)} to change the 
+    you could type {cmd:p2(recast(dropline) pstyle(p5) noci)} to change the
     {it:plottype} of the 2nd plot to {cmd:dropline}, change its {it:pstyle}
     to {cmd:p5} (instead of the default {cmd:p2}), and suppress its confidence
     intervals.
@@ -1091,6 +1140,15 @@ help for {hi:dstat}{...}
     function. Specify {cmd:compact} to merge the influence functions across
     subpopulations. In this case, {cmd:over()} has to be specified when
     analyzing the influence functions.
+
+{phang}
+    {opt svy} generates scores for use in survey estimation instead of
+    influence functions. In most cases, the scores are identical to the influence
+    functions. However, for statistics that are not normalized by the sample
+    size (e.g., frequencies or totals), the scores are defined such that their
+    total is equal to the statistic in question. This ensures that variance estimates
+    obtained by {cmd:svy:total} will be correct for these statistics. {cmd:rif} and
+    {cmd:compact} are not allowed if {cmd:svy} is specified.
 
 {phang}
     {opt quietly} suppresses the list of generated variables that is displayed by
@@ -1153,9 +1211,9 @@ help for {hi:dstat}{...}
 {pstd}
     In the example above, the density estimates for unionized and nonunionized
     workers have been displayed in two separate subgraphs. Apply graph option
-    {cmd:flip} to overlay the two curves in a single coordinate system:
+    {cmd:merge} to overlay the two curves in a single coordinate system:
 
-        . {stata dstat graph, flip}
+        . {stata dstat graph, merge}
 
 {dlgtab:Covariate balancing}
 
@@ -1286,7 +1344,7 @@ help for {hi:dstat}{...}
 {synoptset 20 tabbed}{...}
 {p2col 5 20 24 2: Macros}{p_end}
 {synopt:{cmd:e(cmd)}}{cmd:dstat}{p_end}
-{synopt:{cmd:e(subcmd)}}{cmd:summarize}, {cmd:density}, {cmd:histogram}, {cmd:proportion}, {cmd:cdf}, {cmd:quantile}, {cmd:lorenz}, or {cmd:share}{p_end}
+{synopt:{cmd:e(subcmd)}}{cmd:summarize}, {cmd:density}, {cmd:histogram}, {cmd:proportion}, {cmd:cdf}, {cmd:ccdf}, {cmd:quantile}, {cmd:lorenz}, or {cmd:share}{p_end}
 {synopt:{cmd:e(predict)}}{cmd:dstat predict}{p_end}
 {synopt:{cmd:e(cmdline)}}command as typed{p_end}
 {synopt:{cmd:e(depvar)}}name(s) of analyzed variable(s){p_end}
@@ -1310,6 +1368,8 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(proportion)}}{cmd:proportion} or empty{p_end}
 {synopt:{cmd:e(frequency)}}{cmd:frequency} or empty{p_end}
 {synopt:{cmd:e(mid)}}{cmd:mid} or empty{p_end}
+{synopt:{cmd:e(floor)}}{cmd:floor} or empty{p_end}
+{synopt:{cmd:e(ipolate)}}{cmd:ipolate} or empty{p_end}
 {synopt:{cmd:e(discrete)}}{cmd:discrete} or empty{p_end}
 {synopt:{cmd:e(categorical)}}{cmd:categorical} or empty{p_end}
 {synopt:{cmd:e(ep)}}{cmd:ep} or empty{p_end}

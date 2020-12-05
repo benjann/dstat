@@ -39,6 +39,29 @@ Installation from GitHub:
 
 Main changes:
 
+    05dec2020 (version 1.0.5)
+    - new -dstat ccdf- command for complementary CDF (tail distribution, survival
+      function)
+    - -dstat cdf- has new options -frequency-, -percent-, -floor-, and -ipolate-
+    - additional statistics: total(), cdff(), ccdf(), ccdfm(), ccdff()
+    - statistics trim(p1,p2) and winsor(p1,p2) now documented; furthermore, qdef()
+      is now taken into account by trim() and winsor()
+    - option generate() has a new -svy- suboption to generated scores for survey 
+      estimation instead of influence functions; this is only makes a difference for
+      unnormalized statistics (frequencies, totals)
+    - VCE for unnormalized statistics (frequencies, totals) did not take account of
+      the extra uncertainty induced by the variability of the sum of weights in the
+      context of survey estimation; this is fixed
+    - confidence limits had wrong scale if -percent- was specified, citype() was not
+      normal, and width of confidence interval was zero; this is fixed
+    - predict after survey estimation with subpop() returned missing in observations
+      outside subpop(); the IFs for these observations are now set to 0
+    - revised code of some IFs to avoid double work; affected functions are
+      dstat_density_IF(), dstat_cdf_IF(), dstat_sum_hist(), dstat_sum_cdf(),
+      dstat_sum_cdfm(), dstat_sum_freq()
+    - now using pstyle(p#line) instead of pstyle(p#) in graphs if appropriate
+    - no longer using mm_repeat(); using J() instead
+
     27nov2020 (version 1.0.4)
     - "version, user" issue now finally fixed (hopefully); the issue was related
       to -set dp comma-
