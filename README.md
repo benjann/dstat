@@ -46,6 +46,8 @@ Main changes:
     - additional statistics: total(), cdff(), ccdf(), ccdfm(), ccdff()
     - statistics trim(p1,p2) and winsor(p1,p2) now documented; furthermore, qdef()
       is now taken into account by trim() and winsor()
+    - option -sum- in -dstat lorenz- and -dstat share- now documented
+    - statistics tlorenz(), tshare(), tccurve(), tcshare() now documented
     - option generate() has a new -svy- suboption to generated scores for survey 
       estimation instead of influence functions; this is only makes a difference for
       unnormalized statistics (frequencies, totals)
