@@ -39,6 +39,23 @@ Installation from GitHub:
 
 Main changes:
 
+    09dec2020 (version 1.0.6)
+    - new option select() in -dstat graph- to select and order subgraphs and plots
+    - new suboption select() in over(): select and order subpopulations to be included
+      in results; total will still include obs from all groups
+    - new suboption -rescale- in over(): rescale results by the relative size of the
+      subpopulation
+    - suboption -svy- in vce(analytic) and vce(cluster) to compute SEs for
+      frequencies and totals like svy does 
+    - new statistics: min, max, range, midrange (IFs/SEs will be set to zero for 
+      these statistics)
+    - vce(svy), vce(bootstrap), and vce(jackknife) now feature suboption [no]cov to
+      decide whether to store full e(V) or only e(se); default is -cov- for 
+      -dstat summarize- and -nocov- else; with vce(svy) option -nocov- also removes
+      auxiliary covariance matrices such as e(V_srs)
+    - dstat density: standard errors were correct only in the first subpopulation 
+      if -over()- was specified together with -exact-; this is fixed 
+
     05dec2020 (version 1.0.5)
     - new -dstat ccdf- command for complementary CDF (tail distribution, survival
       function)

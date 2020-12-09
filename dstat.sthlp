@@ -1,5 +1,5 @@
 {smcl}
-{* 05dec2020}{...}
+{* 09dec2020}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -86,7 +86,7 @@ help for {hi:dstat}{...}
 {marker opts}{col 5}{help dstat##options:{it:options}}{col 33}Description
 {synoptline}
 {syntab:{help dstat##mainopts:Main}}
-{synopt:{cmdab:o:ver(}{help varname:{it:overvar}}{cmd:)}}compute results for subpopulations defined by {it:overvar}
+{synopt:{cmdab:o:ver(}{help varname:{it:overvar}}[{cmd:,} {it:opts}]{cmd:)}}compute results for subpopulations defined by {it:overvar}
     {p_end}
 {synopt:{opt tot:al}}include results for total population
     {p_end}
@@ -225,6 +225,8 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{cmd:flip}}change how results are allocated to plots and subgraphs
     {p_end}
+{synopt:[{ul:{cmd:g}}|{ul:{cmd:p}}]{opth sel:ect(numlist)}}select and order plots and subgraphs
+    {p_end}
 {synopt:{cmdab:bys:tats}[{cmd:(}{it:arg}{cmd:)}]}group results by statistics; only relevant for {cmd:dstat summarize}
     {p_end}
 {synopt:[{cmd:no}]{cmd:step}}do/do not use step function; only relevant for {cmd:dstat cdf}
@@ -352,6 +354,14 @@ help for {hi:dstat}{...}
 {synopt:{opt freq}{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}}frequency of data equal to {it:x1} or within [{it:x1},{it:x2}]
     {p_end}
 {synopt:{opt total}[{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}]}overall total, or total of data equal to {it:x1} or within [{it:x1},{it:x2}]
+    {p_end}
+{synopt:{opt min}}observed minimum (standard error set to zero)
+    {p_end}
+{synopt:{opt max}}observed maximum (standard error set to zero)
+    {p_end}
+{synopt:{opt range}}{cmd:max}-{cmd:min} (standard error set to zero)
+    {p_end}
+{synopt:{opt midrange}}({cmd:min}+{cmd:max})/2 (standard error set to zero)
     {p_end}
 
 {syntab:Location measures}
@@ -541,11 +551,32 @@ help for {hi:dstat}{...}
 
 {marker over}{...}
 {phang}
-    {cmd:over(}{help varname:{it:overvar}}{cmd:)} computes results for each subpopulation defined
-    by the values of {it:overvar}.
+    {cmd:over(}{help varname:{it:overvar}}[{cmd:,} {it:options}]{cmd:)}
+    computes results for each subpopulation defined by the values of
+    {it:overvar}. {it:overvar} must be integer and nonnegative. {it:options} are
+    as follows:
+
+{phang2}
+    {opth sel:ect(numlist)} selects (and orders) subpopulations. {it:numlist} 
+    specifies the values of the subpopulations to be included in the results
+    and also determines the order of the subpopulations in the output. Technically, 
+    estimation will always be based on the total sample including all 
+    subpopulation, irrespective of the contents of {cmd:select()}.
+
+{phang2}
+    {opt r:escale} rescales results by the relative size of a
+    subpopulation. This is only relevant for {cmd:dstat density}, 
+    {cmd:dstat histogram}, {cmd:dstat proportion}, {cmd:dstat cdf}, and
+    {cmd:dstat ccdf}. Use this option to obtain unconditional results. For 
+    example, if {cmd:rescale} is specified, {cmd:dstat proportion} will
+    estimate proportions as fractions of the total population, not as 
+    fractions of the subpopulation. {cmd:rescale} only affects the values of 
+    statistics that are expressed as proportions, percentages, or densities; it 
+    does not matter for absolute frequencies.
 
 {phang}
-    {cmd:total} reports additional results across all subpopulations. {cmd:total}
+    {cmd:total} reports additional results across all subpopulations (including
+    subpopulations that have been excluded by {cmd:select()}). {cmd:total}
     only has an effect if {cmd:over()} is specified.
 
 {marker balance}{...}
@@ -568,9 +599,11 @@ help for {hi:dstat}{...}
 
 {phang2}
     {opt ref:erence(#)} identifies the reference distribution. The default is
-    use the total across all subpopulations as the reference distribution. Specify
+    use the total across all subpopulations as the reference distribution
+    (including subpopulations that have been excluded by {cmd:select()}). Specify
     {cmd:reference(}{it:#}{cmd:)} to obtain the reference distributions from
-    observations for which {it:overvar}={it:#}.
+    observations for which {it:overvar}={it:#} (this may also be a subpopulation
+    that has been excluded by {cmd:select()}).
 
 {phang2}
     {it:logit_options} are options to be passed through to {helpb logit}. {it:logit_options}
@@ -756,11 +789,11 @@ help for {hi:dstat}{...}
     {opt vce(vcetype)} determines how standard errors are computed. {it:vcetype} may be:
 
             {opt none}
-            [{opt a:nalytic}] [{cmd:,} [{cmd:no}]{cmd:cov} ]
-            {opt cl:uster} {it:clustvar} [{cmd:,} [{cmd:no}]{cmd:cov} ]
-            {opt svy} [{help svy##svy_vcetype:{it:svy_vcetype}}] [{cmd:,} {help svy##svy_options:{it:svy_options}} ]
-            {opt boot:strap} [{cmd:,} {help bootstrap:{it:bootstrap_options}} ]
-            {opt jack:knife} [{cmd:,} {help jackknife:{it:jackknife_options}} ]
+            [{opt a:nalytic}] [{cmd:,} [{cmd:no}]{cmd:cov} {cmd:svy} ]
+            {opt cl:uster} {it:clustvar} [{cmd:,} [{cmd:no}]{cmd:cov} {cmd:svy} ]
+            {opt svy} [{help svy##svy_vcetype:{it:svy_vcetype}}] [{cmd:,} [{cmd:no}]{cmd:cov} {help svy##svy_options:{it:svy_options}} ]
+            {opt boot:strap} [{cmd:,} [{cmd:no}]{cmd:cov} {help bootstrap:{it:bootstrap_options}} ]
+            {opt jack:knife} [{cmd:,} [{cmd:no}]{cmd:cov} {help jackknife:{it:jackknife_options}} ]
 
 {pmore}
     {cmd:vce(none)} omits the computation of standard errors. This saves computer
@@ -771,14 +804,15 @@ help for {hi:dstat}{...}
     on influence functions. Likewise, {bind:{cmd:vce(cluster} {it:clustvar}{cmd:)}} computes
     influence-function based standard errors allowing for intragroup correlation,
     where {it:clustvar} specifies to which group each observation
-    belongs. In both cases, option {cmd:cov} requests that the full variance-covariance matrix
-    is estimated and stored in {cmd:e(V)}, whereas option {cmd:nocov} requests that only the
-    standard errors are estimated and stored in vector {cmd:e(se)}. The default is
-    {cmd:cov} for subcommand {cmd:summarize} and {cmd:nocov} for all other
-    subcommands. {cmd:nocov} reduces computer time and saves memory
-    if the number of evaluation points is large (for example, if you estimate the
-    density using 400 points across two subpopulations, the covariance matrix has
-    800 x 800 = 640'000 elements; the vector of standard errors has only 800 elements).
+    belongs. Option {cmd:svy} changes how variances are estimated for 
+    absolute frequencies and totals. The default is to assume the sum of weights
+    in the (sub)sample as fixed. This yields results that are consistent with
+    how {helpb total} without {cmd:svy} prefix computes standard errors. If {cmd:svy} 
+    is specified, the number of observations or, in case of {cmd:vce(cluster)}, the number 
+    of clusters is assumed fixed. This yields results that are consistent 
+    with how {cmd:svy:total} computes standard errors. Option {cmd:svy} is only 
+    relevant for statistics that are expresses in terms of absolute frequencies 
+    or totals.
 
 {pmore}
     {cmd:vce(svy)} computes standard errors taking the survey design as set by
@@ -789,6 +823,25 @@ help for {hi:dstat}{...}
 {pmore}
     {cmd:vce(bootstrap)} and {cmd:vce(jackknife)} compute standard errors using
     {helpb bootstrap} or {helpb jackknife}, respectively; see help {it:{help vce_option}}.
+
+{pmore}
+   Option {cmd:cov} requests that the full variance-covariance matrix
+   is stored in {cmd:e(V)}, whereas option {cmd:nocov} requests that only the
+   standard errors are stored in vector {cmd:e(se)}. The default is
+   {cmd:cov} for subcommand {cmd:summarize} and {cmd:nocov} for all other
+   subcommands. {cmd:nocov} saves memory if the number of evaluation points
+   is large (for example, if you estimate the density using 400 points across two
+   subpopulations, the covariance matrix has 800 x 800 = 640'000 elements; the vector
+   of standard errors has only 800 elements). For {cmd:vce(analytic)} and
+   {cmd:vce(cluster)}, option {cmd:nocov} also saves computer time (since the
+   computation of covariances is skipped; in the other cases,
+   covariances are removed after estimation). For {cmd:vce(svy)}, option {cmd:nocov}
+   also removes auxiliary variance matrices such as {cmd:e(V_srs)}. Note that
+   post-estimation commands that rely on covariances (or on
+   auxiliary variance matrices in case of {cmd:svy}) will not work after
+   {cmd:nocov} has been applied; specify option {cmd:cov} if you intend to use
+   such post-estimation commands (e.g., {helpb test} or {helpb lincom}) after
+   subcommands other than {cmd:summarize}.
 
 {pmore}
     If a replication technique is used for standard error estimation,
@@ -1070,6 +1123,26 @@ help for {hi:dstat}{...}
     as {cmd:merge}.
 
 {phang}
+    [{cmd:g}|{cmd:p}]{opth sel:ect(numlist)} selects and orders subgraphs and plots within
+    subgraphs. {it:numlist} specifies the indices of the subgraphs or plots to
+    be included. For example, in a situation where the default graph has three
+    subgraphs (containing one plot each), you could type {cmd:select(3 1)} to
+    omit the 2nd subgraph and reverse the order such that the 3rd subgraph comes
+    first.
+
+{pmore}
+    {cmd:select()} applies to both, subgraphs and plots within subgraphs. If a
+    graph contains multiple subgraphs and multiple plots within subgraphs, use option
+    {cmd:gselect()} to select and order subgraphs, and use option {cmd:pselect()}
+    to select and order plots.
+
+{pmore}
+    {cmd:select()}, {cmd:gselect()}, and {cmd:pselect()} only have an effect if
+    there are multiple elements to choose from. That is,
+    single subgraphs or single plots will always be displayed, irrespective of
+    what you type in these options.
+
+{phang}
     {cmd:bystats}[{cmd:(}{it:arg}{cmd:)}] treats coefficients as equations and
     equations as coefficients. This is only relevant after
     {cmd:dstat summarize} and only has an effect if the results contain multiple
@@ -1106,7 +1179,7 @@ help for {hi:dstat}{...}
     {helpb coefplot}. Use these options, for example, to set titles and axis
     labels or to affect the overall look and size of the graph. The options can
     also be used to change the rendering of the plotted results (e.g. colors,
-    line patterns, marker symbols, etc.). If a graph contains multiple "plots"
+    line patterns, marker symbols, etc.). If a graph contains multiple plots
     (multiple series of results displayed in a common style), option
     {cmd:p}{it:#}{cmd:()} can be used to address the {it:#}th plot. For example,
     you could type {cmd:p2(recast(dropline) pstyle(p5) noci)} to change the
@@ -1214,6 +1287,15 @@ help for {hi:dstat}{...}
     {cmd:merge} to overlay the two curves in a single coordinate system:
 
         . {stata dstat graph, merge}
+
+{pstd}
+    To see how the overall wage distribution is composed by the two 
+    groups, we can, for example, rescale the density estimates by group size and
+    include the total density:
+
+{p 8 12 2}
+        . {stata dstat density wage, over(union, rescale) total ll(0) graph(merge)}
+        {p_end}
 
 {dlgtab:Covariate balancing}
 
@@ -1351,6 +1433,8 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(over)}}name of {it:overvar}{p_end}
 {synopt:{cmd:e(over_namelist)}}values of subpopulations{p_end}
 {synopt:{cmd:e(over_labels)}}labels of subpopulations{p_end}
+{synopt:{cmd:e(over_select)}}values of selected subpopulations{p_end}
+{synopt:{cmd:e(over_rescale)}}{cmd:rescale} or empty{p_end}
 {synopt:{cmd:e(total)}}{cmd:total} or empty{p_end}
 {synopt:{cmd:e(balance)}}list of balancing variables{p_end}
 {synopt:{cmd:e(balmethod)}}balancing method{p_end}
@@ -1383,6 +1467,7 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(clustvar)}}name of cluster variable{p_end}
 {synopt:{cmd:e(vce)}}{it:vcetype} specified in {cmd:vce()}{p_end}
 {synopt:{cmd:e(vcetype)}}title used to label Std. Err.{p_end}
+{synopt:{cmd:e(vcesvy)}}{cmd:svy} or empty{p_end}
 {synopt:{cmd:e(citype)}}type confidence interval stored in {cmd:e(ci)}{p_end}
 {synopt:{cmd:e(wtype)}}weight type{p_end}
 {synopt:{cmd:e(wexp)}}weight expression{p_end}
@@ -1518,7 +1603,7 @@ help for {hi:dstat}{...}
     Jann, B. (2020). dstat: Stata module to compute summary statistics and
     distribution functions including standard errors
     and optional covariate balancing. Available from
-    {browse "http://github.com/benjann/dstat/"}.
+    {browse "http://ideas.repec.org/c/boc/bocode/s458874.html"}.
 
 
 {marker also_see}{...}
