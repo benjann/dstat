@@ -39,6 +39,14 @@ Installation from GitHub:
 
 Main changes:
 
+    10dec2020 (version 1.0.7)
+    - vce(analytic/cluster, svy)
+      o svy was not taken into account if no clusters and no weights, iweights, or
+        fweights were specified; this is fixes
+      o revised code to preserve memory and avoid double work
+    - for reasons of consistency, in case of iweights, the sum of weights is now
+      reported in e(N)  instead of the physical number of observations
+
     09dec2020 (version 1.0.6)
     - new option select() in -dstat graph- to select and order subgraphs and plots
     - new suboption select() in over(): select and order subpopulations to be included

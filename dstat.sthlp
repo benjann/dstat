@@ -1,5 +1,5 @@
 {smcl}
-{* 09dec2020}{...}
+{* 10dec2020}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -557,21 +557,21 @@ help for {hi:dstat}{...}
     as follows:
 
 {phang2}
-    {opth sel:ect(numlist)} selects (and orders) subpopulations. {it:numlist} 
+    {opth sel:ect(numlist)} selects (and orders) subpopulations. {it:numlist}
     specifies the values of the subpopulations to be included in the results
-    and also determines the order of the subpopulations in the output. Technically, 
-    estimation will always be based on the total sample including all 
+    and also determines the order of the subpopulations in the output. Technically,
+    estimation will always be based on the total sample including all
     subpopulation, irrespective of the contents of {cmd:select()}.
 
 {phang2}
     {opt r:escale} rescales results by the relative size of a
-    subpopulation. This is only relevant for {cmd:dstat density}, 
+    subpopulation. This is only relevant for {cmd:dstat density},
     {cmd:dstat histogram}, {cmd:dstat proportion}, {cmd:dstat cdf}, and
-    {cmd:dstat ccdf}. Use this option to obtain unconditional results. For 
+    {cmd:dstat ccdf}. Use this option to obtain unconditional results. For
     example, if {cmd:rescale} is specified, {cmd:dstat proportion} will
-    estimate proportions as fractions of the total population, not as 
-    fractions of the subpopulation. {cmd:rescale} only affects the values of 
-    statistics that are expressed as proportions, percentages, or densities; it 
+    estimate proportions as fractions of the total population, not as
+    fractions of the subpopulation. {cmd:rescale} only affects the values of
+    statistics that are expressed as proportions, percentages, or densities; it
     does not matter for absolute frequencies.
 
 {phang}
@@ -800,19 +800,20 @@ help for {hi:dstat}{...}
     time.
 
 {pmore}
-    {cmd:vce(analytic)}, the default, computes standard errors based
-    on influence functions. Likewise, {bind:{cmd:vce(cluster} {it:clustvar}{cmd:)}} computes
-    influence-function based standard errors allowing for intragroup correlation,
-    where {it:clustvar} specifies to which group each observation
-    belongs. Option {cmd:svy} changes how variances are estimated for 
-    absolute frequencies and totals. The default is to assume the sum of weights
-    in the (sub)sample as fixed. This yields results that are consistent with
-    how {helpb total} without {cmd:svy} prefix computes standard errors. If {cmd:svy} 
-    is specified, the number of observations or, in case of {cmd:vce(cluster)}, the number 
-    of clusters is assumed fixed. This yields results that are consistent 
-    with how {cmd:svy:total} computes standard errors. Option {cmd:svy} is only 
-    relevant for statistics that are expresses in terms of absolute frequencies 
-    or totals.
+    {cmd:vce(analytic)}, the default, computes standard errors based on
+    influence functions. Likewise, {bind:{cmd:vce(cluster} {it:clustvar}{cmd:)}}
+    computes standard errors based on influence function allowing for intragroup
+    correlation, where {it:clustvar} specifies to which group each observation
+    belongs. Option {cmd:svy} changes the assumptions that are made when
+    computing the standard errors. The default is to assume the sum of weights
+    in the (sub)sample as fixed. This is consistent with
+    how {helpb total} without {cmd:svy}-prefix computes standard errors. If option
+    {cmd:svy} is specified, the number of primary sampling units, that is, the
+    number of observations or, in case of {cmd:vce(cluster)}, the number of
+    clusters is assumed fixed. This is consistent with how {cmd:svy:total}
+    computes standard errors. Note that option {cmd:svy} has no effect for most
+    statistics; it is only relevant for statistics that are not normalized 
+    by the sample size (totals and absolute frequencies).
 
 {pmore}
     {cmd:vce(svy)} computes standard errors taking the survey design as set by
@@ -825,7 +826,7 @@ help for {hi:dstat}{...}
     {helpb bootstrap} or {helpb jackknife}, respectively; see help {it:{help vce_option}}.
 
 {pmore}
-   Option {cmd:cov} requests that the full variance-covariance matrix
+   For all {it:vcetypes}, option {cmd:cov} requests that the full variance-covariance matrix
    is stored in {cmd:e(V)}, whereas option {cmd:nocov} requests that only the
    standard errors are stored in vector {cmd:e(se)}. The default is
    {cmd:cov} for subcommand {cmd:summarize} and {cmd:nocov} for all other
@@ -1289,7 +1290,7 @@ help for {hi:dstat}{...}
         . {stata dstat graph, merge}
 
 {pstd}
-    To see how the overall wage distribution is composed by the two 
+    To see how the overall wage distribution is composed by the two
     groups, we can, for example, rescale the density estimates by group size and
     include the total density:
 

@@ -1,4 +1,4 @@
-*! version 1.0.6  09dec2020  Ben Jann
+*! version 1.0.7  10dec2020  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -1532,7 +1532,13 @@ program _Estimate, eclass
     }
     else local wvar 1
     _nobs `touse' `wgt', min(1)
-    local N = r(N)
+    if "`weight'"=="iweight" {
+        su `wvar' if `touse', meanonly
+        local N = r(sum)
+    }
+    else {
+        local N = r(N)
+    }
     tempname W // for sum of weights
     
     // expand factor variables (and process slist)
@@ -1617,6 +1623,7 @@ program _Estimate, eclass
             foreach IF of local IFs {
                 gettoken nm coln : coln
                 lab var `IF' "score of _b[`nm']"
+                if "`svy'"=="done" continue // already done by dstat_vce()
                 local ++i
                 local gid = `id'[1, `i']
                 if "`gid'"!="`gid0'" {
@@ -3022,42 +3029,6 @@ void dstat_slist_expand()
     st_local("slist", _dstat_slist_clean((tokens(V)', tokens(invtokens(S))')))
 }
 
-/*
-`SS' _dstat_slist_clean(`SM' S)
-{
-    `Int' i, j, k, n
-    `RC'  p
-    `T'   A
-
-    // step 1: create group id (in order of first appearance)
-    A = asarray_create()
-    n = rows(S)
-    p = J(n, 1, .)
-    j = 0
-    for (i=1;i<=n;i++) {
-        if (!asarray_contains(A, S[i,1])) asarray(A, S[i,1], ++j)
-        p[i] = asarray(A, S[i,1])
-    }
-    // step 2: sort by group id, keeping original order within group
-    S = S[mm_order(p, 1, 1),]
-    // step 3: remove duplicates (keeping original order)
-    S = mm_uniqrows(S, 1)
-    // step 4: recompile
-    n = rows(S)
-    k = 0
-    for (i=1;i<=n;i++) {
-        j = i
-        while (S[j,1]==S[i,1]) {
-            i++
-            if (i>n) break
-        }
-        i--
-        S[++k,1] = "("+invtokens(S[|j,2 \ i,2|]')+") " + S[i,1]
-    }
-    return(invtokens(S[|1,1 \ k,1|]'))
-}
-*/
-
 `SS' _dstat_slist_clean(`SM' S)
 {
     `Int' i, j, k, n
@@ -3619,38 +3590,61 @@ void dstat()
 
 void dstat_vce(`Data' D, `SS' clust, `Bool' seonly, `Bool' svy)
 {   // svy assumed fleeting
+    `Bool' undo
     `RS'   df_r, c, N_clust
     `RR'   m
     `RM'   V
     
-    // svy
+    // transform IFs due to svy option (if needed)
+    undo = 0
     if (svy) {
-        if (allof(D.istot, 0)) svy = 0 // no modifications required
+        if (allof(D.istot, 0)) svy = 0
     }
-    if (svy) m = (D.b :* D.istot)'
+    if (svy) {
+        _dstat_vce_score(D, 0)
+        m = (D.b :* D.istot)'
+        // check whether transformation must be undone at end: no need if 
+        // generate()/rif() not specified or if generate(..., svy) specified
+        if (st_local("generate")!="") {
+            if (st_local("svy")=="") undo = 1
+            else st_local("svy", "done")
+        }
+    }
     // no clusters
     if (clust=="") {
         if (D.wtype==0) { // no weights
-            if (seonly) V = _dstat_vce_c2(1, D.IF)
-            else        V = cross(D.IF, D.IF)
+            if (svy) {
+                if (seonly) V = _dstat_vce_cross(1, D.IF, m/D.N)
+                else        V = _dstat_vce_cdev(D.IF, m/D.N)
+            }
+            else {
+                if (seonly) V = _dstat_vce_cross(1, D.IF)
+                else        V = cross(D.IF, D.IF)
+            }
             df_r = D.N - 1
             c = (df_r>0 & df_r<. ? D.N/df_r : 0)
         }
         else if (D.wtype==3) { // pw
             if (svy) {
-                if (seonly) V = _dstat_vce_c2(1, D.w:*_dstat_vce_score(D, m), m/D.N)
-                else        V = _dstat_vce_c3(D.w:*_dstat_vce_score(D, m), m/D.N)
+                if (seonly) V = _dstat_vce_cross2(D.w, D.IF, m/D.N)
+                else        V = _dstat_vce_cdev(D.w:*D.IF, m/D.N)
             }
             else {
-                if (seonly) V = _dstat_vce_c2(D.w:^2, D.IF)
+                if (seonly) V = _dstat_vce_cross(D.w:^2, D.IF)
                 else        V = cross(D.IF, D.w:^2, D.IF)
             }
             df_r = D.N - 1
             c = (df_r>0 & df_r<. ? D.N/df_r : 0)
         }
         else { // iw or fw
-            if (seonly) V = _dstat_vce_c2(D.w, D.IF)
-            else        V = cross(D.IF, D.w, D.IF)
+            if (svy) {
+                if (seonly) V = _dstat_vce_cross(D.w, D.IF, m/D.W)
+                else        V = _dstat_vce_cdev(D.IF, m/D.W, D.w)
+            }
+            else {
+                if (seonly) V = _dstat_vce_cross(D.w, D.IF)
+                else        V = cross(D.IF, D.w, D.IF)
+            }
             df_r = D.W - 1
             c = (df_r>0 & df_r<. ? D.W/df_r : 0)
         }
@@ -3658,17 +3652,14 @@ void dstat_vce(`Data' D, `SS' clust, `Bool' seonly, `Bool' svy)
     }
     // with clusters
     else {
+        V = _dstat_vce_csum(D.IF, D.w, st_data(., clust, D.touse))
+        N_clust = rows(V)
         if (svy) {
-            V = _dstat_vce_csum(_dstat_vce_score(D, m), D.w, st_data(., clust, D.touse))
-            N_clust = rows(V)
-            m = m / N_clust
-            if (seonly) V = _dstat_vce_c2(1, V, m)
-            else        V = crossdev(V, m, V, m)
+            if (seonly) V = _dstat_vce_cross(1, V, m/N_clust)
+            else        V = _dstat_vce_cdev(V, m/N_clust)
         }
         else {
-            V = _dstat_vce_csum(D.IF, D.w, st_data(., clust, D.touse))
-            N_clust = rows(V)
-            if (seonly) V = _dstat_vce_c2(1, V)
+            if (seonly) V = _dstat_vce_cross(1, V)
             else        V = cross(V, V)
         }
         df_r = N_clust - 1
@@ -3676,6 +3667,8 @@ void dstat_vce(`Data' D, `SS' clust, `Bool' seonly, `Bool' svy)
         st_local("N_clust", st_tempname())
         st_numscalar(st_local("N_clust"), N_clust)
     }
+    // undo transform IFs due to svy option
+    if (undo) _dstat_vce_score(D, 1)
     // return results
     st_local("df_r", st_tempname())
     st_numscalar(st_local("df_r"), df_r)
@@ -3692,14 +3685,15 @@ void dstat_vce(`Data' D, `SS' clust, `Bool' seonly, `Bool' svy)
     }
 }
 
-`RM' _dstat_vce_score(`Data' D, `RR' m)
+void _dstat_vce_score(`Data' D, `Bool' undo)
 {
     `Int'  i, id, id0, j
     `IntC' p
-    `RM'   IF
+    `RC'   b
     
-    i   = cols(m)
-    IF   = D.IF
+    if (undo) b = -D.b
+    else      b =  D.b
+    i   = cols(D.IF)
     id0 = .a // D.id cannot be .a
     j   = cols(D._W) + 1
     for (;i;i--) {
@@ -3711,16 +3705,15 @@ void dstat_vce(`Data' D, `SS' clust, `Bool' seonly, `Bool' svy)
         }
         if (!D.istot[i]) continue
         if (id==.) {
-            IF[,i]  = IF[,i] :+ m[i]/D.W
+            D.IF[,i] = D.IF[,i] :+ b[i]/D.W
             continue
         }
         if (rows(p)==0) p = selectindex(D.over:==id)
-        IF[p,i] = IF[p,i] :+ m[i]/D._W[j]
+        D.IF[p,i] = D.IF[p,i] :+ b[i]/D._W[j]
     }
-    return(IF)
 }
 
-`RR' _dstat_vce_c2(`RC' w, `RM' X, | `RR' m)
+`RR' _dstat_vce_cross(`RC' w, `RM' X, | `RR' m)
 {   // applies cross() to each column individually so that less memory is used
     `Int' i
     `RR'  V
@@ -3731,12 +3724,33 @@ void dstat_vce(`Data' D, `SS' clust, `Bool' seonly, `Bool' svy)
         for (;i;i--) V[i] = cross(w, X[,i]:^2)
     }
     else {
-        for (;i;i--) V[i] = cross(w, (X[,i]:-m[i]):^2)
+        for (;i;i--) {
+            if (m[i]!=0) V[i] = cross(w, (X[,i]:-m[i]):^2)
+            else         V[i] = cross(w, X[,i]:^2)
+        }
     }
     return(V)
 }
 
-`RM' _dstat_vce_c3(`RM' X, `RR' m) return(crossdev(X, m, X, m))
+`RR' _dstat_vce_cross2(`RC' w, `RM' X, `RR' m)
+{   // like _dstat_vce_cross(), but for m!=0 with pweights 
+    `Int' i
+    `RR'  V
+    
+    i = cols(X)
+    V = J(1,i,.)
+    for (;i;i--) {
+        if (m[i]!=0) V[i] = cross(1, (w:*X[,i] :- m[i]):^2)
+        else         V[i] = cross(1, (w:*X[,i]):^2)
+    }
+    return(V)
+}
+
+`RM' _dstat_vce_cdev(`RM' X, `RR' m, | `RC' w)
+{
+    if (args()<3) return(crossdev(X, m, X, m))
+    return(crossdev(X, m, w, X, m))
+}
 
 `RM' _dstat_vce_csum(`RM' X, `RC' w, `RC' C)
 {   // aggregate X*w by clusters
