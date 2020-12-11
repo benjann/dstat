@@ -39,6 +39,14 @@ Installation from GitHub:
 
 Main changes:
 
+    11dec2020 (version 1.0.8)
+    - cluster variable in vce(cluster) can now be string
+    - over(..., rescale) now implemented as subcommand-specific option
+      -unconditional-; -unconditional(fixed)- added to treat subpopulation
+      sizes as fixed
+    - dstat cdf/ccdf: specifying -ipolate- together with -floor- returned error; this
+      is fixed
+
     10dec2020 (version 1.0.7)
     - vce(analytic/cluster, svy)
       o svy was not taken into account if no clusters and no weights, iweights, or

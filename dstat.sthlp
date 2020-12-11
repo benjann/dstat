@@ -1,5 +1,5 @@
 {smcl}
-{* 10dec2020}{...}
+{* 11dec2020}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -130,6 +130,9 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opth at(numlist)}}custom grid of evaluation points
     {p_end}
+{synopt:{cmdab:unc:onditional}[{cmd:(}{cmdab:f:ixed}{cmd:)}]}rescale results by
+    relative size of subpopulation
+    {p_end}
 
 {syntab:{help dstat##hist:Subcommand {bf:histogram}}}
 {synopt:{opt prop:ortion}}estimate proportions instead of densities
@@ -145,6 +148,9 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opth at(numlist)}}custom bin definitions
     {p_end}
+{synopt:{cmdab:unc:onditional}[{cmd:(}{cmdab:f:ixed}{cmd:)}]}rescale results by
+    relative size of subpopulation
+    {p_end}
 
 {syntab:{help dstat##prop:Subcommand {bf:proportion}}}
 {synopt:{opt per:cent}}estimate percent instead of probabilities
@@ -155,6 +161,9 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt nocat:egorical}}allow variables that do not comply to Stata's rules
     for factor variables
+    {p_end}
+{synopt:{cmdab:unc:onditional}[{cmd:(}{cmdab:f:ixed}{cmd:)}]}rescale results by
+    relative size of subpopulation
     {p_end}
 
 {syntab:{help dstat##cdf:Subcommands {bf:cdf} and {bf:ccdf}}}
@@ -173,6 +182,9 @@ help for {hi:dstat}{...}
 {synopt:{opt disc:rete}}treat data as discrete
     {p_end}
 {synopt:{opt ip:olate}}obtain CDF by linear interpolation
+    {p_end}
+{synopt:{cmdab:unc:onditional}[{cmd:(}{cmdab:f:ixed}{cmd:)}]}rescale results by
+    relative size of subpopulation
     {p_end}
 
 {syntab:{help dstat##quantile:Subcommand {bf:quantile}}}
@@ -563,17 +575,6 @@ help for {hi:dstat}{...}
     estimation will always be based on the total sample including all
     subpopulation, irrespective of the contents of {cmd:select()}.
 
-{phang2}
-    {opt r:escale} rescales results by the relative size of a
-    subpopulation. This is only relevant for {cmd:dstat density},
-    {cmd:dstat histogram}, {cmd:dstat proportion}, {cmd:dstat cdf}, and
-    {cmd:dstat ccdf}. Use this option to obtain unconditional results. For
-    example, if {cmd:rescale} is specified, {cmd:dstat proportion} will
-    estimate proportions as fractions of the total population, not as
-    fractions of the subpopulation. {cmd:rescale} only affects the values of
-    statistics that are expressed as proportions, percentages, or densities; it
-    does not matter for absolute frequencies.
-
 {phang}
     {cmd:total} reports additional results across all subpopulations (including
     subpopulations that have been excluded by {cmd:select()}). {cmd:total}
@@ -812,7 +813,7 @@ help for {hi:dstat}{...}
     number of observations or, in case of {cmd:vce(cluster)}, the number of
     clusters is assumed fixed. This is consistent with how {cmd:svy:total}
     computes standard errors. Note that option {cmd:svy} has no effect for most
-    statistics; it is only relevant for statistics that are not normalized 
+    statistics; it is only relevant for statistics that are not normalized
     by the sample size (totals and absolute frequencies).
 
 {pmore}
@@ -900,6 +901,13 @@ help for {hi:dstat}{...}
     {opth at(numlist)} specifies a custom grid of evaluation points. Only
     one of {cmd:n()} and {cmd:at()} is allowed.
 
+{phang}
+    {cmd:unconditional}[{cmd:(fixed)}] rescales results such that the
+    density function integrates to the relative size of the subpopulation
+    instead of 1. This is only relevant if option {cmd:over()} has been
+    specified. Specify argument {cmd:fixed} to assume subpopulation sizes as
+    fixed; the default is to treat subpopulation sizes as random.
+
 {marker hist}{...}
 {dlgtab:Subcommand histogram}
 
@@ -951,6 +959,13 @@ help for {hi:dstat}{...}
     cutpoint is larger than or equal to the maximum ({cmd:dstat} does {it:not} check
     this condition and does not display a warning if the condition is violated).
 
+{phang}
+    {cmd:unconditional}[{cmd:(fixed)}] rescales results by the relative size of
+    the subpopulation. This is only relevant if option {cmd:over()} has been
+    specified. Specify argument {cmd:fixed} to assume subpopulation sizes as
+    fixed; the default is to treat subpopulation sizes as random. {cmd:unconditional}
+    is not allowed together with {cmd:frequency}.
+
 {marker prop}{...}
 {dlgtab:Subcommand proportion}
 
@@ -970,6 +985,13 @@ help for {hi:dstat}{...}
     Stata's rules for factor variables (e.g. variables that contain negative
     or noninteger values). This also affects how the coefficients are
     labeled in the output.
+
+{phang}
+    {cmd:unconditional}[{cmd:(fixed)}] rescales proportions by the relative size of
+    the subpopulation. This is only relevant if option {cmd:over()} has been
+    specified. Specify argument {cmd:fixed} to assume subpopulation sizes as
+    fixed; the default is to treat subpopulation sizes as random. {cmd:unconditional}
+    is not allowed together with {cmd:frequency}.
 
 {marker cdf}{...}
 {dlgtab:Subcommands cdf and ccdf}
@@ -1020,6 +1042,13 @@ help for {hi:dstat}{...}
     {cmd:mid} and {cmd:floor} have an effect on the location of these
     points). By default, the estimates of the CDF are obtained according to the definitions
     described above (see {cmd:mid} and {cmd:floor}).
+
+{phang}
+    {cmd:unconditional}[{cmd:(fixed)}] rescales results by the relative size of
+    the subpopulation. This is only relevant if option {cmd:over()} has been
+    specified. Specify argument {cmd:fixed} to assume subpopulation sizes as
+    fixed; the default is to treat subpopulation sizes as random. {cmd:unconditional}
+    is not allowed together with {cmd:frequency}.
 
 {marker quantile}{...}
 {dlgtab:Subcommand quantile}
@@ -1205,7 +1234,8 @@ help for {hi:dstat}{...}
 {phang}
     {opt compact} generates influence functions in compact form. {cmd:compact}
     only has an effect if {cmd:over()} has been specified and is not allowed
-    if {cmd:balance()} has been specified.
+    with {cmd:balance()} or {cmd:unconditional} (although it
+    is allowed with {cmd:unconditional(fixed)}).
 
 {pmore}
     The default is to generate one influence function for each single parameter
@@ -1291,11 +1321,12 @@ help for {hi:dstat}{...}
 
 {pstd}
     To see how the overall wage distribution is composed by the two
-    groups, we can, for example, rescale the density estimates by group size and
-    include the total density:
+    groups, we can, for example, rescale the density estimates by group size
+    using option {cmd:unconditional} and include the total density using option
+    {cmd:total}:
 
 {p 8 12 2}
-        . {stata dstat density wage, over(union, rescale) total ll(0) graph(merge)}
+        . {stata dstat density wage, over(union) total unconditional ll(0) graph(merge)}
         {p_end}
 
 {dlgtab:Covariate balancing}
@@ -1435,8 +1466,8 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(over_namelist)}}values of subpopulations{p_end}
 {synopt:{cmd:e(over_labels)}}labels of subpopulations{p_end}
 {synopt:{cmd:e(over_select)}}values of selected subpopulations{p_end}
-{synopt:{cmd:e(over_rescale)}}{cmd:rescale} or empty{p_end}
 {synopt:{cmd:e(total)}}{cmd:total} or empty{p_end}
+{synopt:{cmd:e(unconditional)}}{cmd:unconditional}, {cmd:unconditional(fixed)}, or empty{p_end}
 {synopt:{cmd:e(balance)}}list of balancing variables{p_end}
 {synopt:{cmd:e(balmethod)}}balancing method{p_end}
 {synopt:{cmd:e(balref)}}balancing reference{p_end}

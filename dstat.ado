@@ -1,4 +1,4 @@
-*! version 1.0.7  10dec2020  Ben Jann
+*! version 1.0.8  11dec2020  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -537,7 +537,6 @@ program Predict_compute_IFs
         if `"`e(over_select)'"'!="" {
             local over select(`e(over_select)')
         }
-        local over `over' `e(over_rescale)'
         if `"`over'"'!="" {
             local over over(`e(over)', `over')
         }
@@ -582,23 +581,24 @@ program Predict_compute_IFs
     }
     // - density
     if "`subcmd'"=="density" {
-        // (none)
+        local cmdline `cmdline' `e(unconditional)'
     }
     // - histogram
     else if "`subcmd'"=="histogram" {
-        local cmdline `cmdline' `e(proportion)' `e(percent)' `e(frequency)'
+        local cmdline `cmdline' `e(proportion)' `e(percent)' `e(frequency)'/*
+            */ `e(unconditional)'
     }
     // - cdf/ccdf
     else if inlist("`subcmd'","cdf","ccdf") {
         local cmdline `cmdline' `e(percent)' `e(frequency)' `e(mid)'/*
-            */ `e(floor)' `e(discrete)' `e(ipolate)'
+            */ `e(floor)' `e(discrete)' `e(ipolate)' `e(unconditional)'
     }
     // - proportion
     else if "`subcmd'"=="proportion" {
         if `"`e(categorical)'"'=="" {
             local cmdline `cmdline' nocategorical
         }
-        local cmdline `cmdline' `e(percent)' `e(frequency)'
+        local cmdline `cmdline' `e(percent)' `e(frequency)' `e(unconditional)'
     }
     // - quantile
     else if "`subcmd'"=="quantile" {
@@ -1356,17 +1356,20 @@ program _Estimate, eclass
     gettoken subcmd 0 : 0
     local lhs varlist(numeric fv)
     if "`subcmd'"=="density" {
-        local opts n(numlist int >=1 max=1) at(str)
+        local opts n(numlist int >=1 max=1) at(str) /*
+            */ UNConditional UNConditional2(str)
     }
     else if "`subcmd'"=="histogram" {
-        local opts n(passthru) at(str) ep PROPortion PERcent FREQuency
+        local opts n(passthru) at(str) ep PROPortion PERcent FREQuency /*
+            */ UNConditional UNConditional2(str)
     }
     else if inlist("`subcmd'","cdf","ccdf") {
         local opts n(numlist int >=1 max=1) at(str) mid FLoor DISCrete /*
-        */ PERcent FREQuency IPolate
+        */ PERcent FREQuency IPolate UNConditional UNConditional2(str)
     }
     else if "`subcmd'"=="proportion" {
-        local opts NOCATegorical at(str) PERcent FREQuency
+        local opts NOCATegorical at(str) PERcent FREQuency /*
+            */ UNConditional UNConditional2(str)
     }
     else if "`subcmd'"=="quantile" {
         local opts n(numlist int >=1 max=1) at(str)
@@ -1392,6 +1395,7 @@ program _Estimate, eclass
             Generate(passthru) rif(str) Replace ///
             `opts' * ]
     Parse_over `over'
+    Parse_uncond, `unconditional2'
     if `"`generate'"'!="" & `"`rif'"'!="" {
         di as err "{bf:generate()} and {bf:rif()} not both allowed"
         exit 198
@@ -1419,10 +1423,18 @@ program _Estimate, eclass
             di as err "only one of {bf:percent}, {bf:proportion}, and {bf:frequency} allowed"
             exit 198
         }
+        if "`frequency'"!="" & "`unconditional'"!="" {
+            di as err "{bf:frequency} and {bf:unconditional} not both allowed"
+            exit 198
+        }
     }
     else if inlist("`subcmd'","cdf","ccdf") {
         if "`percent'"!="" & "`frequency'"!="" {
             di as err "{bf:percent} and {bf:frequency} not both allowed"
+            exit 198
+        }
+        if "`frequency'"!="" & "`unconditional'"!="" {
+            di as err "{bf:frequency} and {bf:unconditional} not both allowed"
             exit 198
         }
         if "`mid'"!="" & "`floor'"!="" {
@@ -1441,6 +1453,10 @@ program _Estimate, eclass
         local discrete "discrete"
         if "`percent'"!="" & "`frequency'"!="" {
             di as err "{bf:percent} and {bf:frequency} not both allowed"
+            exit 198
+        }
+        if "`frequency'"!="" & "`unconditional'"!="" {
+            di as err "{bf:frequency} and {bf:unconditional} not both allowed"
             exit 198
         }
     }
@@ -1499,14 +1515,20 @@ program _Estimate, eclass
     }
     Parse_rif `rif'
     Parse_generate, `generate' `replace'
-    if "`over'"=="" local compact // compact only relevant in case of over()
+    if "`over'"=="" {
+        // options that are only relevant if over() is specified
+        local compact
+        local unconditional
+        local unconditional2
+        local total
+    }
     if "`compact'"!="" {
         if `"`bal_method'"'!="" {
-            di as err "{bf:compact} not allowed with {bf:balance()}"
+            di as err "{bf:compact} not allowed  {bf:balance()}"
             exit 198
         }
-        if "`rescale'"!="" {
-            di as err "{bf:compact} not allowed with {bf:over(, rescale)}"
+        if "`unconditional'"!="" & "`unconditional2'"=="" {
+            di as err "{bf:compact} not allowed with {bf:unconditional}"
             exit 198
         }
     }
@@ -1514,7 +1536,10 @@ program _Estimate, eclass
     
     // sample and weights
     marksample touse
-    markout `touse' `varlist' `over' `clustvar' `bal_varlist' `zvars' `plvars'
+    markout `touse' `varlist' `over' `bal_varlist' `zvars' `plvars'
+    if "`clustvar'"!="" {
+        markout `touse' `clustvar', strok
+    }
     if "`weight'"!="" {
         capt confirm variable `exp'
         if _rc==1 exit _rc
@@ -1749,8 +1774,11 @@ program _Estimate, eclass
     else             eret local pline "`pline'"
     if "`over'"!="" {
         eret local total         "`total'"
+        if "`unconditional2'"!="" {
+            local unconditional "unconditional(`unconditional2')"
+        }
+        eret local unconditional "`unconditional'"
         eret local over          "`over'"
-        eret local over_rescale  "`rescale'"
         eret local over_select   "`select'"
         eret local over_namelist `"`overlevels'"'
         eret local over_labels   `"`over_labels'"'
@@ -1790,28 +1818,37 @@ program _Estimate, eclass
         }
     }
     if "`subcmd'"=="density" {
-        eret local title "Density function"
+        local title "Density"
+        if "`unconditional'"!="" local title "`title' (unconditional)"
     }
     else if "`subcmd'"=="histogram" {
-        if      "`percent'"!=""    eret local title "Histogram (percent)"
-        else if "`proportion'"!="" eret local title "Histogram (proportion)"
-        else if "`frequency'"!=""  eret local title "Histogram (frequency)"
-        else                       eret local title "Histogram (density)"
+        local title "Histogram"
+        if "`unconditional'"!=""   local title "`title' (unconditional "
+        else                       local title "`title' ("
+        if      "`percent'"!=""    local title "`title'percent)"
+        else if "`proportion'"!="" local title "`title'proportion)"
+        else if "`frequency'"!=""  local title "`title'frequency)"
+        else                       local title "`title'density)"
     }
-    else if "`subcmd'"=="cdf" {
-        if "`mid'"!="" eret local title "CDF (mid-adjusted)"
-        else           eret local title "CDF"
-    }
-    else if "`subcmd'"=="ccdf" {
-        eret local title "Complementary CDF"
+    else if inlist("`subcmd'","cdf","ccdf") {
+        if "`mid'"!=""             local title "Mid "
+        else if "`floor'"!=""      local title "Floor "
+        else                       local title ""
+        if "`subcmd'"=="ccdf"      local title "`title'C"
+        if "`percent'"!=""         local title "`title'CDF in percent"
+        else if "`frequency'"!=""  local title "`title'CDF in counts"
+        else                       local title "`title'CDF"
+        if "`ipolate'"!=""         local title "`title' (interpolated)"
+        if "`unconditional'"!=""   local title "`title' (unconditional)"
     }
     else if "`subcmd'"=="proportion" {
-        if "`percent'"!=""        eret local title "Percent"
-        else if "`frequency'"!="" eret local title "Frequency"
-        else                      eret local title "Proportion"
+        if "`percent'"!=""        local title "Percent"
+        else if "`frequency'"!="" local title "Frequency"
+        else                      local title "Proportion"
+        if "`unconditional'"!=""  local title "`title' (unconditional)"
     }
     else if "`subcmd'"=="quantile" {
-        eret local title "Quantile function"
+        local title "Quantiles"
     }
     else if "`subcmd'"=="lorenz" {
         if "`zvar'"!="" {
@@ -1829,37 +1866,25 @@ program _Estimate, eclass
             else                     local title "Lorenz curve"
         }
         if "`percent'"!="" local title "`title' (percent)"
-        eret local title "`title'"
     }
     else if "`subcmd'"=="share" {
-        if "`zvar'"!="" {
-            if "`proportion'"!=""       local title "Concentration shares (proportion)"
-            else if "`percent'"!=""     local title "Concentration shares (percent)"
-            else if "`generalized'"!="" local title "Concentration shares (generalized)"
-            else if "`sum'"!=""         local title "Concentration shares (total)"
-            else if "`average'"!=""     local title "Concentration shares (average)"
-            else                        local title "Concentration shares (density)"
-        }
-        else {
-            if "`proportion'"!=""       local title "Percentile shares (proportion)"
-            else if "`percent'"!=""     local title "Percentile shares (percent)"
-            else if "`generalized'"!="" local title "Percentile shares (generalized)"
-            else if "`sum'"!=""         local title "Percentile shares (total)"
-            else if "`average'"!=""     local title "Percentile shares (average)"
-            else                        local title "Percentile shares (density)"
-        }
-        eret local title "`title'"
+        if "`zvar'"!="" local title "Concentration shares"
+        else            local title "Percentile shares"
+        if "`proportion'"!=""       local title "`title' (proportion)"
+        else if "`percent'"!=""     local title "`title' (percent)"
+        else if "`generalized'"!="" local title "`title' (generalized)"
+        else if "`sum'"!=""         local title "`title' (total)"
+        else if "`average'"!=""     local title "`title' (average)"
+        else                        local title "`title' (density)"
     }
     else if "`subcmd'"=="summarize" {
         eret local slist `"`slist'"'
         eret local stats "`stats'"
         eret scalar N_stats = `N_stats'
-        if `N_stats'==1 & ("`over'"!="" | `N_vars'>1) {
-            eret local title "Statistic: `stats'"
-        }
-        else eret local title "Summary statistics"
+        if `N_stats'==1 & ("`over'"!="" | `N_vars'>1) local title "`stats'"
+        else local title "Summary statistics"
     }
-    else exit 499
+    eret local title "`title'"
 
     // generate
     if "`generate'"!="" {
@@ -1886,7 +1911,7 @@ program _Estimate, eclass
 end
 
 program Parse_over
-    capt n syntax [varname(numeric default=none)] [, SELect(numlist int >=0) Rescale ]
+    capt n syntax [varname(numeric default=none)] [, SELect(numlist int >=0) ]
     if _rc==1 exit _rc
     if _rc {
         di as err "error in option {bf:over()}"
@@ -1895,7 +1920,17 @@ program Parse_over
     if "`varlist'"=="" local select ""
     c_local over `varlist'
     c_local select `select'
-    c_local rescale `rescale'
+end
+
+program Parse_uncond
+    capt n syntax [, Fixed ]
+    if _rc==1 exit _rc
+    if _rc {
+        di as err "error in option {bf:unconditional()}"
+        exit _rc
+    }
+    if "`fixed'"!="" c_local unconditional unconditional
+    c_local unconditional2 `fixed'
 end
 
 program Parse_rif
@@ -2335,6 +2370,8 @@ local TRUE   1
 local FALSE  0
 // transmorphic
 local T      transmorphic
+local TS     transmorphic scalar
+local TC     transmorphic colvector
 // pointer
 local PDF    class mm_density scalar
 local PS     pointer scalar
@@ -3352,7 +3389,6 @@ struct `DATA' {
     `RC'    over       // view on over() variable
     `RR'    overlevels // levels of over()
     `Int'   nover      // number of over groups
-    `Bool'  rescale    // rescale by relative size of subpop
     `Bool'  total      // include total across over groups
     `IntR'  _N         // number of obs per group
     `RR'    _W         // sum of weights per group
@@ -3383,6 +3419,9 @@ struct `DATA' {
     `Bool'  cat        // categorical (prop)
     `Bool'  prop       // report proportions (histogram, share)
     `Bool'  pct        // report percent (histogram, proportion, cdf, ccdf, share, lorenz)
+    `Int'   uncond     // 0 = condition on subsample, 1 = condition on total sample, 
+                       // 2 = like 1 but assume subsample size fixed (density, histogram, 
+                       // proportion, cdf, ccdf)
     `Bool'  freq       // report frequencies (histogram, proportion, cdf, ccdf)
     `Bool'  ep         // use equal probability bins (histogram)
     `Bool'  gl         // generalized lorenz ordinates (lorenz, share)
@@ -3405,26 +3444,26 @@ void dstat()
     `SC'   stats
     
     // settings
-    D.nose     = (st_local("nose")!="")
-    D.noIF     = (D.nose & st_local("generate")=="")
+    D.nose     = st_local("nose")!=""
+    D.noIF     = D.nose & (st_local("generate")=="")
     D.cmd      = st_local("subcmd")
-    D.novalues = (st_local("novalues")!="")
+    D.novalues = st_local("novalues")!=""
     D.vfmt     = st_local("vformat")
     D.qdef     = strtoreal(st_local("qdef"))
-    D.ipolate  = (st_local("ipolate")!="")
-    D.mid      = (st_local("mid")!="")
-    D.floor    = (st_local("floor")!="")
-    D.discr    = (st_local("discrete")!="")
-    D.cat      = (st_local("categorical")!="")
-    D.prop     = (st_local("proportion")!="")
-    D.pct      = (st_local("percent")!="")
-    D.freq     = (st_local("frequency")!="")
-    D.ep       = (st_local("ep")!="")
-    D.gl       = (st_local("generalized")!="")
-    D.gap      = (st_local("gap")!="")
-    D.sum      = (st_local("sum")!="")
-    D.abs      = (st_local("absolute")!="")
-    D.ave      = (st_local("average")!="")
+    D.ipolate  = st_local("ipolate")!=""
+    D.mid      = st_local("mid")!=""
+    D.floor    = st_local("floor")!=""
+    D.discr    = st_local("discrete")!=""
+    D.cat      = st_local("categorical")!=""
+    D.prop     = st_local("proportion")!=""
+    D.pct      = st_local("percent")!=""
+    D.freq     = st_local("frequency")!=""
+    D.ep       = st_local("ep")!=""
+    D.gl       = st_local("generalized")!=""
+    D.gap      = st_local("gap")!=""
+    D.sum      = st_local("sum")!=""
+    D.abs      = st_local("absolute")!=""
+    D.ave      = st_local("average")!=""
     
     // get data
     D.touse = st_varindex(st_local("touse"))
@@ -3462,15 +3501,15 @@ void dstat()
     if (D.ovar!="") {
         st_view(D.over, ., D.ovar, D.touse)
         D.overlevels = strtoreal(tokens(st_local("overlevels")))
-        D.nover = cols(D.overlevels)
-        D.total = (st_local("total")!="")
-        D.nover = D.nover + D.total
-        D.rescale = (st_local("rescale")!="")
+        D.nover  = cols(D.overlevels)
+        D.total  = st_local("total")!=""
+        D.nover  = D.nover + D.total
+        D.uncond = (st_local("unconditional")!="") + (st_local("unconditional2")!="")
     }
     else {
-        D.nover   = 1
-        D.total   = 0
-        D.rescale = 0
+        D.nover  = 1
+        D.total  = 0
+        D.uncond = 0
     }
     D._N = D._W = J(1, D.nover, .)
     
@@ -3479,7 +3518,7 @@ void dstat()
     if (D.bal.method!="") {
         D.bal.zvars = st_local("bal_varlist2")
         D.bal.ref     = strtoreal(st_local("bal_ref"))
-        D.bal.noisily = (st_local("bal_noisily")!="")
+        D.bal.noisily = st_local("bal_noisily")!=""
         D.bal.opts    = st_local("bal_opts")
         D.bal.ebopts  = strtoreal(tokens(st_local("bal_ebopts")))
         st_view(D.bal.wvar, .,  st_local("BAL_WVAR"), D.touse)
@@ -3501,7 +3540,7 @@ void dstat()
             st_local("boundary")=="lc" ? "linear" : st_local("boundary"),
             st_local("bwrd")!="")
         D.S.n(strtoreal(st_local("napprox")), strtoreal(st_local("pad")))
-        D.exact = (st_local("exact")!="")
+        D.exact = st_local("exact")!=""
         if (st_local("bwidth")!="") {
             if (st_local("bwmat")!="") D.bwidth = st_matrix(st_local("bwidth"))[1,]
             else D.bwidth = strtoreal(tokens(st_local("bwidth")))
@@ -3652,7 +3691,8 @@ void dstat_vce(`Data' D, `SS' clust, `Bool' seonly, `Bool' svy)
     }
     // with clusters
     else {
-        V = _dstat_vce_csum(D.IF, D.w, st_data(., clust, D.touse))
+        V = _dstat_vce_csum(D.IF, D.w, (st_isstrvar(clust) ? 
+            st_sdata(., clust, D.touse) : st_data(., clust, D.touse)))
         N_clust = rows(V)
         if (svy) {
             if (seonly) V = _dstat_vce_cross(1, V, m/N_clust)
@@ -3752,7 +3792,7 @@ void _dstat_vce_score(`Data' D, `Bool' undo)
     return(crossdev(X, m, w, X, m))
 }
 
-`RM' _dstat_vce_csum(`RM' X, `RC' w, `RC' C)
+`RM' _dstat_vce_csum(`RM' X, `RC' w, `TC' C)
 {   // aggregate X*w by clusters
     `Int' i, a, b
     `RC'  p, nc
@@ -4456,7 +4496,7 @@ void dstat_density(`Data' D)
                 b = a + rows(*D.AT[G.k]) - 1
                 D.b[|a \ b|] = D.S.d(*D.AT[G.k], D.exact)
             }
-            if (D.rescale) D.b[|a \ b|] = D.b[|a \ b|] * (G.W/D.W)
+            if (D.uncond) D.b[|a \ b|] = D.b[|a \ b|] * (G.W/D.W)
             D.at[|a \ b|] = D.S.at()
             // compute IFS
             if (D.noIF==0) dstat_density_IF(D, G, a)
@@ -4470,17 +4510,18 @@ void dstat_density(`Data' D)
 void dstat_density_IF(`Data' D, `Grp' G, `Int' a)
 {
     `Int' i
-    `RS'  W, b
+    `RS'  W, b, f
     `RC'  at, h, z
     
-    W  = (D.rescale ? D.W : G.W)
+    W  = (D.uncond ? D.W : G.W)
+    f  = (D.uncond==2 ? W/G.W : 1)
     at = D.S.at()
     h  = D.S.h() * D.S.l()
     for (i=rows(at); i; i--) {
         z = D.S.K(D.S.X(), at[i], h)
-        if (D.exact)     b = D.b[a+i-1]
-        else             b = quadcross(G.w, z) / W
-        dstat_set_IF(D, G, a+i-1, (z :- b)/W, (D.rescale ? -b/W : 0))
+        if (D.exact)     b = D.b[a+i-1] * f
+        else             b = quadcross(G.w, z) / W * f
+        dstat_set_IF(D, G, a+i-1, (z :- b)/W, (D.uncond==1 ? -b/W : 0))
     }
 }
 
@@ -4520,7 +4561,7 @@ void dstat_hist(`Data' D)
                     _editmissing(c, 0) // zero width bins
                 }
                 B = B :* c
-                if (D.rescale) B = B * (G.W/D.W)
+                if (D.uncond) B = B * (G.W/D.W)
             }
             D.b[|a \ b|] = B \ B[rows(B)]
             D.at[|a,1 \ b,.|] = AT, AT + (h/2 \ .), (h \ .)
@@ -4542,10 +4583,11 @@ void dstat_hist(`Data' D)
 void dstat_hist_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `RR' minmax)
 {
     `Int' i
-    `RS'  W, c 
+    `RS'  W, c, f
     `RC'  z
     
-    W  = (D.rescale & !D.freq ? D.W : G.W)
+    W = (D.uncond    ? D.W   : G.W)
+    f = (D.uncond==2 ? W/G.W : 1)
     for (i=a; i<=b; i++) {  // assuming b-a >= 1
         if (i==b) {
             D.IF[,i] = J(D.N, 1, 0)
@@ -4556,15 +4598,15 @@ void dstat_hist_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `RR' minmax)
             else  z = (G.Y:>D.at[i,1] :& G.Y:<=D.at[i+1,1])
         }
         else z = (G.Y:>D.at[i,1] :& G.Y:<=D.at[i+1,1])
-        if      (D.prop) z = (z :- D.b[i]    ) / W
-        else if (D.pct)  z = (z :- D.b[i]/100) * (100/W)
+        if      (D.prop) z = (z :- D.b[i]*f    ) / W
+        else if (D.pct)  z = (z :- D.b[i]*f/100) * (100/W)
         else if (D.freq) z = (z :- D.b[i]/W)
         else {
             c = 1 / (D.at[i,3] * W)
             if (c>=.) c = 0 // zero width bin
-            z = (z :- D.b[i]*D.at[i,3]) * c
+            z = (z :- D.b[i]*f*D.at[i,3]) * c
         }
-        dstat_set_IF(D, G, i, z, (D.rescale & !D.freq ? -D.b[i]/W : 0))
+        dstat_set_IF(D, G, i, z, (D.uncond==1 ? -D.b[i]/W : 0))
     }
 }
 
@@ -4593,7 +4635,7 @@ void dstat_cdf(`Data' D, `Bool' cc)
                 else        D.b[|a \ b|] = 1   :- D.b[|a \ b|]
             }
             if (D.pct)  D.b[|a \ b|] = D.b[|a \ b|] * 100
-            if (D.rescale & !D.freq) D.b[|a \ b|] = D.b[|a \ b|] * (G.W/D.W)
+            if (D.uncond & !D.freq) D.b[|a \ b|] = D.b[|a \ b|] * (G.W/D.W)
             D.at[|a \ b|] = AT
             // compute IFS
             if (D.noIF==0) dstat_cdf_IF(D, G, a, b, cc)
@@ -4624,7 +4666,7 @@ void dstat_cdf(`Data' D, `Bool' cc)
     r = rows(cdf)
     if (ipolate) {
         W = cdf[r,2]
-        if (t==2)      cdf[,2] = (0\cdf[,2])[|1 \ r-1|]         // floor
+        if (t==2)      cdf[,2] = (0\cdf[,2])[|1 \ r|]           // floor
         else if (t==1) cdf[,2] = cdf[,2] - mm_diff(0\cdf[,2])/2 // mid
         if (nonorm==0) {
             cdf[,2] = cdf[,2] / W
@@ -4700,12 +4742,13 @@ void dstat_cdf(`Data' D, `Bool' cc)
 void dstat_cdf_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `Bool' cc)
 {
     `Int' i, j, k, K
-    `RS'  W
+    `RS'  W, f
     `RR'  C
     `RC'  zP
     `RM'  z, AT
     
-    W  = (D.rescale & !D.freq ? D.W : G.W)
+    W = (D.uncond    ? D.W   : G.W)
+    f = (D.uncond==2 ? W/G.W : 1)
     if (D.ipolate) {
         // compute IF as weighted average of the IFs of the next lower and
         // upper observed Y-values
@@ -4721,7 +4764,7 @@ void dstat_cdf_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `Bool' cc)
                     zP = (G.Y :== AT[j,k]) / 2
                     if (cc) z[,k] = (G.Y :> AT[j,k])
                     else    z[,k] = (G.Y :< AT[j,k])
-                    C[k]  = sum(quadcross(G.w, (z[,k], zP))) / W
+                    C[k]  = sum(quadcross(G.w, (z[,k], zP))) / W * f
                     z[,k] = (z[,k] + zP) :- C[k]
                 }
                 else {
@@ -4733,7 +4776,7 @@ void dstat_cdf_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `Bool' cc)
                         if (cc) z[,k] = (G.Y :> AT[j,k])
                         else    z[,k] = (G.Y :<= AT[j,k])
                     }
-                    C[k]  = quadcross(G.w, z[,k]) / W
+                    C[k]  = quadcross(G.w, z[,k]) / W * f
                     z[,k] = (z[,k] :- C[k])
                 }
                 if (D.pct)         z[,k] = z[,k] * (100/W)
@@ -4744,16 +4787,15 @@ void dstat_cdf_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `Bool' cc)
                 z = k*z[,1] + (1-k)*z[,2]
                 C = k*C[1]  + (1-k)*C[2]
             }
-            if      (D.pct)   C = C * 100 / W
-            else if (!D.freq) C = C / W
-            dstat_set_IF(D, G, i, z, (D.rescale & !D.freq ? -C : 0))
+            if (D.pct) C = C * 100
+            dstat_set_IF(D, G, i, z, (D.uncond==1 ? -C/W : 0))
         }
         return
     }
     for (i=a; i<=b; i++) {
-        if (D.pct)       C = D.b[i] / 100
+        if (D.pct)       C = D.b[i]*f / 100
         else if (D.freq) C = D.b[i] / W
-        else             C = D.b[i]
+        else             C = D.b[i]*f
         if (D.mid) {
             zP = (G.Y :== D.at[i]) / 2
             if (cc) z = (G.Y :> D.at[i])
@@ -4773,7 +4815,7 @@ void dstat_cdf_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `Bool' cc)
         }
         if (D.pct)           z = z * (100/W)
         else if (!D.freq)    z = z / W
-        dstat_set_IF(D, G, i, z, (D.rescale & !D.freq ? -D.b[i]/W : 0))
+        dstat_set_IF(D, G, i, z, (D.uncond==1 ? -D.b[i]/W : 0))
     }
 }
 
@@ -4855,7 +4897,7 @@ void dstat_prop(`Data' D)
     F = J(i, 1, .)
     for (; i; i--) F[i] = asarray(A, AT[i])
     // return
-    if (D.rescale) W = D.W
+    if (D.uncond) W = D.W
     else           W = G.W
     if (D.pct)  return(F * (100/W))
     if (D.freq) return(F)
@@ -4946,15 +4988,16 @@ void dstat_prop(`Data' D)
 void dstat_prop_IF(`Data' D, `Grp' G, `Int' a, `Int' b)
 {
     `Int' i
-    `RS'  W
+    `RS'  W, f
     `RC'  h
     
-    W  = (D.rescale & !D.freq ? D.W : G.W)
+    W = (D.uncond    ? D.W   : G.W)
+    f = (D.uncond==2 ? W/G.W : 1)
     for (i=a; i<=b; i++) {
-        if      (D.pct)   h = ((G.Y :== D.at[i]) :- D.b[i]/100) * (100/W)
-        else if (D.freq)  h = ((G.Y :== D.at[i]) :- D.b[i]/W  )
-        else              h = ((G.Y :== D.at[i]) :- D.b[i]    ) / W
-        dstat_set_IF(D, G, i, h, (D.rescale & !D.freq ? -D.b[i]/W : 0))
+        if      (D.pct)   h = ((G.Y :== D.at[i]) :- D.b[i]*f/100) * (100/W)
+        else if (D.freq)  h = ((G.Y :== D.at[i]) :- D.b[i]/W    )
+        else              h = ((G.Y :== D.at[i]) :- D.b[i]*f    ) / W
+        dstat_set_IF(D, G, i, h, (D.uncond==1 ? -D.b[i]/W : 0))
     }
 }
 
