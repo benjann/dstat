@@ -1,4 +1,4 @@
-*! version 1.0.8  11dec2020  Ben Jann
+*! version 1.0.9  16dec2020  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -128,15 +128,18 @@ program Get_diopts
     gettoken subcmd 0 : 0
     _parse comma lhs 0 : 0
     syntax [, Level(passthru) citype(passthru) noHEADer NOTABle TABle ///
-        GRaph GRaph2(passthru) NOCI * ]
+        GRaph GRaph2(passthru) NOCI NOPValues PValues cref * ]
     if "`noci'"!="" {
         di as err "option {bf:noci} not allowed"
         exit 198
     }
     _get_diopts diopts options, `options'
-    local options `level' `options'
+    _get_eformopts, soptions eformopts(`options') allowed(__all__)
+    local diopts `diopts' `s(eform)'
+    local options `level' `s(options)'
     if `"`options'"'!="" local lhs `lhs', `options'
-    c_local diopts `diopts' `level' `citype' `header' `notable' `table' `graph' `graph2'
+    c_local diopts `diopts' `level' `citype' `header' `notable' `table'/*
+        */ `nopvalues' `pvalues' `cref' `graph' `graph2'
     c_local dioptshaslevel = `"`level'"'!=""
     c_local 00 `lhs'
 end
@@ -534,9 +537,20 @@ program Predict_compute_IFs
         */ qdef(`e(qdef)') vformat(`e(vformat)') `e(novalues)'
     // - over()
     if `"`e(over)'"'!="" {
+        local over
         if `"`e(over_select)'"'!="" {
             local over select(`e(over_select)')
         }
+        if `"`e(over_contrast)'"'!="" {
+            if `"`e(over_contrast)'"'=="total" {
+                local over `over' contrast
+            }
+            else {
+                local over `over' contrast(`e(over_contrast)')
+            }
+            local over `over' `e(over_ratio)'
+        }
+        local over `over' `e(over_accumulate)'
         if `"`over'"'!="" {
             local over over(`e(over)', `over')
         }
@@ -552,6 +566,7 @@ program Predict_compute_IFs
             }
             local cmdline `cmdline' balance(`balance')
         }
+
     }
     // - density estimation
     if `"`e(kernel)'"'!="" {
@@ -658,19 +673,25 @@ program Set_CI, eclass
         local subcmd `"`e(subcmd)'"'
         if      `"`subcmd'"'=="density" local citype log
         else if `"`subcmd'"'=="histogram"  {
-            if `"`e(frequency)'"'!=""       local citype log
-            else if `"`e(proportion)'"'!="" local citype logit
-            else if `"`e(percent)'"'!=""    local citype logit
-            else                            local citype log
+            if `"`e(frequency)'"'!=""                   local citype log
+            else if `"`e(proportion)'`e(percent)'"'!="" local citype logit
+            else                                        local citype log
         }
         else if inlist(`"`subcmd'"',"cdf","ccdf") {
-            if `"`e(frequency)'"'!=""   local citype log
-            else                        local citype logit
+            if `"`e(frequency)'"'!="" local citype log
+            else                      local citype logit
         }
         else if `"`subcmd'"'=="proportion" {
-            if `"`e(frequency)'"'!=""   local citype log
-            else                        local citype logit
+            if `"`e(frequency)'"'!="" local citype log
+            else                      local citype logit
         }
+        if "`citype'"=="logit" {
+            // relevant for proportion, cdf, histogram
+            if `"`e(over_accumulate)'"'!="" & `"`e(unconditional)'"'=="" {
+                local citype log
+            }
+        }
+        if `"`e(over_contrast)'"'!="" local citype normal
     }
     Parse_citype, `citype'
     // nothing to do if
@@ -691,8 +712,8 @@ program Set_CI, eclass
         if _rc    exit
     }
     // compute CIs
-    if "`e(percent)'"!="" local scale 100
-    else                  local scale 1
+    if "`e(percent)'"!="" local scale = 100
+    else                  local scale = 1
     tempname CI
     mata: dstat_Get_CI("`CI'", `level', "`citype'", `scale')
     eret matrix ci = `CI'
@@ -740,44 +761,65 @@ end
 
 program _Replay
     local subcmd `"`e(subcmd)'"'
-    syntax [, citype(passthru) noHeader NOTABle TABle GRaph * ]
+    syntax [, citype(passthru) noHeader NOTABle TABle ///
+        NOPValues PValues cref GRaph * ]
+    local contrast `"`e(over_contrast)'"'
+    if (`"`contrast'"'=="" | `"`e(over_ratio)'"'=="ratio") & "`pvalues'"=="" {
+        local nopvalues nopvalues
+    }
     if "`header'"=="" {
-        _Replay_header
+        _Replay_header `nopvalues'
+        if "`nopvalues'"!="" {
+            local c1 35
+            local c2 51
+        }
+        else {
+            local c1 49
+            local c2 67
+        }
         if "`subcmd'"=="density" {
-            di as txt _col(35) "Kernel" _col(51) "= " /*
+            di as txt _col(`c1') "Kernel" _col(`c2') "= " /*
                 */as res %10s abbrev(e(kernel),10)
             mata: st_local("bwidth", ///
                 mm_isconstant(st_matrix("e(bwidth)")) ? ///
                 "%10.0g el(e(bwidth), 1, 1)" : ///
                 `""{stata matrix list e(bwidth):{bf:{ralign 10:e(bwidth)}}}""')
-            di as txt _col(35) "Bandwidth" _col(51) "= " as res `bwidth'
+            di as txt _col(`c1') "Bandwidth" _col(`c2') "= " as res `bwidth'
         }
         else if "`subcmd'"=="quantile" {
-            di as txt _col(35) "Quantile type" _col(51) "= " as res %10.0g e(qdef)
+            di as txt _col(`c1') "Quantile type" _col(`c2') "= " as res %10.0g e(qdef)
         }
         else if "`subcmd'"=="lorenz" | "`subcmd'"=="share" {
             if `"`e(zvar)'"'!="" {
-                di as txt _col(35) "Sort variable" _col(51) "= " as res %10s e(zvar)
+                di as txt _col(`c1') "Sort variable" _col(`c2') "= " as res %10s e(zvar)
             }
         }
         else if "`subcmd'"=="summarize" {
             if `"`e(zvar)'"'!="" {
-                di as txt _col(35) "Sort variable" _col(51) "= " as res %10s e(zvar)
+                di as txt _col(`c1') "Sort variable" _col(`c2') "= " as res %10s e(zvar)
             }
             if `"`e(pline)'"'!="" {
-                di as txt _col(35) "Poverty line" _col(51) "= " as res %10s e(pline)
+                di as txt _col(`c1') "Poverty line" _col(`c2') "= " as res %10s e(pline)
             }
         }
+        if `"`contrast'"'!="" {
+            if `"`contrast'"'=="total" local clbl "total"
+            else local clbl = abbrev(`"`contrast'.`e(over)'"', 10)
+            di as txt _col(`c1') "Contrast" _col(`c2') "= " as res %10s `"`clbl'"'
+        }
         if `"`e(balance)'"'!="" {
-            di as txt _col(35) "Balancing" _col(51) "= " as res %10s e(balmethod)
-            di as txt _col(35) "Reference" _col(51) "= " _c
+            di as txt _col(`c1') "Balancing:"
+            local wd = `c2' - `c1' - 1
+            di as txt _col(`c1') "{ralign `wd':method}" _col(`c2') "= " /*
+                */ as res %10s e(balmethod)
+            di as txt _col(`c1') "{ralign `wd':reference}" _col(`c2') "= " _c
             if `"`e(balref)'"'!="" di as res %10s e(balref)
             else                   di as res %10s "total"
             mata: st_local("balance", ///
                 udstrlen(st_global("e(balance)"))<=10 ? ///
                 "%10s e(balance)" : ///
                 `""{stata di as txt e(balance):{bf:e(balance)}}""')
-            di as txt _col(35) "Controls" _col(51) "= " as res `balance'
+            di as txt _col(`c1') "{ralign `wd':controls}" _col(`c2') "= " as res `balance'
         }
         if `"`e(over)'"'!="" {
             if "`subcmd'"=="summarize" {
@@ -788,6 +830,8 @@ program _Replay
         else di ""
     }
     if ("`table'"!="" | "`graph'"=="") & "`notable'"=="" {
+        if "`cref'"!="" local contrast
+        local vmatrix
         capt confirm matrix e(V)
         if _rc==1 exit _rc
         if _rc {
@@ -801,23 +845,37 @@ program _Replay
                 local vmatrix vmatrix(`V')
             }
         }
-        if c(stata_version)>=15 {
-            local hasci 0
-            capt confirm matrix e(ci)
-            if _rc==1 exit _rc
-            if _rc==0 local hasci 1
-            if `hasci' {
-                if `"`e(citype)'"'!="normal" {
-                    local cititle cititle(`e(citype)' transformed)
-                }
-                _coef_table, nopvalue `vmatrix' cimat(e(ci)) `cititle' `options'
-            }
-            else {
-                _coef_table, nopvalue `vmatrix' `options'
+        else {
+            if `"`contrast'"'!="" {
+                tempname V
+                matrix `V' = e(V)
             }
         }
-        else {
-            _coef_table, nopvalue `vmatrix' `options'
+        local cimatrix
+        if c(stata_version)>=15 {
+            capt confirm matrix e(ci)
+            if _rc==1 exit _rc
+            if _rc==0 {
+                if `"`contrast'"'!="" {
+                    tempname CI
+                    matrix `CI' = e(ci)
+                    local cimatrix cimatrix(`CI')
+                }
+                else local cimatrix cimatrix(e(ci))
+                if `"`e(citype)'"'!="normal" {
+                    local cimatrix `cimatrix' cititle(`e(citype)' transformed)
+                }
+            }
+        }
+        if `"`contrast'"'!="" {
+            tempname B
+            matrix `B' = e(b)
+            mata: dstat_drop_cref("`B'", 0, 1)
+            if "`V'"!=""  mata: dstat_drop_cref("`V'", 1, 1)
+            if "`CI'"!="" mata: dstat_drop_cref("`CI'", 0, 1)
+        }
+        _Replay_table "`B'" "`V'" `nopvalues' `vmatrix' `cimatrix' `options'
+        if c(stata_version)<15 {
             if `"`citype'"'!="" /// user specified citype()
                 & `"`e(citype)'"'!="normal" {
                 capt confirm matrix e(V)
@@ -845,15 +903,41 @@ program _Replay
     }
 end
 
-prog _Replay_header, eclass // mimick header of -total-
-    nobreak {
+prog _Replay_header, eclass 
+    if `"`0'"'=="" { // table includes p-values
+        _coef_table_header, nomodeltest
+        exit
+    }
+    nobreak { // no p-values: mimic header of -total-
         ereturn local cmd "total"
         capture noisily break {
             _coef_table_header, nomodeltest
         }
+        local rc = _rc
         ereturn local cmd "dstat"
-        if _rc exit _rc
+        if `rc' exit `rc'
     }
+end
+
+prog _Replay_table, eclass
+    gettoken B 0 : 0
+    gettoken V 0 : 0
+    if "`B'"=="" {
+        _coef_table, showeqns `0'
+        exit
+    }
+    tempname ecurrent
+    _estimates hold `ecurrent', copy restore
+    local eqs: coleq `B', quoted
+    local eqs: list uniq eqs
+    local k_eq: list sizeof eqs
+    capt confirm matrix e(V)
+    if _rc==1 exit _rc
+    if _rc ereturn repost b = `B', resize
+    else   ereturn repost b = `B' V = `V', resize
+    eret scalar k_eq = `k_eq'
+    eret scalar k_eform = `k_eq'
+    _coef_table, showeqns `0'
 end
 
 program Graph
@@ -866,8 +950,11 @@ program Graph
     // syntax
     syntax [, Level(passthru) citype(passthru) VERTical HORizontal ///
         MERge flip BYStats BYStats2(str) NOSTEP STEP NOREFline REFline(str) ///
-        SELect(numlist int >0) GSELect(numlist int >0) PSELect(numlist int >0) ///
+        SELect(str) GSELect(str) PSELect(str) cref ///
         BYOPTs(str) PLOTLabels(str asis) * ]
+    _Graph_parse_select "" `"`select'"'
+    _Graph_parse_select g `"`gselect'"'
+    _Graph_parse_select p `"`pselect'"'
     if `"`gselect'"'=="" local gselect `"`select'"'
     if `"`pselect'"'=="" local pselect `"`select'"'
     local options `vertical' `horizontal' `options'
@@ -881,13 +968,17 @@ program Graph
     }
     
     // obtain results: b, at, ci
+    local contrast `"`e(over_contrast)'"'
+    if "`cref'"!="" local contrast
     tempname B
     matrix `B' = e(b)
+    if `"`contrast'"'!="" mata: dstat_drop_cref("`B'", 0, 1)
     local b matrix(`B')
     if `"`subcmd'"'!="summarize" {
         if !(`"`subcmd'"'=="proportion" & `"`e(novalues)'"'=="") {
             tempname AT
             matrix `AT' = e(at)
+            if `"`contrast'"'!="" mata: dstat_drop_cref("`AT'", 0, 1)
             local at at(`AT')
         }
     }
@@ -903,11 +994,13 @@ program Graph
         tempname CI
         _Graph_Get_CI `CI', `level' `citype' // may clear CI
         if "`CI'"!="" {
+            if `"`contrast'"'!="" mata: dstat_drop_cref("`CI'", 0, 1)
             local ci ci(`CI')
             if inlist(`"`subcmd'"', "histogram", "share") {
                 tempname BCI ATCI
                 mat `BCI' = `B'
                 mat `ATCI' = `AT'[2,1...] // bin midpoints
+                if `"`contrast'"'!="" mata: dstat_drop_cref("`ATCI'", 0, 1)
                 mata: dstat_graph_droplast(("`BCI'", "`CI'", "`ATCI'"))
                 local bci matrix(`BCI')
                 local atci at(`ATCI')
@@ -964,7 +1057,7 @@ program Graph
     local nj: list sizeof subeqs
     if `"`eqs'"'!="_" {
         if `overeq' {
-            _Graph_overlabels // returns overlabels
+            _Graph_overlabels `"`contrast'"' // returns overlabels
         }
         local i 0
         foreach eq of local eqs {
@@ -1036,10 +1129,18 @@ program Graph
     // - apply select
     if `"`gselect'`pselect'"'!="" {
         if `"`gselect'"'!="" & `n`jj''>1 {
+            if `"`gselect'"'=="reverse" {
+                mata: st_local("gselect", ///
+                    invtokens(tokens(st_local("jlist"))[`n`jj''::1]))
+            }
             mata: dstat_graph_select("jlist", "gselect")
             local n`jj': list sizeof jlist
         }
         if `"`pselect'"'!="" & `n`ii''>1 {
+            if `"`pselect'"'=="reverse" {
+                mata: st_local("pselect", ///
+                    invtokens(tokens(st_local("ilist"))[`n`ii''::1]))
+            }
             mata: dstat_graph_select("ilist", "pselect")
             local n`ii': list sizeof ilist
         }
@@ -1214,6 +1315,20 @@ program Graph
     coefplot `plots'
 end
 
+program _Graph_parse_select
+    args p args
+    local 0 `", `args'"'
+    capt syntax [, Reverse ]
+    if _rc==1 exit _rc
+    if _rc {
+        local 0 `", `p'select(`args')"'
+        syntax [, `p'select(numlist int >0) ]
+        c_local `p'select `"``p'select'"'
+        exit
+    }
+    c_local `p'select `reverse'
+end
+
 program _Graph_parse_bystats
     syntax [, Main Secondary ]
     local bystats `main' `secondary'
@@ -1225,17 +1340,35 @@ program _Graph_parse_bystats
 end
 
 program _Graph_overlabels
+    args contrast
     local overlabels `"`e(over_labels)'"'
-    if `"`overlabels'"'==`"`e(over_namelist)'"' {
+    local overlevels `"`e(over_namelist)'"'
+    if `"`overlabels'"'==`"`overlevels'"' {
         local over `"`e(over)'"'
         local overlabels
+        local overlevels: list overlevels - contrast
         local space
-        foreach oval in `e(over_namelist)' {
+        foreach oval of local overlevels {
             local overlabels `"`overlabels'`space'`"`over'=`oval'"'"'
             local space " "
         }
     }
-    if `"`e(total)'"'!="" {
+    else {
+        if `"`contrast'"'!="" & `"`contrast'"'!="total" {
+            local overlabels0 `"`overlabels'"'
+            local overlabels
+            local i 0
+            local space
+            foreach olab of local overlabels0 {
+                local ++i
+                local oval: word `i' of `overlevels'
+                if `"`oval'"'==`"`contrast'"' continue
+                local overlabels `"`overlabels'`space'`"`olab'"'"'
+                local space " "
+            }
+        }
+    }
+    if `"`e(total)'"'!="" & `"`contrast'"'!="total" {
         local overlabels `"`overlabels' Total"'
     }
     c_local overlabels `"`overlabels'"'
@@ -1311,7 +1444,7 @@ end
 program _Graph_Get_CI, eclass
     _parse comma CI 0 : 0
     syntax [, Level(cilevel) citype(str) ]
-    // get CIs from e(ci) is appropriate
+    // get CIs from e(ci) if appropriate
     if "`citype'"==`"`e(citype)'"' & `level'==e(level) {
         capt confirm matrix e(ci)
         if _rc==1 exit _rc
@@ -1356,15 +1489,15 @@ program _Estimate, eclass
     gettoken subcmd 0 : 0
     local lhs varlist(numeric fv)
     if "`subcmd'"=="density" {
-        local opts n(numlist int >=1 max=1) at(str) /*
+        local opts n(numlist int >=1 max=1) COMmon at(str)/*
             */ UNConditional UNConditional2(str)
     }
     else if "`subcmd'"=="histogram" {
-        local opts n(passthru) at(str) ep PROPortion PERcent FREQuency /*
+        local opts n(passthru) COMmon at(str) ep PROPortion PERcent FREQuency/*
             */ UNConditional UNConditional2(str)
     }
     else if inlist("`subcmd'","cdf","ccdf") {
-        local opts n(numlist int >=1 max=1) at(str) mid FLoor DISCrete /*
+        local opts n(numlist int >=1 max=1) COMmon at(str) mid FLoor DISCrete/*
         */ PERcent FREQuency IPolate UNConditional UNConditional2(str)
     }
     else if "`subcmd'"=="proportion" {
@@ -1396,6 +1529,8 @@ program _Estimate, eclass
             `opts' * ]
     Parse_over `over'
     Parse_uncond, `unconditional2'
+    if "`over_accumulate'"!="" local common common
+    if "`over_contrast'"!=""   local common common
     if `"`generate'"'!="" & `"`rif'"'!="" {
         di as err "{bf:generate()} and {bf:rif()} not both allowed"
         exit 198
@@ -1410,7 +1545,7 @@ program _Estimate, eclass
     }
     Parse_densityopts, `options'
     Parse_at "`subcmd'" "`categorical'" `"`n'"' `"`at'"'
-    if "`subcmd'"!="density" {
+    if "`subcmd'"!="summarize" {
         Parse_varlist_unique `varlist'
     }
     if "`subcmd'"=="density" {
@@ -1521,6 +1656,7 @@ program _Estimate, eclass
         local unconditional
         local unconditional2
         local total
+        local common
     }
     if "`compact'"!="" {
         if `"`bal_method'"'!="" {
@@ -1609,19 +1745,40 @@ program _Estimate, eclass
             fvexpand `bal_varlist' if `touse'
             local bal_varlist2 `r(varlist)'
         }
-        if `"`select'"'!="" {
+        if !inlist("`over_contrast'","","contrast") {
+            if `:list over_contrast in overlevels'==0 {
+                di as err "{bf:over(, contrast())}: no observations in reference distribution"
+                exit 2000
+            }
+            if `"`over_select'"'!="" {
+                if `:list over_contrast in over_select'==0 {
+                    local over_select: list over_contrast | over_select
+                }
+            }
+        }
+        if `"`over_select'"'!="" {
             local tmp
-            foreach o of local select {
+            foreach o of local over_select {
                 if `:list o in overlevels' {
                     local tmp `tmp' `o'
                 }
             }
             local overlevels: list uniq tmp
             if `:list sizeof overlevels'==0 {
-                di as err "{bf:select()}: must select at least one existing group"
+                di as err "{bf:over(, select())}: must select at least one existing group"
                 exit 499
             }
-            local select "`overlevels'"
+            local over_select "`overlevels'"
+        }
+        if "`over_contrast'"=="contrast" {
+            if `"`total'"'!="" local over_contrast "total"
+            else gettoken over_contrast : overlevels // use first subpop
+        }
+        if "`over_contrast'"!="" {
+            if "`over_contrast'"=="`overlevels'" {
+                di as err "{bf:over(, contrast)}: need at least one comparison group"
+                exit 499
+            }
         }
         local over_labels
         foreach o of local overlevels {
@@ -1637,6 +1794,7 @@ program _Estimate, eclass
     if "`subcmd'"!="summarize" tempname AT
     if inlist("`subcmd'", "density", "quantile", "summarize") tempname BW
     if "`svy'"!="" tempname istot
+    if "`over_contrast'"!="" tempname cref
     mata: dstat()
     // process IFs
     if "`generate'"!="" {
@@ -1748,6 +1906,7 @@ program _Estimate, eclass
     }
     eret scalar W = `W'
     eret scalar k_eq = `k_eq'
+    eret scalar k_eform = `k_eq'
     eret scalar k_omit = `k_omit'
     eret matrix _N = `_N'
     eret matrix _W = `_W'
@@ -1773,13 +1932,19 @@ program _Estimate, eclass
     if "`plvar'"!="" eret local pline "`plvar'"
     else             eret local pline "`pline'"
     if "`over'"!="" {
-        eret local total         "`total'"
+        eret local total "`total'"
         if "`unconditional2'"!="" {
             local unconditional "unconditional(`unconditional2')"
         }
         eret local unconditional "`unconditional'"
         eret local over          "`over'"
-        eret local over_select   "`select'"
+        eret local over_select    "`over_select'"
+        if "`over_contrast'"!="" {
+            eret local over_contrast "`over_contrast'"
+            eret local over_ratio    "`over_ratio'"
+            eret matrix cref = `cref'
+        }
+        eret local over_accumulate "`over_accumulate'"
         eret local over_namelist `"`overlevels'"'
         eret local over_labels   `"`over_labels'"'
         ereturn scalar N_over    = `N_over'
@@ -1884,6 +2049,18 @@ program _Estimate, eclass
         if `N_stats'==1 & ("`over'"!="" | `N_vars'>1) local title "`stats'"
         else local title "Summary statistics"
     }
+    if "`over_accumulate'`over_contrast'"!="" {
+        if substr("`title'",2,1)==strlower(substr("`title'",2,1)) {
+            // second character not uppercase
+            if substr("`title'",1,6)!="Lorenz" {
+                local title = strlower(substr("`title'",1,1)) + substr("`title'",2,.)
+            }
+        }
+        if "`over_ratio'"=="lnratio"  local title "Ln(ratio) of `title'"
+        else if "`over_ratio'"!=""    local title "Ratio of `title'"
+        else if "`over_contrast'"!="" local title "Difference in `title'"
+        else                          local title "Accumulated `title'"
+    }
     eret local title "`title'"
 
     // generate
@@ -1911,15 +2088,31 @@ program _Estimate, eclass
 end
 
 program Parse_over
-    capt n syntax [varname(numeric default=none)] [, SELect(numlist int >=0) ]
+    capt n syntax [varname(numeric default=none)] [, SELect(numlist int >=0) ///
+        ACCUMulate CONTRast CONTRast2(numlist int max=1 >=0) ratio LNRatio ]
     if _rc==1 exit _rc
     if _rc {
         di as err "error in option {bf:over()}"
         exit _rc
     }
-    if "`varlist'"=="" local select ""
+    if "`contrast2'"!="" local contrast "`contrast2'"
+    if "`contrast'"!="" & "`accumulate'"!="" {
+        di as err "{bf:contrast()} and {bf:accumulate} not both allowed"
+        di as err "error in option {bf:over()}"
+        exit 198
+    }
+    if "`varlist'"=="" {
+        local select
+        local accumulate
+        local contrast
+    }
+    if "`lnratio'"!=""  local ratio lnratio
+    if "`contrast'"=="" local ratio
     c_local over `varlist'
-    c_local select `select'
+    c_local over_select `select'
+    c_local over_accumulate `accumulate'
+    c_local over_contrast `contrast'
+    c_local over_ratio `ratio'
 end
 
 program Parse_uncond
@@ -2030,7 +2223,7 @@ program Parse_hist_n
     syntax [, SQrt STurges RIce DOane SCott fd ep ]
     local n `sqrt' `sturges' `rice' `doane' `scott' `fd' `ep'
     if `:list sizeof n'>1 {
-        di ar error "only one {it:rule} allowed in {bf:n()}"
+        di as error "only one {it:rule} allowed in {bf:n()}"
         exit 198
     }
     if "`n'"=="" local n sqrt
@@ -3178,33 +3371,48 @@ void dstat_Get_CI(`SS' cimat, `RS' level0, `SS' citype, `RC' scale)
         if (citype=="logit") { // logit
             z = z :* se :/ (b:* (1 :- b))
             CI = invlogit(logit(b) :- z \ logit(b) :+ z)
+            if (hasmissing(CI)) {
+                _dstat_Get_CI_editif(CI, b, 0)
+                _dstat_Get_CI_editif(CI, b, 1)
+            }
         }
         else if (citype=="probit") { // probit
             z = z :* se :/ normalden(invnormal(b))
             CI = normal(invnormal(b) :- z \ invnormal(b) :+ z)
+            if (hasmissing(CI)) {
+                _dstat_Get_CI_editif(CI, b, 0)
+                _dstat_Get_CI_editif(CI, b, 1)
+            }
         }
         else if (citype=="atanh") { // atanh
             z = z :* se :/ (1 :- b:^2)
             CI = tanh(atanh(b) :- z \ atanh(b) :+ z)
+            if (hasmissing(CI)) {
+                _dstat_Get_CI_editif(CI, b, -1)
+                _dstat_Get_CI_editif(CI, b,  1)
+            }
         }
         else if (citype=="log") { // log
             z = z :* se :/ b
-            CI = exp(ln(b) :- z \ ln(b) :+ z) 
+            CI = exp(ln(b) :- z \ ln(b) :+ z)
+            if (hasmissing(CI)) _dstat_Get_CI_editif(CI, b, 0)
         }
         else exit(499)
         if (scale!=1) CI = CI * scale
     }
-    // fill in missings
-    if (hasmissing(CI)) {
-        if (citype!="normal" & scale!=1) b = b * scale
-        for (i=1; i<=r; i++) {
-            if (CI[1,i]>=.) CI[1,i] = b[i]
-            if (CI[2,i]>=.) CI[2,i] = b[i]
-        }
-    }
     // return result
     st_matrix(cimat, CI)
     dstat_cstripe(cimat, cstripe)
+}
+
+void _dstat_Get_CI_editif(`RM' CI, `RR' b, `RS' v)
+{
+    `Int' p
+    
+    p = selectindex(b:==v)
+    if (length(p)) {
+        CI[,p] = J(1, length(p), J(2,1,v))
+    }
 }
 
 // --------------------------------------------------------------------------
@@ -3230,6 +3438,30 @@ void dstat_fix_nm(`SS' nm, `SS' id, `Bool' total)
     }
     else s = "#"  // gid = coefficient name
     st_local(nm, s)
+}
+
+// --------------------------------------------------------------------------
+// helper function for removing coefficients from reference (contrast)
+// --------------------------------------------------------------------------
+
+void dstat_drop_cref(`SS' m, `Bool' r, `Bool' c)
+{
+    `IntR' p
+    `RM'   M
+    `SM'   rstripe, cstripe
+    
+    p = selectindex(st_matrix("e(cref)"):==0)
+    M = st_matrix(m)
+    rstripe = st_matrixrowstripe(m)
+    cstripe = st_matrixcolstripe(m)
+    if (r) rstripe = rstripe[p,]
+    if (c) cstripe = cstripe[p,]
+    if (r & c)  M = M[p, p]
+    else if (r) M = M[p, .] 
+    else if (c) M = M[., p]
+    st_matrix(m, M)
+    st_matrixrowstripe(m, rstripe)
+    st_matrixcolstripe(m, cstripe)
 }
 
 // --------------------------------------------------------------------------
@@ -3387,17 +3619,21 @@ struct `DATA' {
     `Int'   wtype      // weights: 0 none, 1 fw, 2 iw, 3 pw
     `SS'    ovar       // name of over variable
     `RC'    over       // view on over() variable
-    `RR'    overlevels // levels of over()
+    `IntR'  overlevels // levels of over()
     `Int'   nover      // number of over groups
     `Bool'  total      // include total across over groups
     `IntR'  _N         // number of obs per group
     `RR'    _W         // sum of weights per group
     `Bal'   bal        // balancing settings
+    `Bool'  accum      // accumulate results across subpopulations
+    `Int'   contrast   // compute contrasts
+    `Int'   ratio      // type of contrast: 0=difference, 1=ratio, 2=lnratio
     `RM'    IF         // view on influence functions
     `Int'   K          // length of results vector
     `RC'    b          // vector estimates
     `BoolC' omit       // flags omitted estimates (summarize only)
     `BoolC' istot      // flag estimates that are totals
+    `BoolC' cref       // flag contrast reference
     `RC'    id         // ID of relevant subsample (group) for each estimate
     `SM'    cstripe    // column stripe for results
     `SR'    eqs        // equation names
@@ -3406,7 +3642,8 @@ struct `DATA' {
     `Bool'  novalues   // do not use values as coefficient names
     `SS'    vfmt       // display format for values used as coefficient names
     `Int'   qdef       // quantile definition
-    `IntR'  n          // number of evaluation points (if relevant)
+    `Int'   n          // number of evaluation points (if relevant)
+    `Bool'  common     // common points across subpops (if relevant)
     `RM'    at         // vector of evaluation points (if relevant)
     `PDF'   S          // density estimation object (density, summarize)
     `Bool'  exact      // use exact density estimator (density, summarize)
@@ -3450,6 +3687,7 @@ void dstat()
     D.novalues = st_local("novalues")!=""
     D.vfmt     = st_local("vformat")
     D.qdef     = strtoreal(st_local("qdef"))
+    D.common   = st_local("common")!=""
     D.ipolate  = st_local("ipolate")!=""
     D.mid      = st_local("mid")!=""
     D.floor    = st_local("floor")!=""
@@ -3501,15 +3739,22 @@ void dstat()
     if (D.ovar!="") {
         st_view(D.over, ., D.ovar, D.touse)
         D.overlevels = strtoreal(tokens(st_local("overlevels")))
-        D.nover  = cols(D.overlevels)
-        D.total  = st_local("total")!=""
-        D.nover  = D.nover + D.total
-        D.uncond = (st_local("unconditional")!="") + (st_local("unconditional2")!="")
+        D.nover    = cols(D.overlevels)
+        D.total    = st_local("total")!=""
+        D.nover    = D.nover + D.total
+        D.uncond   = (st_local("unconditional")!="") + (st_local("unconditional2")!="")
+        D.accum    = st_local("over_accumulate")!=""
+        if (st_local("over_contrast")=="") D.contrast = .a
+        else D.contrast = strtoreal(st_local("over_contrast"))
+        D.ratio    = (st_local("over_ratio")!="") + (st_local("over_ratio")=="lnratio")
     }
     else {
-        D.nover  = 1
-        D.total  = 0
-        D.uncond = 0
+        D.nover    = 1
+        D.total    = 0
+        D.uncond   = 0
+        D.accum    = 0
+        D.contrast = .a
+        D.ratio    = 0
     }
     D._N = D._W = J(1, D.nover, .)
     
@@ -3523,14 +3768,6 @@ void dstat()
         D.bal.ebopts  = strtoreal(tokens(st_local("bal_ebopts")))
         st_view(D.bal.wvar, .,  st_local("BAL_WVAR"), D.touse)
     }
-    
-    // collect evaluation point/list of statistics
-    if (D.cmd=="histogram")  D.n = J(1, D.nvars*D.nover, .)
-    else                     D.n = .
-    dstat_get_at(D)
-    
-    // determine dimension of results vector and initialize containers
-    dstat_set_K(D)
     
     // density estimation setup
     if (anyof(("density","quantile","summarize"), D.cmd)) {
@@ -3554,6 +3791,12 @@ void dstat()
         }
     }
     
+    // collect evaluation point/list of statistics
+    dstat_get_at(D)
+    
+    // determine dimension of results vector and initialize containers
+    dstat_set_K(D)
+    
     // estimation
     if      (D.cmd=="density")    dstat_density(D)
     else if (D.cmd=="histogram")  dstat_hist(D)
@@ -3564,6 +3807,15 @@ void dstat()
     else if (D.cmd=="lorenz")     dstat_lorenz(D)
     else if (D.cmd=="share")      dstat_share(D)
     else if (D.cmd=="summarize")  dstat_sum(D)
+    
+    // compute contrasts
+    if (D.contrast<.a) {
+        if (D.ratio==2)   dstat_lnratio(D)
+        else if (D.ratio) dstat_ratio(D)
+        else              dstat_contrast(D)
+    }
+    // accumulate results across subpopulations
+    if (D.accum) dstat_accum(D)
     
     // return results
     // - b, id, at, k_eq, k_omit
@@ -3590,7 +3842,6 @@ void dstat()
         st_local("k_eq", strofreal(mm_nunique(D.cstripe[,1])))
     }
     else {
-        //if (any(D.omit)) D.cstripe[,2] = "o.":*D.omit + D.cstripe[,2]
         st_local("k_eq", strofreal(length(D.eqs)))
         st_matrix(st_local("AT"), D.at')
         dstat_cstripe(st_local("AT"), D.cstripe)
@@ -3601,6 +3852,10 @@ void dstat()
     dstat_cstripe(st_local("b"), D.cstripe)
     dstat_cstripe(st_local("id"), D.cstripe)
     st_local("k_omit", strofreal(sum(D.omit)))
+    if (D.contrast<.a) {
+        st_matrix(st_local("cref"), D.cref')
+        dstat_cstripe(st_local("cref"), D.cstripe)
+    }
     // - bwidth
     if (length(D.bwidth)) {
         st_matrix(st_local("BW"), D.bwidth)
@@ -3625,6 +3880,100 @@ void dstat()
     if (D.nose) return
     dstat_vce(D, st_local("clustvar"), st_local("vcenocov")!="", 
         st_local("vcesvy")!="")
+}
+
+void dstat_accum(`Data' D)
+{
+    `Int' i, k, l, a, a0, b, b0
+    
+    k = D.nover
+    l = D.K / k
+    k = k - D.total
+    a0 = 1; b0 = l
+    for (i=2;i<=k;i++) {
+        a = a0 + l
+        b = b0 + l
+        D.b[|a \ b|] = D.b[|a \ b|] + D.b[|a0 \ b0|]
+        if (D.noIF==0) {
+            D.IF[|1,a \ .,b|] = D.IF[|1,a \ .,b|] + D.IF[|1,a0 \ .,b0|]
+        }
+        a0 = a; b0 = b
+    }
+}
+
+void dstat_contrast(`Data' D)
+{
+    `Int'  i, k, l, r, a, a0, b, b0
+    
+    k = D.nover
+    l = D.K / k
+    if (D.total) r = selectindex((D.overlevels, .):==D.contrast)
+    else         r = selectindex(D.overlevels:==D.contrast)
+    a0 = (r-1)*l + 1; b0 = r*l
+    for (i=1;i<=k;i++) {
+        if (i==r) continue
+        a = (i-1)*l + 1
+        b = i*l
+        D.b[|a \ b|] = D.b[|a \ b|] - D.b[|a0 \ b0|]
+        if (D.noIF==0) {
+            D.IF[|1,a \ .,b|] = D.IF[|1,a \ .,b|] - D.IF[|1,a0 \ .,b0|]
+        }
+    }
+    D.cref = J(D.K, 1, 0)
+    D.cref[|a0 \ b0|] = J(l, 1, 1)
+}
+
+void dstat_ratio(`Data' D)
+{
+    `Bool' hasmis
+    `Int'  i, j, k, l, r, a, a0, b, b0
+    
+    hasmis = 0
+    k = D.nover
+    l = D.K / k
+    if (D.total) r = selectindex((D.overlevels, .):==D.contrast)
+    else         r = selectindex(D.overlevels:==D.contrast)
+    a0 = (r-1)*l + 1; b0 = r*l
+    for (i=1;i<=k;i++) {
+        if (i==r) continue
+        a = (i-1)*l + 1
+        b = i*l
+        if (D.noIF==0) {
+            D.IF[|1,a \ .,b|] = (1:/D.b[|a0 \ b0|])' :* D.IF[|1,a \ .,b|] ///
+                - (D.b[|a \ b|]:/(D.b[|a0 \ b0|]:^2))' :* D.IF[|1,a0 \ .,b0|]
+        }
+        D.b[|a \ b|] = D.b[|a \ b|] :/ D.b[|a0 \ b0|]
+        if (hasmissing(D.b[|a \ b|])) {
+            hasmis = 1
+            for (j=a;j<=b;j++) {
+                if (D.b[j]<.) continue
+                D.b[j] = 0
+                if (D.noIF==0) D.IF[.,j] = J(D.N, 1, 0)
+            }
+        }
+    }
+    D.cref = J(D.K, 1, 0)
+    D.cref[|a0 \ b0|] = J(l, 1, 1)
+    if (hasmis) {
+        display("{txt}(missing estimates reset to zero)")
+    }
+}
+
+void dstat_lnratio(`Data' D)
+{
+    `Int'  j
+    
+    if (D.noIF==0) D.IF = (1:/D.b)' :* D.IF
+    D.b = ln(D.b)
+    dstat_contrast(D)
+    if (hasmissing(D.b)) {
+        for (j=1;j<=D.K;j++) {
+            if (D.b[j]<.) continue
+            D.b[j] = 0
+            if (D.noIF==0) D.IF[.,j] = J(D.N, 1, 0)
+        }
+        display("{txt}(missing estimates reset to zero)")
+    }
 }
 
 void dstat_vce(`Data' D, `SS' clust, `Bool' seonly, `Bool' svy)
@@ -3798,7 +4147,8 @@ void _dstat_vce_score(`Data' D, `Bool' undo)
     `RC'  p, nc
     `RM'  S
     
-    p  = order(C, 1)
+    if (rows(w)!=1) p = mm_order(C, 1, 1) // stable sort
+    else            p = order(C, 1)
     nc = selectindex(_mm_unique_tag(C[p])) // tag first obs in each cluster
     i  = rows(nc)
     S  = J(i, cols(X), .)
@@ -3823,18 +4173,34 @@ void _dstat_vce_score(`Data' D, `Bool' undo)
 void dstat_get_at(`Data' D)
 {
     D.AT = NULL
-    if (D.cmd=="summarize") dstat_get_stats(D)
+    if      (D.cmd=="summarize")    _dstat_get_stats(D)
     else if (st_local("atmat")!="") _dstat_get_atmat(D, st_local("at"))
-    else if (st_local("at")!="") D.AT = &(strtoreal(tokens(st_local("at")))')
-    else if (D.cmd=="proportion")     dstat_get_levels(D)
-    else if (D.cmd=="cdf"  & D.discr) dstat_get_levels(D)
-    else if (D.cmd=="ccdf" & D.discr) dstat_get_levels(D)
-    else if (D.cmd=="histogram") dstat_get_hist_n(D, st_local("n"))
-    else if (st_local("n")!="") {
+    else if (st_local("at")!="")    D.AT = &(strtoreal(tokens(st_local("at")))')
+    else if (D.cmd=="proportion")   _dstat_get_levels(D)
+    else if (D.cmd=="histogram")    _dstat_get_at_hist(D, st_local("n"))
+    else if (D.cmd=="density") {
         D.n = strtoreal(st_local("n"))
-        if      (D.cmd=="quantile") D.AT = &((1::D.n)   / (D.n+1))
-        else if (D.cmd=="lorenz")   D.AT = &((0::D.n-1) / (D.n-1))
-        else if (D.cmd=="share")    D.AT = &((0::D.n) / D.n)
+        if (D.common) _dstat_get_at_dens(D)
+    }
+    else if (D.cmd=="cdf" | D.cmd=="ccdf") {
+        if (D.discr) _dstat_get_levels(D)
+        else {
+            D.n = strtoreal(st_local("n"))
+            if (D.common) _dstat_get_at_cdf(D)
+        }
+    }
+    else if (D.cmd=="quantile") {
+        D.n  = strtoreal(st_local("n"))
+        D.AT = &((1::D.n) / (D.n+1))
+    }
+    else if (D.cmd=="lorenz") {
+        D.n  = strtoreal(st_local("n"))
+        D.AT = &((0::D.n-1) / (D.n-1))
+    }
+    else if (D.cmd=="share") {
+        D.n  = strtoreal(st_local("n"))
+        D.AT = &((0::D.n) / D.n)
+        D.n  = D.n + 1 // one additional point for upper limit
     }
     D.AT = J(1, ceil(D.nvars*D.nover/cols(D.AT)), D.AT)[|1 \ D.nvars*D.nover|]
 }
@@ -3868,7 +4234,7 @@ void _dstat_get_atmat(`Data' D, `SS' matnm)
     }
 }
 
-void dstat_get_stats(`Data' D)
+void _dstat_get_stats(`Data' D)
 {
     `Int' j
     `SS'  s
@@ -3876,7 +4242,7 @@ void dstat_get_stats(`Data' D)
     
     t = tokeninit(" ", "", "()")
     tokenset(t, st_local("slist"))
-    D.AT = J(1, length(D.yvars), NULL)
+    D.AT = J(1, D.nvars, NULL)
     j = 0
     while ((s = tokenget(t)) != "") {
         D.AT[++j] = &(tokens(substr(s,2,strlen(s)-2))')
@@ -3885,14 +4251,14 @@ void dstat_get_stats(`Data' D)
     }
 }
 
-void dstat_get_levels(`Data' D)
+void _dstat_get_levels(`Data' D)
 {   // obtains levels of each Y across full sample
     `Int' j
 
-    D.AT = J(1, length(D.yvars), NULL)
+    D.AT = J(1, D.nvars, NULL)
     for (j=1;j<=D.nvars;j++) {
         D.AT[j] = &(mm_unique(D.Y[,j])) 
-        //D.AT[j] = &(_dstat_get_levels(D.Y[,j]))
+        //D.AT[j] = &(__dstat_get_levels(D.Y[,j]))
         if (!D.cat) continue
         if (any(*D.AT[j]:<0)) {
             printf("{err}%s: negative values not allowed in this context\n", D.yvars[j])
@@ -3906,7 +4272,7 @@ void dstat_get_levels(`Data' D)
 }
 
 /*
-`RC' _dstat_get_levels(`RC' Y)
+`RC' __dstat_get_levels(`RC' Y)
 {   // obtain levels of Y without sorting; not faster than mm_unique() even
     // on large datasets of 1 mio observations or so
     `RC'  y
@@ -3922,74 +4288,127 @@ void dstat_get_levels(`Data' D)
 }
 */
 
-void dstat_get_hist_n(`Data' D, `SS' rule)
-{
-    `Int' i, j, n
-    `RS'  N, h
-    `Grp' G
+void _dstat_get_at_dens(`Data' D)
+{   // generate evaluation grid based on full sample
+    `Int' j
+    `RS'  tau
+    `RR'  bw, range, minmax
     
-    if (strtoreal(rule)<.) {   // n=#
-        D.n = J(1, D.nvars*D.nover, strtoreal(rule))
+    // if lb() and ub() specified: no bandwidth required
+    if (D.S.lb()<. & D.S.ub()<.) {
+        D.AT = &(rangen(D.S.lb(), D.S.ub(), D.n))
         return
     }
-    if (rule=="") rule = "sqrt"
+    // obtain bandwidth if specified
+    j = cols(D.overlevels) * D.nvars
+    if (D.total) bw = D.bwidth[|j+1 \ .|]
+    else if (st_local("bwidth")!="") {
+        // reread because original specification may include bandwidth for total
+        if (st_local("bwmat")!="") bw = st_matrix(st_local("bwidth"))[1,]
+        else bw = strtoreal(tokens(st_local("bwidth")))
+        bw = J(1, ceil((j+D.nvars)/cols(bw)), bw)[|j+1 \ j+D.nvars|]
+    }
+    else bw = J(1, D.nvars, .)
+    // determine grid for each variable
+    D.AT = J(1, D.nvars, NULL)
+    for (j=1;j<=D.nvars;j++) {
+        if (bw[j]>=.) {
+            D.S.data(D.Y[,j], D.w, D.wtype>=2, 0)
+            bw[j] = D.S.h()
+            if (bw[j]>=.) bw[j] = epsilon(1)
+        }
+        // mimic grid definition from mm_density()
+        range = (D.S.lb(), D.S.ub())
+        minmax = minmax(D.Y[,j])
+        tau = mm_diff(minmax) * D.S.pad()
+        tau = min((tau, bw[j] * (D.S.kernel()=="epanechnikov" ? sqrt(5) : 
+            (D.S.kernel()=="cosine" ? .5 : (D.S.kernel()=="gaussian" ? 3 : 1)))))
+        if (range[1]>=.) range[1] = minmax[1] - tau
+        if (range[2]>=.) range[2] = minmax[2] + tau
+        D.AT[j] = &(rangen(range[1], range[2], D.n)) 
+    }
+    if (D.total) { // store bandwidth to avoid double work
+        D.bwidth[|cols(D.overlevels)*D.nvars + 1 \ .|] = bw
+    }
+}
+
+void _dstat_get_at_cdf(`Data' D)
+{   // generate evaluation grid based on full sample
+    `Int' j
+
+    D.AT = J(1, D.nvars, NULL)
+    for (j=1;j<=D.nvars;j++) D.AT[j] = &(dstat_cdf_AT(D.Y[,j], D.n))
+}
+
+void _dstat_get_at_hist(`Data' D, `SS' rule)
+{
+    `Int' i, I, j, n
+    `RS'  N, h
+    `RR'  minmax
+    `Grp' G
+    
+    if (rule=="")          rule = "sqrt"
+    if (strtoreal(rule)<.) D.n = strtoreal(rule) + 1
+    if (D.common) {
+        I = i = cols(D.overlevels) + 1 // total only
+        D.AT = J(1, D.nvars, NULL)
+    }
+    else {
+        i = 1
+        I = D.nover
+        D.AT = J(1, D.nvars*D.nover, NULL)
+    }
     G.k = 0
-    for (i=1; i<=D.nover; i++) {
+    for (; i<=I; i++) {
         _dstat_init_grp(D, G, i)
         if (D.wtype==1) N = G.W
         else            N = G.N
         for (j=1; j<=D.nvars; j++) {
             dstat_init_Y(D, G, j)
-            if (rule=="sqrt") {
-                n = ceil(min((sqrt(N), 10*ln(N)/ln(10)))) - 1
-                // this is the rule used by official Stata's -histogram-; for the 
-                // other rules below see https://en.wikipedia.org/wiki/Histogram
+            minmax = minmax(G.Y)
+            if (D.n>=.) {
+                if (rule=="sqrt") {
+                    n = ceil(min((sqrt(N), 10*ln(N)/ln(10)))) - 1
+                    // this is the rule used by official Stata's -histogram-; for the 
+                    // other rules below see https://en.wikipedia.org/wiki/Histogram
+                }
+                else if (rule=="sturges") {
+                    n = ceil(ln(N)/ln(2))
+                }
+                else if (rule=="rice") {
+                    n = ceil(2 * N^(1/3)) - 1
+                }
+                else if (rule=="doane") {
+                    n = ceil(ln(N)/ln(2) + ln(1 + abs(_dstat_skewness(G.Y, G.w)) / 
+                        sqrt(6 * (N-2) / ((N+1) * (N+3))))/ln(2))
+                }
+                else if (rule=="scott") {
+                    h = 3.5 * sqrt(_dstat_variance(D, G, G.Y)) / N^(1/3)
+                    n = ceil(mm_diff(minmax)/h) - 1
+                }
+                else if (rule=="fd") {
+                    h = 2 * mm_iqrange(G.Y, G.w) / N^(1/3)
+                    n = ceil(mm_diff(minmax)/h) - 1
+                }
+                else if (rule=="ep") {
+                    n = ceil(2 * N^(2/5))
+                }
+                else exit(499)
+                if (n<1) n = 1 // make sure that never zero
             }
-            else if (rule=="sturges") {
-                n = ceil(ln(N)/ln(2))
-            }
-            else if (rule=="rice") {
-                n = ceil(2 * N^(1/3)) - 1
-            }
-            else if (rule=="doane") {
-                n = ceil(ln(N)/ln(2) + ln(1 + abs(_dstat_skewness(G.Y, G.w)) / 
-                    sqrt(6 * (N-2) / ((N+1) * (N+3))))/ln(2))
-            }
-            else if (rule=="scott") {
-                h = 3.5 * sqrt(_dstat_variance(D, G, G.Y)) / N^(1/3)
-                n = ceil(_dstat_range(G.Y)/h) - 1
-            }
-            else if (rule=="fd") {
-                h = 2 * mm_iqrange(G.Y, G.w) / N^(1/3)
-                n = ceil(_dstat_range(G.Y)/h) - 1
-            }
-            else if (rule=="ep") {
-                n = ceil(2 * N^(2/5))
-            }
-            else exit(499)
-            if (n<1) n = 1 // make sure that never zero
-            D.n[G.k] = n
+            else n = D.n - 1
+            if (D.ep==0) D.AT[G.k] = &(rangen(minmax[1], minmax[2], n+1))
+            else         D.AT[G.k] = &(mm_quantile(G.Y, G.w, (0::n)/n, 1)) // qdef=1
         }
     }
 }
 
-`RS' _dstat_range(`RC' Y)
-{
-    `RR' minmax
-    
-    minmax = minmax(Y)
-    return(minmax[2] - minmax[1])
-}
-
 void dstat_set_K(`Data' D)
 {
-    `Int' k, i, j
+    `Int' i, j, k
     
     // determine K
-    if (D.AT[1]==NULL) {
-        if (D.cmd=="histogram") D.K = sum(D.n:+1)
-        else D.K = D.nover * D.nvars * D.n
-    }
+    if (D.n<.) D.K = D.nover * D.nvars * D.n
     else {
         D.K = k = 0
         for (i=1; i<=D.nover; i++) {
@@ -4004,7 +4423,7 @@ void dstat_set_K(`Data' D)
     D.omit = J(D.K, 1, 0)
     if (D.freq | D.sum) D.istot = J(D.K, 1, 1)
     else                D.istot = J(D.K, 1, 0)
-    if (length(D.AT)) {
+    if (D.cmd!="summarize") {
         if (D.cmd=="histogram" | D.cmd=="share") D.at = J(D.K, 3, .)
         else                                     D.at = J(D.K, 1, .)
     }
@@ -4479,6 +4898,7 @@ void dstat_balance_eb_IF(`Grp' G, `RM' Z1, `RC' w1)
 void dstat_density(`Data' D)
 {
     `Int'  i, j, a, b
+    `RC'   AT
     `Grp'  G
     
     G.k = b = 0
@@ -4488,13 +4908,14 @@ void dstat_density(`Data' D)
             dstat_init_Y(D, G, j)
             dstat_set_density(D, G)
             a = b + 1
-            if (D.n<.) {
+            if (D.AT[G.k]==NULL) {
                 b = a + D.n - 1
                 D.b[|a \ b|] = D.S.d(D.n, ., ., D.exact)
             }
             else {
-                b = a + rows(*D.AT[G.k]) - 1
-                D.b[|a \ b|] = D.S.d(*D.AT[G.k], D.exact)
+                AT = *D.AT[G.k]
+                b = a + rows(AT) - 1
+                D.b[|a \ b|] = D.S.d(AT, D.exact)
             }
             if (D.uncond) D.b[|a \ b|] = D.b[|a \ b|] * (G.W/D.W)
             D.at[|a \ b|] = D.S.at()
@@ -4533,7 +4954,7 @@ void dstat_hist(`Data' D)
 {
     `Int'  i, j, a, b
     `RC'   AT, B, h, c
-    `RR'   minmax
+    `RS'   min
     `Grp'  G
     
     G.k = b = 0
@@ -4541,14 +4962,13 @@ void dstat_hist(`Data' D)
         dstat_init_grp(D, G, i)
         for (j=1; j<=D.nvars; j++) {
             dstat_init_Y(D, G, j)
-            minmax = minmax(G.Y)
-            if (D.n[G.k]<.) AT = dstat_hist_AT(D, G, D.n[G.k], minmax)
-            else AT = *D.AT[G.k]
+            AT = *D.AT[G.k]
             h = mm_diff(AT) // bin width
             a = b + 1
             b = a + rows(AT) - 1
             B = mm_diff(mm_relrank(G.Y, G.w, AT, 0, 1))
-            if (minmax[1]==AT[1]) {
+            min = min(G.Y)
+            if (min==AT[1]) {
                 // make first bin left-inclusive
                 if (D.wtype) B[1] = B[1] + quadsum(select(G.w, (G.Y:==AT[1])))
                 else         B[1] = B[1] + sum(G.Y:==AT[1])
@@ -4566,7 +4986,7 @@ void dstat_hist(`Data' D)
             D.b[|a \ b|] = B \ B[rows(B)]
             D.at[|a,1 \ b,.|] = AT, AT + (h/2 \ .), (h \ .)
             // compute IFS
-            if (D.noIF==0) dstat_hist_IF(D, G, a, b, minmax)
+            if (D.noIF==0) dstat_hist_IF(D, G, a, b, min)
             // labels
             dstat_set_cstripe(D, G, i, j, a, b, (D.novalues ? 
                 "h":+strofreal(1::b-a)\"_ul" : strofreal(AT, D.vfmt)))
@@ -4574,13 +4994,7 @@ void dstat_hist(`Data' D)
     }
 }
 
-`RM' dstat_hist_AT(`Data' D, `Grp' G, `Int' n, `RR' minmax)
-{
-    if (D.ep==0) return(rangen(minmax[1], minmax[2], n+1))
-    else         return(mm_quantile(G.Y, G.w, (0::n)/n, 1)) // def=1
-}
-
-void dstat_hist_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `RR' minmax)
+void dstat_hist_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `RS' min)
 {
     `Int' i
     `RS'  W, c, f
@@ -4594,7 +5008,7 @@ void dstat_hist_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `RR' minmax)
             break
         }
         if (i==a) {
-            if (D.at[i,1]<=minmax[1]) z = G.Y:<=D.at[i+1,1]
+            if (D.at[i,1]<=min) z = G.Y:<=D.at[i+1,1]
             else  z = (G.Y:>D.at[i,1] :& G.Y:<=D.at[i+1,1])
         }
         else z = (G.Y:>D.at[i,1] :& G.Y:<=D.at[i+1,1])
@@ -4625,8 +5039,8 @@ void dstat_cdf(`Data' D, `Bool' cc)
         dstat_init_grp(D, G, i)
         for (j=1; j<=D.nvars; j++) {
             dstat_init_Y(D, G, j)
-            if (D.n<.) AT = dstat_cdf_AT(G.Y, D.n)
-            else       AT = *D.AT[G.k]
+            if (D.AT[G.k]==NULL) AT = dstat_cdf_AT(G.Y, D.n)
+            else                 AT = *D.AT[G.k]
             a = b + 1
             b = a + rows(AT) - 1
             D.b[|a \ b|] = _dstat_cdf(G.Y, G.w, AT, D.mid+D.floor*2, D.freq, D.ipolate)
@@ -5008,6 +5422,7 @@ void dstat_prop_IF(`Data' D, `Grp' G, `Int' a, `Int' b)
 void dstat_quantile(`Data' D)
 {
     `Int'  i, j, a, b
+    `RC'   AT
     `Grp'  G
     
     G.k = b = 0
@@ -5016,10 +5431,11 @@ void dstat_quantile(`Data' D)
         for (j=1; j<=D.nvars; j++) {
             dstat_init_Y(D, G, j)
             dstat_init_Ys(D, G)
+            AT = *D.AT[G.k]
             a = b + 1
-            b = a + rows(*D.AT[G.k]) - 1
-            D.b[|a \ b|]  = _mm_quantile(G.Ys, G.ws, *D.AT[G.k], D.qdef, D.wtype==1)
-            D.at[|a \ b|] = *D.AT[G.k]
+            b = a + rows(AT) - 1
+            D.b[|a \ b|]  = _mm_quantile(G.Ys, G.ws, AT, D.qdef, D.wtype==1)
+            D.at[|a \ b|] = AT
             // compute IFS
             if (D.noIF==0) {
                 dstat_set_density(D, G)
@@ -5027,7 +5443,7 @@ void dstat_quantile(`Data' D)
             }
             // labels
             dstat_set_cstripe(D, G, i, j, a, b, (D.novalues ? 
-                "q":+strofreal(1::b-a+1) : strofreal(*D.AT[G.k], D.vfmt)))
+                "q":+strofreal(1::b-a+1) : strofreal(AT, D.vfmt)))
         }
     }
 }
@@ -5052,6 +5468,7 @@ void dstat_quantile_IF(`Data' D, `Grp' G, `Int' a, `Int' b)
 void dstat_lorenz(`Data' D)
 {
     `Int'  i, j, a, b, t, z
+    `RC'   AT
     `Grp'  G
     
     if (D.gap & D.pct) t = 6 // equality gap in percent
@@ -5067,15 +5484,16 @@ void dstat_lorenz(`Data' D)
         dstat_init_grp(D, G, i)
         for (j=1; j<=D.nvars; j++) {
             dstat_init_Y(D, G, j)
+            AT = *D.AT[G.k]
             a = b + 1
-            b = a + rows(*D.AT[G.k]) - 1
-            D.b[|a \ b|]  = _dstat_lorenz(D, G, *D.AT[G.k], t, z)
-            D.at[|a \ b|] = *D.AT[G.k]
+            b = a + rows(AT) - 1
+            D.b[|a \ b|]  = _dstat_lorenz(D, G, AT, t, z)
+            D.at[|a \ b|] = AT
             // compute IFS
             if (D.noIF==0) dstat_lorenz_IF(D, G, a, b, t)
             // labels
             dstat_set_cstripe(D, G, i, j, a, b, (D.novalues ? 
-                "l":+strofreal(1::b-a+1) : strofreal(*D.AT[G.k], D.vfmt)))
+                "l":+strofreal(1::b-a+1) : strofreal(AT, D.vfmt)))
         }
     }
 }

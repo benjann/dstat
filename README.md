@@ -39,6 +39,15 @@ Installation from GitHub:
 
 Main changes:
 
+    16dec2020 (version 1.0.9)
+    - new subopions -contrast()-, -ratio-, -lnratio-, and -accumulate- in -over()-
+    - new -common- option in -dstat density-, -dstat histogram-, and -datat [c]cdf-
+    - new display options -cref- and -pvalue-
+    - citype() now sets CI to missing if value of coef is outside domain of
+      transformation function
+    - option select() in -dstat graph- can now contain -reverse- instead of a
+      numlist
+
     11dec2020 (version 1.0.8)
     - cluster variable in vce(cluster) can now be string
     - over(..., rescale) now implemented as subcommand-specific option

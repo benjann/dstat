@@ -1,5 +1,5 @@
 {smcl}
-{* 11dec2020}{...}
+{* 16dec2020}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -128,6 +128,8 @@ help for {hi:dstat}{...}
 {syntab:{help dstat##density:Subcommand {bf:density}}}
 {synopt:{opt n(#)}}size of evaluation grid; default is {cmd:n(99)}
     {p_end}
+{synopt:{opt com:mon}}use common evaluation points across subpopulations
+    {p_end}
 {synopt:{opth at(numlist)}}custom grid of evaluation points
     {p_end}
 {synopt:{cmdab:unc:onditional}[{cmd:(}{cmdab:f:ixed}{cmd:)}]}rescale results by
@@ -145,6 +147,8 @@ help for {hi:dstat}{...}
     histogram bins; default is {cmd:n(sqrt)}
     {p_end}
 {synopt:{cmd:ep}}use equal probability bins instead of equal width bins
+    {p_end}
+{synopt:{opt com:mon}}use common bin definitions across subpopulations
     {p_end}
 {synopt:{opth at(numlist)}}custom bin definitions
     {p_end}
@@ -176,6 +180,8 @@ help for {hi:dstat}{...}
 {synopt:{opt fl:oor}}use "lower-than" definition
     {p_end}
 {synopt:{opt n(#)}}size of evaluation grid; default is {cmd:n(99)}
+    {p_end}
+{synopt:{opt com:mon}}use common evaluation points across subpopulations
     {p_end}
 {synopt:{opth at(numlist)}}custom grid of evaluation points
     {p_end}
@@ -237,7 +243,9 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{cmd:flip}}change how results are allocated to plots and subgraphs
     {p_end}
-{synopt:[{ul:{cmd:g}}|{ul:{cmd:p}}]{opth sel:ect(numlist)}}select and order plots and subgraphs
+{synopt:[{ul:{cmd:g}}|{ul:{cmd:p}}]{opt sel:ect(spec)}}select and order plots and subgraphs
+    {p_end}
+{synopt:{opt cref}}include results from the the reference (sub)population
     {p_end}
 {synopt:{cmdab:bys:tats}[{cmd:(}{it:arg}{cmd:)}]}group results by statistics; only relevant for {cmd:dstat summarize}
     {p_end}
@@ -570,14 +578,47 @@ help for {hi:dstat}{...}
 
 {phang2}
     {opth sel:ect(numlist)} selects (and orders) subpopulations. {it:numlist}
-    specifies the values of the subpopulations to be included in the results
-    and also determines the order of the subpopulations in the output. Technically,
-    estimation will always be based on the total sample including all
-    subpopulation, irrespective of the contents of {cmd:select()}.
+    specifies the values of the subpopulations to be included
+    and also determines the order of the subpopulations in the output. The basis
+    for estimation will always be the total sample including all subpopulations.
+
+{phang2}
+    {opt contr:ast}[{cmd:(}{it:#}{cmd:)}] computes contrasts between
+    subpopulations or between subpopulations and the total population. If
+    {cmd:contrast} is specified without argument, the total population or
+    the first subpopulation (possibly after applying {cmd:select()})
+    will be used as the basis for the contrasts, depending on whether option
+    {cmd:total} has been specified or not. Alternatively, specify
+    the value of the reference subpopulation in parentheses; this may also be
+    a subpopulation that has been excluded by {cmd:select()}. {cmd:contrast}
+    implies {cmd:common} (if relevant).
+
+{pmore2}
+    The estimates from the reference (sub)population will be included among the
+    stored results (in logarithmic form if {cmd:lnratio} is specified), but
+    their display will be suppressed. Specify display
+    option {cmd:cref} to report these results in the output.
+
+{phang2}
+    {opt ratio} requests that the contrasts are expressed as ratios. The
+    default is to express contrasts as differences. {cmd:ratio} only has an
+    effect if {cmd:contrast} has been specified.
+
+{phang2}
+    {opt lnr:atio} requests that the contrasts are expressed as differences in
+    logarithms. The default is to express contrasts as raw differences. When
+    applying {cmd:lnratio} you may also want to specify reporting option
+    {helpb dstat##display_opts:eform} to display results transformed back to
+    ratios. {cmd:lnratio} only has an effect if {cmd:contrast} has been
+    specified. {cmd:lnratio} takes precedence over {cmd:ratio}.
+
+{phang2}
+    {opt accum:ulate} accumulates results across subpopulations
+    (running sum). Only one of {cmd:contrast} and {cmd:accumulate} is allowed.
 
 {phang}
-    {cmd:total} reports additional results across all subpopulations (including
-    subpopulations that have been excluded by {cmd:select()}). {cmd:total}
+    {cmd:total} reports additional results across all subpopulations, including
+    subpopulations that may have been excluded by {cmd:select()}. {cmd:total}
     only has an effect if {cmd:over()} is specified.
 
 {marker balance}{...}
@@ -600,11 +641,11 @@ help for {hi:dstat}{...}
 
 {phang2}
     {opt ref:erence(#)} identifies the reference distribution. The default is
-    use the total across all subpopulations as the reference distribution
-    (including subpopulations that have been excluded by {cmd:select()}). Specify
+    use the total across all subpopulations as the reference distribution,
+    including subpopulations that may have been excluded by {cmd:select()}. Specify
     {cmd:reference(}{it:#}{cmd:)} to obtain the reference distributions from
-    observations for which {it:overvar}={it:#} (this may also be a subpopulation
-    that has been excluded by {cmd:select()}).
+    observations for which {it:overvar}={it:#}; this may also be a subpopulation
+    that has been excluded by {cmd:select()}.
 
 {phang2}
     {it:logit_options} are options to be passed through to {helpb logit}. {it:logit_options}
@@ -657,11 +698,22 @@ help for {hi:dstat}{...}
     {opt notab:le} suppresses the output table containing the estimated
     coefficients. {opt tab:le} enforces displaying the table.
 
+{phang2}
+    [{ul:{cmd:no}}]{opt pv:alues} decides whether p-values and their test
+    statistics are reported in the coefficient table or not. The default is
+    {cmd:nopvalues} unless {cmd:over(, contrast())} has been specified.
+
+{phang2}
+    {opt cref} causes the estimates from the reference (sub)population to be
+    included in the coefficient tables. The default is to suppress these
+    results. {cmd:cref} is only relevant if {cmd:over(, contrast())} has been
+    specified.
+
 {marker display_opts}{...}
 {phang2}
-    {it:display_options} are standard reporting options such as {cmd:cformat()} or
-    {cmd:coeflegend}; see the Reporting options
-    in {helpb estimation options:[R] Estimation options}.
+    {it:display_options} are standard reporting options such as {cmd:eform},
+    {cmd:cformat()}, or {cmd:coeflegend}; see {help eform_option:{bf:[R]} {it:eform_option}} and
+    the Reporting options in {helpb estimation options:[R] Estimation options}.
 
 {phang2}
     {opt gr:aph}[{cmd:(}{help dstat##graph_options:{it:graph_options}}{cmd:)}]
@@ -898,6 +950,12 @@ help for {hi:dstat}{...}
     default is {cmd:n(99)}. Only one of {cmd:n()} and {cmd:at()} is allowed.
 
 {phang}
+    {opt common} requests that a common set of evaluation points is used across
+    all subpopulations. The default is to determine the evaluation points based on
+    the data range within subpopulation. If {cmd:common} is specified, the
+    evaluation points will be based on the data range in the total population.
+
+{phang}
     {opth at(numlist)} specifies a custom grid of evaluation points. Only
     one of {cmd:n()} and {cmd:at()} is allowed.
 
@@ -950,6 +1008,12 @@ help for {hi:dstat}{...}
 {phang}
     {cmd:ep} uses equal probability bins (approximately) instead of equal
     width bins.
+
+{phang}
+    {opt common} requests that a common set of bin definitions is used across
+    all subpopulations. The default is to determine the number of bins and the
+    bin boundaries based on the data within subpopulation. If {cmd:common} is
+    specified, the bin definitions will be based on the data in the total population.
 
 {phang}
     {opth at(numlist)} specifies custom cutpoints for the bins (in ascending
@@ -1023,6 +1087,12 @@ help for {hi:dstat}{...}
     evaluated. A regular grid of {it:#} points spanning the
     observed data range (within subpopulation) will be used. The default is
     {cmd:n(99)}. Only one of {cmd:n()} and {cmd:at()} is allowed.
+
+{phang}
+    {opt common} requests that a common set of evaluation points is used across
+    all subpopulations. The default is to determine the evaluation points based on
+    the data range within subpopulation. If {cmd:common} is specified, the
+    evaluation points will be based on the data range in the total population.
 
 {phang}
     {opth at(numlist)} provides a custom list of points at which to evaluate
@@ -1153,12 +1223,14 @@ help for {hi:dstat}{...}
     as {cmd:merge}.
 
 {phang}
-    [{cmd:g}|{cmd:p}]{opth sel:ect(numlist)} selects and orders subgraphs and plots within
+    [{cmd:g}|{cmd:p}]{cmdab:sel:ect}{cmd:(}{it:{help numlist}}|{cmdab:r:everse}{cmd:)}
+    selects and orders subgraphs and plots within
     subgraphs. {it:numlist} specifies the indices of the subgraphs or plots to
     be included. For example, in a situation where the default graph has three
     subgraphs (containing one plot each), you could type {cmd:select(3 1)} to
     omit the 2nd subgraph and reverse the order such that the 3rd subgraph comes
-    first.
+    first. Instead of providing {it:numlist}, type {cmd:select(reverse)}
+    to reverse the order of subgraphs or plots.
 
 {pmore}
     {cmd:select()} applies to both, subgraphs and plots within subgraphs. If a
@@ -1173,14 +1245,20 @@ help for {hi:dstat}{...}
     what you type in these options.
 
 {phang}
-    {cmd:bystats}[{cmd:(}{it:arg}{cmd:)}] treats coefficients as equations and
+    {opt cref} causes results from the reference (sub)population to be
+    included in the graph. The default is to suppress these
+    results. {cmd:cref} is only relevant if {cmd:over(, contrast())} has been
+    specified.
+
+{phang}
+    {cmd:bystats}[{cmd:(}{cmdab:m:ain}|{cmdab:s:econdary}{cmd:)}] treats coefficients as equations and
     equations as coefficients. This is only relevant after
     {cmd:dstat summarize} and only has an effect if the results contain multiple
     equations. The effect of {cmd:bystats} typically is that results are grouped
     by statistics rather than by subpopulations or variables (the option may
     also have the opposite effect depending on how exactly {cmd:dstat} returned its
-    results). Optional {it:arg} can be {cmdab:m:ain} (the default) or
-    {cmdab:s:econdary} to specify wether coefficients should replace the
+    results). Optional type {cmd:bystats(main)} (the default) or
+    {cmd:bystats(secondary)} to specify wether coefficients should replace the
     main dimension or the secondary dimension of the equations, respectively. This
     is only relevant if the equations contain two dimensions
     (subpopulations and variables).
@@ -1466,8 +1544,11 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(over_namelist)}}values of subpopulations{p_end}
 {synopt:{cmd:e(over_labels)}}labels of subpopulations{p_end}
 {synopt:{cmd:e(over_select)}}values of selected subpopulations{p_end}
+{synopt:{cmd:e(over_contrast)}}{cmd:total} or {it:#} or empty{p_end}
+{synopt:{cmd:e(over_ratio)}}{cmd:ratio} or {cmd:lnratio} or empty{p_end}
+{synopt:{cmd:e(over_accumulate)}}{cmd:accumulate} or empty{p_end}
 {synopt:{cmd:e(total)}}{cmd:total} or empty{p_end}
-{synopt:{cmd:e(unconditional)}}{cmd:unconditional}, {cmd:unconditional(fixed)}, or empty{p_end}
+{synopt:{cmd:e(unconditional)}}{cmd:unconditional} or {cmd:unconditional(fixed)} or empty{p_end}
 {synopt:{cmd:e(balance)}}list of balancing variables{p_end}
 {synopt:{cmd:e(balmethod)}}balancing method{p_end}
 {synopt:{cmd:e(balref)}}balancing reference{p_end}
@@ -1514,6 +1595,7 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(ci)}}confidence intervals of estimates{p_end}
 {synopt:{cmd:e(at)}}evaluation points of distribution function{p_end}
 {synopt:{cmd:e(id)}}subpopulation IDs of estimates{p_end}
+{synopt:{cmd:e(cref)}}contrast reference indicators{p_end}
 {synopt:{cmd:e(bwidth)}}kernel bandwidth(s) of density estimation{p_end}
 {synopt:{cmd:e(_N)}}number of observations by subpopulation{p_end}
 {synopt:{cmd:e(_W)}}sum of weights by subpopulation{p_end}
