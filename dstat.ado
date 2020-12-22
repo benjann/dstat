@@ -1,4 +1,4 @@
-*! version 1.0.9  16dec2020  Ben Jann
+*! version 1.1.0  21dec2020  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -812,9 +812,10 @@ program _Replay
             local wd = `c2' - `c1' - 1
             di as txt _col(`c1') "{ralign `wd':method}" _col(`c2') "= " /*
                 */ as res %10s e(balmethod)
-            di as txt _col(`c1') "{ralign `wd':reference}" _col(`c2') "= " _c
-            if `"`e(balref)'"'!="" di as res %10s e(balref)
-            else                   di as res %10s "total"
+            if `"`e(balref)'"'=="" local balref "total"
+            else local balref = abbrev(`"`e(balref)'.`e(over)'"', 10)
+            di as txt _col(`c1') "{ralign `wd':reference}" _col(`c2') "= " /*
+                */ as res %10s `"`balref'"'
             mata: st_local("balance", ///
                 udstrlen(st_global("e(balance)"))<=10 ? ///
                 "%10s e(balance)" : ///
@@ -6306,13 +6307,13 @@ void _dstat_sum_mad_med_mean(`Data' D, `Grp' G, `Int' i)
     `RS' t
     `RC' z, z2, q, d
     
-    dstat_init_Ys(D, G)
     t = _dstat_mean(G)
     z = G.Y :- t
     z2 = abs(z)
     D.b[i] = mm_median(z2, G.w) // z not sorted!
     if (D.noIF) return
     q = (t - D.b[i]) \ (t + D.b[i])
+    dstat_init_Ys(D, G)
     d = _dstat_sum_d(D, G, q)
     z2 = (z2 :<= D.b[i]) 
     dstat_set_IF(D, G, i, ((mean(z2, G.w) :- z2)/(d[1]+d[2])
@@ -6344,7 +6345,7 @@ void _dstat_sum_mad_med_med(`Data' D, `Grp' G, `Int' i)
     q    = J(3,1,.)
     q[2] = _mm_median(G.Ys, G.ws)
     z = abs(G.Y :- q[2])
-    D.b[i] = mm_median(z, G.ws) // z not sorted!
+    D.b[i] = mm_median(z, G.w) // z not sorted!
     if (D.noIF) return
     q[1] = q[2] - D.b[i]
     q[3] = q[2] + D.b[i]
@@ -6405,11 +6406,11 @@ void _dstat_sum_mae_med(`Data' D, `Grp' G, `Int' i, `RS' t)
 {
     `RC' q, z, d
     
-    dstat_init_Ys(D, G)
     z = abs(G.Y :- t)
-    D.b[i] = mm_median(z, G.ws) // z not sorted!
+    D.b[i] = mm_median(z, G.w) // z not sorted!
     if (D.noIF) return
     q = (t - D.b[i]) \ (t + D.b[i])
+    dstat_init_Ys(D, G)
     d = _dstat_sum_d(D, G, q)
     z = (z :<= D.b[i]) 
     dstat_set_IF(D, G, i, (mean(z, G.w) :- z) / (G.W * (d[1]+d[2])))

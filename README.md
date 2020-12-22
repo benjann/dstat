@@ -39,6 +39,10 @@ Installation from GitHub:
 
 Main changes:
 
+    22dec2020 (version 1.1.0)
+    - results for statistics mad(0,0), madn(0,0), mae(0), and maen(0) were wrong
+      in case of weights; this is fixed
+
     16dec2020 (version 1.0.9)
     - new subopions -contrast()-, -ratio-, -lnratio-, and -accumulate- in -over()-
     - new -common- option in -dstat density-, -dstat histogram-, and -datat [c]cdf-

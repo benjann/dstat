@@ -1,5 +1,5 @@
 {smcl}
-{* 16dec2020}{...}
+{* 22dec2020}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -606,11 +606,23 @@ help for {hi:dstat}{...}
 
 {phang2}
     {opt lnr:atio} requests that the contrasts are expressed as differences in
-    logarithms. The default is to express contrasts as raw differences. When
-    applying {cmd:lnratio} you may also want to specify reporting option
-    {helpb dstat##display_opts:eform} to display results transformed back to
-    ratios. {cmd:lnratio} only has an effect if {cmd:contrast} has been
-    specified. {cmd:lnratio} takes precedence over {cmd:ratio}.
+    logarithms. The default is to express contrasts as raw differences. {cmd:lnratio}
+    only has an effect if {cmd:contrast} has been specified. {cmd:lnratio}
+    takes precedence over {cmd:ratio}.
+
+{pmore2}
+    When applying {cmd:lnratio} you may also want to specify reporting option
+    {helpb dstat##display_opts:eform} to display results that are transformed back to
+    ratios. In fact, point estimates, standard errors, and confidence intervals
+    from {cmd:lnratio} with {cmd:eform} are identical to results
+    from {cmd:ratio} with option {cmd:citype(log)}. An advantage of
+    {cmd:lnratio}, however, is that the null hypothesis for t-statistics and
+    p-values is ratio = 1 or, more precisely, ln(ratio) = 0 (i.e. no group
+    difference). For {cmd:ratio} the null hypothesis is ratio = 0, which
+    does not appear useful (this is why {cmd:dstat} suppresses t-statistics and
+    p-values in case of {cmd:ratio}). A disadvantage of {cmd:lnrange} is that it
+    cannot represent cases in which the comparison estimate and, hence, the ratio
+    is zero.
 
 {phang2}
     {opt accum:ulate} accumulates results across subpopulations
@@ -1429,17 +1441,15 @@ help for {hi:dstat}{...}
 
 {pstd}
     Controlling for education, working hours, work experience and tenure reduces
-    the mean difference by about a third:
+    the mean difference by about a third (note that there has been a small change
+    in the estimation sample due to missing values; for a more valid comparison,
+    the raw difference should be computed based on the same sample as the
+    balanced difference):
 
 {p 8 12 2}
         . {stata dstat (mean) wage, over(union) balance(grade hours ttl_exp tenure)}
         {p_end}
         . {stata lincom _b[1.union]-_b[0.union]}
-
-{pstd}
-    (Note that there has been a small change in the estimation sample due to missing values; for a
-    more valid comparison, the raw difference should be computed based on the same
-    sample as the balanced difference.)
 
 {pstd}
     To evaluate how successful the balancing was, you can use suboption {cmd:generate()}
@@ -1465,6 +1475,15 @@ help for {hi:dstat}{...}
         {p_end}
 {p 8 12 2}
         . {stata tabstat grade hours ttl_exp tenure [aw=wbal], by(union)}
+        {p_end}
+
+{pstd}
+    Note that, instead of using {helpb lincom} after estimation, you can also obtain group
+    differences directly using suboption {cmd:contrast} within the {cmd:over()}
+    option:
+
+{p 8 12 2}
+        . {stata "dstat (mean) wage, over(union, contrast(0)) balance(eb:grade hours ttl_exp tenure)"}
         {p_end}
 
 {dlgtab:Influence functions}
