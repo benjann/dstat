@@ -39,6 +39,32 @@ Installation from GitHub:
 
 Main changes:
 
+    07jun2021 (version 1.1.1)
+    - option -nocasewise- added
+    - option -relax- added
+    - dstat now always uses scores for totals/frequencies instead of influence
+      functions; (sub)option svy in -predict-, -vce(analytic)- and -vce(cluster)-
+      is discontinued; option -unconditional(fixed)- is discontinued; treatment of
+      totals/freqs now consistent with survey estimation by default (i.e. supopulation
+      sizes are assumed random; number PSUs is assumed fixed); this is different
+      from how official command -total- handles subpops if used without -svy-
+      prefix
+    - contrast options -ratio- and -lnratio- are no longer supported for statistics
+      that are not normalized by the sample size (frequencies, totals); -ratio- and
+      -lnratio- now imply -contrast-
+    - option -compact- of -predict/generate()/rif()- no longer allowed with
+      -over(, contrast/accumulate)- or with statistics that are not normalized by
+      the sample size
+    - dstat summarize applied sorting even if not necessary; this is fixed
+    - omitted estimates are no longer flagged in the coefficient names; vector
+      e(omit) is now returned
+    - density estimation settings are now returned in e() only if density estimation
+      has, in fact, been employed; e(bwidth) now has better column names
+    - in some situations, dstat histogram computed wrong results for the first bin
+      if option balance() was specified; this is fixed
+    - _makesymmetric() is now applied to e(V) to remove asymmetry due to possible
+       roundoff-error
+
     22dec2020 (version 1.1.0)
     - results for statistics mad(0,0), madn(0,0), mae(0), and maen(0) were wrong
       in case of weights; this is fixed

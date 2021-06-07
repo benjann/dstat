@@ -1,5 +1,5 @@
 {smcl}
-{* 22dec2020}{...}
+{* 06jun2021}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -86,6 +86,8 @@ help for {hi:dstat}{...}
 {marker opts}{col 5}{help dstat##options:{it:options}}{col 33}Description
 {synoptline}
 {syntab:{help dstat##mainopts:Main}}
+{synopt:{opt nocase:wise}}do not perform casewise deletion of observations
+    {p_end}
 {synopt:{cmdab:o:ver(}{help varname:{it:overvar}}[{cmd:,} {it:opts}]{cmd:)}}compute results for subpopulations defined by {it:overvar}
     {p_end}
 {synopt:{opt tot:al}}include results for total population
@@ -120,6 +122,8 @@ help for {hi:dstat}{...}
     {p_end}
 
 {syntab:{help dstat##sum:Subcommand {bf:summarize}}}
+{synopt:{opt relax}}compute a statistic even if observations are out of support
+    {p_end}
 {synopt:{opth z:var(varname)}}default sort variable for concentration measures
     {p_end}
 {synopt:{opt pl:ine(#|varname)}}default poverty line
@@ -132,8 +136,7 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opth at(numlist)}}custom grid of evaluation points
     {p_end}
-{synopt:{cmdab:unc:onditional}[{cmd:(}{cmdab:f:ixed}{cmd:)}]}rescale results by
-    relative size of subpopulation
+{synopt:{cmdab:unc:onditional}}rescale results by relative size of subpopulation
     {p_end}
 
 {syntab:{help dstat##hist:Subcommand {bf:histogram}}}
@@ -152,8 +155,7 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opth at(numlist)}}custom bin definitions
     {p_end}
-{synopt:{cmdab:unc:onditional}[{cmd:(}{cmdab:f:ixed}{cmd:)}]}rescale results by
-    relative size of subpopulation
+{synopt:{cmdab:unc:onditional}}rescale results by relative size of subpopulation
     {p_end}
 
 {syntab:{help dstat##prop:Subcommand {bf:proportion}}}
@@ -166,8 +168,7 @@ help for {hi:dstat}{...}
 {synopt:{opt nocat:egorical}}allow variables that do not comply to Stata's rules
     for factor variables
     {p_end}
-{synopt:{cmdab:unc:onditional}[{cmd:(}{cmdab:f:ixed}{cmd:)}]}rescale results by
-    relative size of subpopulation
+{synopt:{cmdab:unc:onditional}}rescale results by relative size of subpopulation
     {p_end}
 
 {syntab:{help dstat##cdf:Subcommands {bf:cdf} and {bf:ccdf}}}
@@ -189,8 +190,7 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt ip:olate}}obtain CDF by linear interpolation
     {p_end}
-{synopt:{cmdab:unc:onditional}[{cmd:(}{cmdab:f:ixed}{cmd:)}]}rescale results by
-    relative size of subpopulation
+{synopt:{cmdab:unc:onditional}}rescale results by relative size of subpopulation
     {p_end}
 
 {syntab:{help dstat##quantile:Subcommand {bf:quantile}}}
@@ -263,9 +263,7 @@ help for {hi:dstat}{...}
 {synoptline}
 {synopt:{opt rif}}store recentered influence functions
     {p_end}
-{synopt:{opt com:pact}}store influence functions in compact form; not allowed with {cmd:balance()}
-    {p_end}
-{synopt:{opt svy}}store scores for survey estimation instead of influence functions
+{synopt:{opt com:pact}}store influence functions in compact form; not allowed with {cmd:balance()} or {cmd:unconditional}
     {p_end}
 {synopt:{opt qui:etly}}do not display list of generated variables
     {p_end}
@@ -569,6 +567,19 @@ help for {hi:dstat}{...}
 {marker mainopts}{...}
 {dlgtab:Main}
 
+{phang}
+    {cmd:nocasewise} causes missing values to be excluded for each variable in
+    {it:varlist} individually. The default is to perform casewise deletion of
+    observations, that is, to restrict the sample to observations that are not
+    missing for any of the variables. If {cmd:casewise} is specified, the
+    overall estimation sample is still restricted by the {cmd:if} and {cmd:in}
+    qualifiers, the weights, and the variables specified in {cmd:over()},
+    {cmd:balance()}, {cmd:zvar()}, and {cmd:pline()} (including any {it:zvar}
+    or {it:pline} specified as an argument to a statistic), but not by missing
+    values in the main {it:varlist}. For each variable the subsample of all
+    nonmissing values within the overall estimation sample will then be used in the
+    relevant computations.
+
 {marker over}{...}
 {phang}
     {cmd:over(}{help varname:{it:overvar}}[{cmd:,} {it:options}]{cmd:)}
@@ -601,14 +612,16 @@ help for {hi:dstat}{...}
 
 {phang2}
     {opt ratio} requests that the contrasts are expressed as ratios. The
-    default is to express contrasts as differences. {cmd:ratio} only has an
-    effect if {cmd:contrast} has been specified.
+    default is to express contrasts as differences. {cmd:ratio} implies
+    {cmd:contrast}. {cmd:ratio} is not supported for statistics that are not
+    normalized by the sample size (i.e. frequencies or totals).
 
 {phang2}
     {opt lnr:atio} requests that the contrasts are expressed as differences in
     logarithms. The default is to express contrasts as raw differences. {cmd:lnratio}
-    only has an effect if {cmd:contrast} has been specified. {cmd:lnratio}
-    takes precedence over {cmd:ratio}.
+    implies {cmd:contrast} and takes precedence over {cmd:ratio}. {cmd:lnratio} is not supported
+    for statistics that are not normalized by the sample size (i.e. frequencies
+    or totals).
 
 {pmore2}
     When applying {cmd:lnratio} you may also want to specify reporting option
@@ -676,6 +689,12 @@ help for {hi:dstat}{...}
     {opt gen:erate(newvar)} stores the balancing weights in variable
     {it:newvar}. This is useful if you want to check whether covariates have been
     balanced successfully.
+
+{pmore}
+    Balancing weights will only be computed once per subpopulation. If
+    {cmd:casewise} is specified, balancing will be based on the overall estimation
+    sample as defined in the description of the {cmd:casewise} option; the weights
+    will not be recomputed for each variable individually.
 
 {marker repopts}{...}
 {phang}
@@ -854,8 +873,8 @@ help for {hi:dstat}{...}
     {opt vce(vcetype)} determines how standard errors are computed. {it:vcetype} may be:
 
             {opt none}
-            [{opt a:nalytic}] [{cmd:,} [{cmd:no}]{cmd:cov} {cmd:svy} ]
-            {opt cl:uster} {it:clustvar} [{cmd:,} [{cmd:no}]{cmd:cov} {cmd:svy} ]
+            [{opt a:nalytic}] [{cmd:,} [{cmd:no}]{cmd:cov} ]
+            {opt cl:uster} {it:clustvar} [{cmd:,} [{cmd:no}]{cmd:cov} ]
             {opt svy} [{help svy##svy_vcetype:{it:svy_vcetype}}] [{cmd:,} [{cmd:no}]{cmd:cov} {help svy##svy_options:{it:svy_options}} ]
             {opt boot:strap} [{cmd:,} [{cmd:no}]{cmd:cov} {help bootstrap:{it:bootstrap_options}} ]
             {opt jack:knife} [{cmd:,} [{cmd:no}]{cmd:cov} {help jackknife:{it:jackknife_options}} ]
@@ -867,18 +886,9 @@ help for {hi:dstat}{...}
 {pmore}
     {cmd:vce(analytic)}, the default, computes standard errors based on
     influence functions. Likewise, {bind:{cmd:vce(cluster} {it:clustvar}{cmd:)}}
-    computes standard errors based on influence function allowing for intragroup
+    computes standard errors based on influence functions allowing for intragroup
     correlation, where {it:clustvar} specifies to which group each observation
-    belongs. Option {cmd:svy} changes the assumptions that are made when
-    computing the standard errors. The default is to assume the sum of weights
-    in the (sub)sample as fixed. This is consistent with
-    how {helpb total} without {cmd:svy}-prefix computes standard errors. If option
-    {cmd:svy} is specified, the number of primary sampling units, that is, the
-    number of observations or, in case of {cmd:vce(cluster)}, the number of
-    clusters is assumed fixed. This is consistent with how {cmd:svy:total}
-    computes standard errors. Note that option {cmd:svy} has no effect for most
-    statistics; it is only relevant for statistics that are not normalized
-    by the sample size (totals and absolute frequencies).
+    belongs.
 
 {pmore}
     {cmd:vce(svy)} computes standard errors taking the survey design as set by
@@ -944,6 +954,17 @@ help for {hi:dstat}{...}
 {dlgtab:Subcommand summarize}
 
 {phang}
+    {opt relax} continues computations even if there are observations outside
+    of the support for a specific statistic. Some statistics such as the
+    geometric mean, the MLD, or the Theil index require observations to be
+    within a specific domain (e.g. strictly positive). By default, {cmd:dstat} aborts
+    with error if observations violating such requirements are encountered. Specify
+    {cmd:relax} if you want to continue computations based on the valid
+    observations in such a case. Exclusion of invalid observations will be
+    applied to each statistic individually; that is, the invalid observations
+    will not be dropped from the overall estimation sample.
+
+{phang}
     {opth zvar(varname)} specifies a default sort variable for concentration
     measures.
 
@@ -972,11 +993,10 @@ help for {hi:dstat}{...}
     one of {cmd:n()} and {cmd:at()} is allowed.
 
 {phang}
-    {cmd:unconditional}[{cmd:(fixed)}] rescales results such that the
+    {cmd:unconditional} rescales results such that the
     density function integrates to the relative size of the subpopulation
     instead of 1. This is only relevant if option {cmd:over()} has been
-    specified. Specify argument {cmd:fixed} to assume subpopulation sizes as
-    fixed; the default is to treat subpopulation sizes as random.
+    specified.
 
 {marker hist}{...}
 {dlgtab:Subcommand histogram}
@@ -1036,11 +1056,9 @@ help for {hi:dstat}{...}
     this condition and does not display a warning if the condition is violated).
 
 {phang}
-    {cmd:unconditional}[{cmd:(fixed)}] rescales results by the relative size of
+    {cmd:unconditional} rescales results by the relative size of
     the subpopulation. This is only relevant if option {cmd:over()} has been
-    specified. Specify argument {cmd:fixed} to assume subpopulation sizes as
-    fixed; the default is to treat subpopulation sizes as random. {cmd:unconditional}
-    is not allowed together with {cmd:frequency}.
+    specified. {cmd:unconditional} is not allowed together with {cmd:frequency}.
 
 {marker prop}{...}
 {dlgtab:Subcommand proportion}
@@ -1063,11 +1081,9 @@ help for {hi:dstat}{...}
     labeled in the output.
 
 {phang}
-    {cmd:unconditional}[{cmd:(fixed)}] rescales proportions by the relative size of
+    {cmd:unconditional} rescales proportions by the relative size of
     the subpopulation. This is only relevant if option {cmd:over()} has been
-    specified. Specify argument {cmd:fixed} to assume subpopulation sizes as
-    fixed; the default is to treat subpopulation sizes as random. {cmd:unconditional}
-    is not allowed together with {cmd:frequency}.
+    specified. {cmd:unconditional} is not allowed together with {cmd:frequency}.
 
 {marker cdf}{...}
 {dlgtab:Subcommands cdf and ccdf}
@@ -1126,11 +1142,9 @@ help for {hi:dstat}{...}
     described above (see {cmd:mid} and {cmd:floor}).
 
 {phang}
-    {cmd:unconditional}[{cmd:(fixed)}] rescales results by the relative size of
+    {cmd:unconditional} rescales results by the relative size of
     the subpopulation. This is only relevant if option {cmd:over()} has been
-    specified. Specify argument {cmd:fixed} to assume subpopulation sizes as
-    fixed; the default is to treat subpopulation sizes as random. {cmd:unconditional}
-    is not allowed together with {cmd:frequency}.
+    specified. {cmd:unconditional} is not allowed together with {cmd:frequency}.
 
 {marker quantile}{...}
 {dlgtab:Subcommand quantile}
@@ -1324,8 +1338,10 @@ help for {hi:dstat}{...}
 {phang}
     {opt compact} generates influence functions in compact form. {cmd:compact}
     only has an effect if {cmd:over()} has been specified and is not allowed
-    with {cmd:balance()} or {cmd:unconditional} (although it
-    is allowed with {cmd:unconditional(fixed)}).
+    with {cmd:balance()}, {cmd:unconditional}, {cmd:over(, contrast)}, or
+    {cmd:over(, accumulate)}. Furthermore, {cmd:compact} is not supported
+    for statistics that are not normalized by the sample size (i.e. frequencies
+    or totals).
 
 {pmore}
     The default is to generate one influence function for each single parameter
@@ -1334,15 +1350,6 @@ help for {hi:dstat}{...}
     function. Specify {cmd:compact} to merge the influence functions across
     subpopulations. In this case, {cmd:over()} has to be specified when
     analyzing the influence functions.
-
-{phang}
-    {opt svy} generates scores for use in survey estimation instead of
-    influence functions. In most cases, the scores are identical to the influence
-    functions. However, for statistics that are not normalized by the sample
-    size (e.g., frequencies or totals), the scores are defined such that their
-    total is equal to the statistic in question. This ensures that variance estimates
-    obtained by {cmd:svy:total} will be correct for these statistics. {cmd:rif} and
-    {cmd:compact} are not allowed if {cmd:svy} is specified.
 
 {phang}
     {opt quietly} suppresses the list of generated variables that is displayed by
@@ -1354,6 +1361,15 @@ help for {hi:dstat}{...}
     applied when analyzing the influence functions. The influence functions do,
     however, incorporate the balancing weights (net of base weights)
     from option {cmd:balance()}.
+
+{pstd}
+    Furthermore, note that {cmd:dstat} generates scores instead of
+    influence functions for statistics that are not normalized by the sample
+    size (i.e. frequencies or totals). The difference is that the total of an influence function
+    across the estimation sample is zero, whereas the total of the score is
+    equal to the statistic in question. Returning scores for frequencies and totals
+    ensures that standard errors obtained by {cmd:total} will be correct for these
+    statistics in complex survey designs.
 
 
 {marker examples}{...}
@@ -1542,7 +1558,7 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(N_vars)}}number of variables{p_end}
 {synopt:{cmd:e(N_stats)}}number of (unique) summary statistics{p_end}
 {synopt:{cmd:e(k_eq)}}number of equations in {cmd:e(b)}{p_end}
-{synopt:{cmd:e(k_omit)}}number of omitted coefficients in {cmd:e(b)}{p_end}
+{synopt:{cmd:e(k_omit)}}number of omitted estimates{p_end}
 {synopt:{cmd:e(df_r)}}sample degrees of freedom{p_end}
 {synopt:{cmd:e(qdef)}}quantile definition{p_end}
 {synopt:{cmd:e(adaptive)}}number of iterations of adaptive density estimator{p_end}
@@ -1559,6 +1575,7 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(predict)}}{cmd:dstat predict}{p_end}
 {synopt:{cmd:e(cmdline)}}command as typed{p_end}
 {synopt:{cmd:e(depvar)}}name(s) of analyzed variable(s){p_end}
+{synopt:{cmd:e(nocasewise)}}{bf:nocasewise} or empty{p_end}
 {synopt:{cmd:e(over)}}name of {it:overvar}{p_end}
 {synopt:{cmd:e(over_namelist)}}values of subpopulations{p_end}
 {synopt:{cmd:e(over_labels)}}labels of subpopulations{p_end}
@@ -1566,8 +1583,9 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(over_contrast)}}{cmd:total} or {it:#} or empty{p_end}
 {synopt:{cmd:e(over_ratio)}}{cmd:ratio} or {cmd:lnratio} or empty{p_end}
 {synopt:{cmd:e(over_accumulate)}}{cmd:accumulate} or empty{p_end}
+{synopt:{cmd:e(over_fixed)}}{cmd:fixed} or empty{p_end}
 {synopt:{cmd:e(total)}}{cmd:total} or empty{p_end}
-{synopt:{cmd:e(unconditional)}}{cmd:unconditional} or {cmd:unconditional(fixed)} or empty{p_end}
+{synopt:{cmd:e(unconditional)}}{cmd:unconditional} or empty{p_end}
 {synopt:{cmd:e(balance)}}list of balancing variables{p_end}
 {synopt:{cmd:e(balmethod)}}balancing method{p_end}
 {synopt:{cmd:e(balref)}}balancing reference{p_end}
@@ -1613,6 +1631,7 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(se)}}standard errors of estimates{p_end}
 {synopt:{cmd:e(ci)}}confidence intervals of estimates{p_end}
 {synopt:{cmd:e(at)}}evaluation points of distribution function{p_end}
+{synopt:{cmd:e(omit)}}indicator for omitted estimates{p_end}
 {synopt:{cmd:e(id)}}subpopulation IDs of estimates{p_end}
 {synopt:{cmd:e(cref)}}contrast reference indicators{p_end}
 {synopt:{cmd:e(bwidth)}}kernel bandwidth(s) of density estimation{p_end}
