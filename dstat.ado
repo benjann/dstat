@@ -1,4 +1,4 @@
-*! version 1.1.1  07jun2021  Ben Jann
+*! version 1.1.2  10jun2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -646,7 +646,7 @@ program Predict_compute_IFs
     tempname ecurrent b
     mat `b' = e(b)
     _estimates hold `ecurrent', restore
-    qui Estimate `subcmd' `cmdline'
+    /*qui*/ Estimate `subcmd' `cmdline'
     mat `b' = mreldif(`b',e(b)) // returns missing if non-conformable
     capt assert (`b'[1,1]<1e-15)
     if _rc==1 exit _rc
@@ -3941,34 +3941,48 @@ void dstat_ratio(`Data' D)
 {
     `Bool' hasmis
     `Int'  i, j, k, l, r, a, a0, b, b0
-    
-    if (D.noIF==0) {
-        if (any(D.IFtot)) {
-            display("{err}{bf:ratio} not supported for statistics that are not"+
-                " normalized by the sample size (frequencies, totals)")
-            exit(499)
-        }
-    }
+    `RC'   B0, B1, IFtot
+    `RM'   IF0, IF1
+
     hasmis = 0
     k = D.nover
     l = D.K / k
     if (D.total) r = selectindex((D.overlevels, .):==D.contrast)
     else         r = selectindex(D.overlevels:==D.contrast)
+    // reference estimates
     a0 = (r-1)*l + 1; b0 = r*l
+    B0 = D.b[|a0 \ b0|]
+    if (D.noIF==0) {
+        IF0 = D.IF[|1,a0 \ .,b0|]
+        IFtot = D.IFtot[|a0 \ b0|]
+        if (any(IFtot)) {
+            // recenter IFs of unnormalized statistics at zero
+            IF0 = IF0 :- (IFtot'/D.W)
+        }
+    }
+    // take ratios
     for (i=1;i<=k;i++) {
         if (i==r) continue
         a = (i-1)*l + 1
         b = i*l
+        B1 = D.b[|a \ b|]
         if (D.noIF==0) {
-            D.IF[|1,a \ .,b|] = (1:/D.b[|a0 \ b0|])' :* D.IF[|1,a \ .,b|] ///
-                - (D.b[|a \ b|]:/(D.b[|a0 \ b0|]:^2))' :* D.IF[|1,a0 \ .,b0|]
+            IF1 = D.IF[|1,a \ .,b|]
+            IFtot = D.IFtot[|a \ b|]
+            if (any(IFtot)) {
+                // recenter IFs of unnormalized statistics at zero
+                IF1 = IF1 :- (IFtot'/D.W)
+                D.IFtot[|a \ b|] = J(b-a+1,1,0)
+            }
+            D.IF[|1,a \ .,b|] = (1:/B0)' :* IF1 - (B1:/(B0:^2))' :* IF0
         }
-        D.b[|a \ b|] = D.b[|a \ b|] :/ D.b[|a0 \ b0|]
+        D.b[|a \ b|] = B1 :/ B0
         if (hasmissing(D.b[|a \ b|])) {
             hasmis = 1
             for (j=a;j<=b;j++) {
                 if (D.b[j]<.) continue
                 D.b[j] = 0
+                D.omit[j] = 1
                 if (D.noIF==0) D.IF[.,j] = J(D.N, 1, 0)
             }
         }
@@ -3982,22 +3996,34 @@ void dstat_ratio(`Data' D)
 
 void dstat_lnratio(`Data' D)
 {
+    `Bool' shift
     `Int'  j
     
+    shift = `FALSE'
     if (D.noIF==0) {
         if (any(D.IFtot)) {
-            display("{err}{bf:lnratio} not supported for statistics that are not"+
-                " normalized by the sample size (frequencies, totals)")
-            exit(499)
+            // recenter IFs of unnormalized statistics at zero
+            shift = `TRUE'
+            D.IF = D.IF :- (D.IFtot'/D.W)
+            D.IFtot = J(D.K, 1, 0)
         }
         D.IF = (1:/D.b)' :* D.IF
     }
     D.b = ln(D.b)
     dstat_contrast(D)
+    if (shift) {
+        // adjust IFs of unnormalized statistics in reference group
+        for (j=1;j<=D.K;j++) {
+            if (D.cref[j]==0) continue
+            D.IFtot[j] = 1
+            D.IF[,j] = D.IF[,j] :+ (1/D.W)
+        }
+    }
     if (hasmissing(D.b)) {
         for (j=1;j<=D.K;j++) {
             if (D.b[j]<.) continue
             D.b[j] = 0
+            D.omit[j] = 1
             if (D.noIF==0) D.IF[.,j] = J(D.N, 1, 0)
         }
         display("{txt}(missing estimates reset to zero)")
@@ -4175,9 +4201,9 @@ void _dstat_get_atmat(`Data' D, `SS' matnm)
 {   // splits vector by equations
     `Int'  i
     `RR'   M
-    `SR'   eqs
+    `SR'   eqs, coefs
     `IntR' from, to
-
+    
     M = st_matrix(matnm)[1,.]
     if (D.cat) { // proportion
         assert(M==trunc(M)) // integer
@@ -4186,7 +4212,12 @@ void _dstat_get_atmat(`Data' D, `SS' matnm)
     else if (anyof(("quantile", "lorenz", "share"), D.cmd)) {
         assert(all(M:>=0 :& M:<=1))  // within [0,1]
     }
-    eqs  = st_matrixcolstripe(matnm)[.,1]'
+    eqs = st_matrixcolstripe(matnm)[.,1]'
+    if (D.cmd=="proportion" & D.cat & !D.novalues) {
+        // group:#.variable => group~variable:#
+        coefs = st_matrixcolstripe(matnm)[.,2]'
+        eqs = eqs :+ "~" :+  substr(coefs, strrpos(coefs, "."):+1, .)
+    }
     from = selectindex(_mm_unique_tag(eqs, 0))
     to   = selectindex(_mm_unique_tag(eqs, 1))
     i    = length(from)
@@ -4771,7 +4802,7 @@ void dstat_set_density(`Data' D, `Grp' G)
 `RC' dstat_mvj(`Data' D, `Grp' G)
 {
     if (D.mvj[G.j]==NULL) {
-        D.mvj[G.j] = &selectindex(D.Y[G.j]:>=.)
+        D.mvj[G.j] = &selectindex(D.Y[,G.j]:>=.)
     }
     return(*D.mvj[G.j])
 }

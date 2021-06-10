@@ -39,6 +39,12 @@ Installation from GitHub:
 
 Main changes:
 
+    10jun2021 (version 1.1.2)
+    - -predict- could fail after -dstat proportion-; this is fixed
+    - contrast options -ratio- and -lnratio- now again supported for statistics
+      that are not normalized by the sample size (frequencies, totals)
+    - fixed bug that could occur if nocasewise and unconditional were both specified
+
     07jun2021 (version 1.1.1)
     - option -nocasewise- added
     - option -relax- added

@@ -1,5 +1,5 @@
 {smcl}
-{* 06jun2021}{...}
+{* 08jun2021}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -613,15 +613,12 @@ help for {hi:dstat}{...}
 {phang2}
     {opt ratio} requests that the contrasts are expressed as ratios. The
     default is to express contrasts as differences. {cmd:ratio} implies
-    {cmd:contrast}. {cmd:ratio} is not supported for statistics that are not
-    normalized by the sample size (i.e. frequencies or totals).
+    {cmd:contrast}.
 
 {phang2}
     {opt lnr:atio} requests that the contrasts are expressed as differences in
     logarithms. The default is to express contrasts as raw differences. {cmd:lnratio}
-    implies {cmd:contrast} and takes precedence over {cmd:ratio}. {cmd:lnratio} is not supported
-    for statistics that are not normalized by the sample size (i.e. frequencies
-    or totals).
+    implies {cmd:contrast} and takes precedence over {cmd:ratio}.
 
 {pmore2}
     When applying {cmd:lnratio} you may also want to specify reporting option
