@@ -39,6 +39,16 @@ Installation from GitHub:
 
 Main changes:
 
+    23jun2021 (version 1.1.3)
+    - additional poverty statistics: hcr (head count ratio), pgap (poverty gap),
+      pgi (poverty gap index), sen (Sen poverty index), sst (Sen-Shorrocks-Thon),
+      takayama (Takayama poverty index), chu (Clark-Hemming-Ulph)
+    - new option -pstrong- to employ the "strong" poverty definition; -fgt- now uses
+      the "weak" definition by default
+    - option -relax- of -dstat summarize- was not included in e() and was not passed 
+      through to -predict-; this is fixed
+    - the routine computing -md- could break in some contexts; this is fixed
+
     10jun2021 (version 1.1.2)
     - -predict- could fail after -dstat proportion-; this is fixed
     - contrast options -ratio- and -lnratio- now again supported for statistics

@@ -1,4 +1,4 @@
-*! version 1.1.2  10jun2021  Ben Jann
+*! version 1.1.3  23jun2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -635,6 +635,7 @@ program Predict_compute_IFs
     }
     // - summarize
     else if "`subcmd'"=="summarize" {
+        local cmdline `cmdline' `e(relax)' `e(pstrong)'
         if `"`e(zvar)'"'!="" {
             local cmdline `cmdline' zvar(`e(zvar)')
         }
@@ -1517,7 +1518,7 @@ program _Estimate, eclass
     }
     else if "`subcmd'"=="summarize" {
         local lhs anything(id="varlist")
-        local opts relax Zvar(varname) PLine(passthru)
+        local opts relax Zvar(varname) PLine(passthru) PSTRong
     }
     else exit 499
     syntax `lhs' [if] [in] [fw iw pw/], [ ///
@@ -1923,9 +1924,11 @@ program _Estimate, eclass
     eret local generalized "`generalized'"
     eret local absolute "`absolute'"
     eret local average "`average'"
+    eret local relax "`relax'"
     eret local zvar "`zvar'"
     if "`plvar'"!="" eret local pline "`plvar'"
     else             eret local pline "`pline'"
+    eret local pstrong "`pstrong'"
     if "`over'"!="" {
         eret matrix id = `id'
         eret local total "`total'"
@@ -2783,9 +2786,16 @@ void dstat_parse_stats_hasdens(`Int' n)
     asarray(A, "acshare" , (`f'acshare(),  `p'2z(),   &(0, 100, ., .)))         // concentration share as average
         // more concentration measures...
     // poverty
-    asarray(A, "watts"   , (`f'watts(),    `p'pl(),   &(0, .)))                 // Watts poverty
-    asarray(A, "fgt"     , (`f'fgt(),      `p'1pl(),  &(0., ., 0)))             // FGT poverty measure
-        // Sen, Hoover index/robin hood index, TIP
+    asarray(A, "hcr"     , (`f'hcr(),      `p'pl(),   &(0, .)))                 // Head count ratio
+    asarray(A, "pgap"    , (`f'pgap(),     `p'pl(),   &(0, .)))                 // Poverty gap
+    asarray(A, "pgi"     , (`f'pgi(),      `p'pl(),   &(0, .)))                 // poverty gap index
+    asarray(A, "fgt"     , (`f'fgt(),      `p'1pl(),  &(0,   ., 0)))            // FGT poverty measure
+    asarray(A, "chu"     , (`f'chu(),      `p'1pl(),  &(0, 100, 50)))           // Clark-Hemming-Ulph poverty measure
+    asarray(A, "watts"   , (`f'watts(),    `p'pl(),   &(0, .)))                 // Watts index
+    asarray(A, "sen"     , (`f'sen(),      `p'pl(),   &(0, .)))                 // Sen poverty index
+    asarray(A, "sst"     , (`f'sst(),      `p'pl(),   &(0, .)))                 // Sen-Shorrocks-Thon poverty index
+    asarray(A, "takayama", (`f'takayama(), `p'pl(),   &(0, .)))                 // Takayama poverty index
+        // Hoover index/robin hood index, TIP
     return(A)
 }
 
@@ -3654,6 +3664,7 @@ struct `DATA' {
     `SS'    zvar       // default auxiliary variable (summarize, lorenz, share)
     `SR'    zvars      // names of auxiliary variables (summarize, lorenz, share)
     `RM'    Z          // view on auxiliary variables (summarize, lorenz, share)
+    `Bool'  pstrong    // use strong poverty definition
     `RS'    pline      // default poverty line (summarize)
     `SS'    plvar      // default poverty line variable (summarize)
     `SR'    plvars     // names of poverty line variables (summarize)
@@ -3689,6 +3700,7 @@ void dstat()
     D.abs      = st_local("absolute")!=""
     D.ave      = st_local("average")!=""
     D.relax    = st_local("relax")!=""
+    D.pstrong  = st_local("pstrong")!=""
     
     // get data
     D.touse = st_varindex(st_local("touse"))
@@ -4578,8 +4590,8 @@ void _dstat_init_grp(`Data' D, `Grp' G, `Int' i)
         G.id = D.overlevels[i]
         G.p  = selectindex(D.over:==G.id)
         G.N  = rows(G.p)
-        if (D.w==1) {; G.w = 1;        G.W = G.N;          }
-        else        {; G.w = D.w[G.p]; G.W = quadsum(G.w); }
+        if (rows(D.w)==1) {; G.w = D.w;      G.W = D.w*G.N;      }
+        else              {; G.w = D.w[G.p]; G.W = quadsum(G.w); }
     }
     if (D.nocw) {
         G.G0.p = G.p
@@ -4611,10 +4623,10 @@ void _dstat_init_Y_nocw(`Data' D, `Grp' G)
         if (G.G0.p==.) G.p = G.pp
         else           G.p = G.G0.p[G.pp]
         G.N = rows(G.p)
-        if (D.w==1)    G.W = G.N
-        else           G.W = quadsum(D.w[G.p]) // raw sum of weights
-        if (G.G0.w==1) G.w = 1
-        else           G.w = G.G0.w[G.pp]
+        if (rows(D.w)==1)    G.W = D.w*G.N
+        else                 G.W = quadsum(D.w[G.p]) // raw sum of weights
+        if (rows(G.G0.w)==1) G.w = G.G0.w
+        else                 G.w = G.G0.w[G.pp]
         if (cols(G.Z)) { // has balancing
             // renormalize weights; alternative would be to set c = 1 and
             // G.W = quadsum(G.w); SEs would be the same, but normalizing to the
@@ -6637,6 +6649,7 @@ void dstat_sum_md(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     pragma unused o
     pragma unused O
     
+    dstat_init_Ys(D, G)
     m   = _dstat_mean(G)
     F   = _mm_ranks(G.Ys, G.ws, 3, 1, 1)
     cov = cross(G.Ys, G.ws, F) / G.W
@@ -7708,6 +7721,162 @@ void dstat_sum_acshare(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     _dstat_sum_cshare(D, G, i, 3, 1, o)
 }
 
+void dstat_sum_hcr(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `RC'   z, pl
+    pragma unused O
+    
+    pl = _dstat_sum_get_pline(D, G, o)
+    z = (D.pstrong ? G.Y:<=pl : G.Y:<pl)
+    D.b[i] = mean(z, G.w)
+    if (D.noIF) return
+    dstat_set_IF(D, G, i, (z :- D.b[i]) / G.W)
+}
+
+`RC' _dstat_sum_get_pline(`Data' D, `Grp' G, `SS' o)
+{
+    if (o!="") {
+        if (strtoreal(o)>=.) return(D.PL[G.p, selectindex(D.plvars:==o)])
+        return(strtoreal(o))
+    }
+    if (D.plvar!="") return(D.PL[G.p, selectindex(D.plvars:==D.plvar)])
+    return(D.pline)
+}
+
+void dstat_sum_pgap(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `RS'   N
+    `RC'   z, h, w, pl
+    `IntC' p
+    pragma unused O
+    
+    pl = _dstat_sum_get_pline(D, G, o)
+    p = selectindex(D.pstrong ? G.Y:<=pl : G.Y:<pl)
+    N = length(p)
+    if (N==0) { // no poor
+        D.b[i] = 0
+        if (D.noIF) return
+        dstat_set_IF(D, G, i, J(G.N, 1, 0))
+        return
+    }
+    w = (rows(G.w)==1 ? G.w : G.w[p])
+    z = ((pl :- G.Y) :/ pl)[p]
+    D.b[i] = mean(z, w)
+    if (D.noIF) return
+    h = J(G.N, 1, 0)
+    h[p] = (z :- D.b[i]) / (rows(G.w)!=1 ? quadsum(G.w[p]) : N)
+    dstat_set_IF(D, G, i, h)
+}
+
+void dstat_sum_pgi(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `RC'   z, pl
+    pragma unused O
+    
+    pl = _dstat_sum_get_pline(D, G, o)
+    z = ((pl :- G.Y) :/ pl) :* (D.pstrong ? G.Y:<=pl : G.Y:<pl)
+    D.b[i] = mean(z, G.w)
+    if (D.noIF) return
+    dstat_set_IF(D, G, i, (z :- D.b[i]) / G.W)
+}
+
+void dstat_sum_fgt(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `SR'  args
+    `Int' l
+    `RS'  a
+    `RC'  z, pl
+
+    args = tokens(o)
+    l = length(args)
+    if (l==0) {
+        a  = O[3]
+        pl = _dstat_sum_get_pline(D, G, "")
+    }
+    else if (l==1) {
+        a  = strtoreal(o)
+        pl = _dstat_sum_get_pline(D, G, "")
+    }
+    else {
+        a  = strtoreal(args[1])
+        pl = _dstat_sum_get_pline(D, G, args[2])
+    }
+    z = (D.pstrong ? G.Y:<=pl : G.Y:<pl)
+    z = ((pl :- G.Y) :* z :/ pl):^a :* z
+    if (hasmissing(z)) D.b[i] = .
+    else               D.b[i] = mean(z, G.w)
+    if (_dstat_sum_omit(D, i)) return
+    if (D.noIF) return
+    dstat_set_IF(D, G, i, (z :- D.b[i]) / G.W)
+}
+
+void dstat_sum_chu(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `SR'   args
+    `Int'  l, N
+    `RS'   a, m
+    `RC'   z, pl, w, h
+    `IntC' p
+    
+    args = tokens(o)
+    l = length(args)
+    if (l==0) {
+        a  = O[3]/100
+        pl = _dstat_sum_get_pline(D, G, "")
+    }
+    else if (l==1) {
+        a  = strtoreal(o)/100
+        pl = _dstat_sum_get_pline(D, G, "")
+    }
+    else {
+        a  = strtoreal(args[1])/100
+        pl = _dstat_sum_get_pline(D, G, args[2])
+    }
+    z = (D.pstrong ? G.Y:<=pl : G.Y:<pl)
+    if (a==0) z = (ln(G.Y) :- ln(pl)) :* z
+    else      z = (1 :- (G.Y:/pl):^a) :* z
+    if (hasmissing(z)) {
+        p = selectindex(z:<.)
+        N = length(p)
+        _dstat_sum_invalid(D, G, "chu("+strofreal(a*100)+")", N)
+        if (N) {
+            w = (rows(G.w)==1 ? G.w : G.w[p])
+            z = z[p]
+            m = mean(z, w)
+            if (a==0) {
+                D.b[i] = 1 - exp(m)
+                if (D.noIF) return
+                h = J(G.N, 1, 0)
+                h[p] = -exp(m)*(z :- m)
+            }
+            else {
+                D.b[i] = m / a
+                if (D.noIF) return
+                h = J(G.N, 1, 0)
+                h[p] = z / a :- D.b[i]
+            }
+            h = h / (rows(w)==1 ? N*w : quadsum(w))
+        }
+        else D.b[i] = .
+        if (_dstat_sum_omit(D, i)) return
+    }
+    else {
+        m = mean(z, G.w)
+        if (a==0) {
+            D.b[i] = 1 - exp(mean(z, G.w))
+            if (D.noIF) return
+            h = -exp(m)*(z :- m)
+        }
+        else {
+            D.b[i] = mean(z, G.w) / a
+            if (D.noIF) return
+            h = z / a :- D.b[i]
+        }
+        h = h / G.W
+    }
+    dstat_set_IF(D, G, i, h)
+}
+
 void dstat_sum_watts(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     `Int'  N
@@ -7716,14 +7885,7 @@ void dstat_sum_watts(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     `IntC' p
     pragma unused O
     
-    if (o!="") {
-        pl = strtoreal(o)
-        if (pl>=.) pl = D.PL[G.p, selectindex(D.plvars:==o)]
-    }
-    else {
-        if (D.plvar!="") pl = D.PL[G.p, selectindex(D.plvars:==D.plvar)]
-        else             pl = D.pline
-    }
+    pl = _dstat_sum_get_pline(D, G, o)
     z = (ln(pl) :-  ln(G.Y)) :* (G.Y :< pl)
     if (hasmissing(z)) {
         p = selectindex(z:<.)
@@ -7749,37 +7911,105 @@ void dstat_sum_watts(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     dstat_set_IF(D, G, i, h)
 }
 
-void dstat_sum_fgt(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void dstat_sum_sen(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    `SR'  args
-    `Int' l
-    `RS'  pl, a
-    `RC'  Z
-
-    args = tokens(o)
-    l = length(args)
-    if (l==0) {
-        a  = O[3]
-        if (D.plvar!="") pl = D.PL[G.p, selectindex(D.plvars:==D.plvar)]
-        else             pl = D.pline
-    }
-    else if (l==1) {
-        a  = strtoreal(o)
-        if (D.plvar!="") pl = D.PL[G.p, selectindex(D.plvars:==D.plvar)]
-        else             pl = D.pline
-    }
+    `RS'   hcr, pgi, Gp
+    `RC'   z_hcr, z_pgi, z_Gp, pl
+    `RS'   m, cp, N, W
+    `RC'   Ys, ws, F, B
+    `IntC' p
+    pragma unused O
+    
+    pl = _dstat_sum_get_pline(D, G, o)
+    // head count ratio
+    z_hcr  = (D.pstrong ? G.Y:<=pl : G.Y:<pl)
+    hcr    = mean(z_hcr, G.w)
+    // poverty gap index
+    z_pgi  = ((pl :- G.Y) :/ pl) :* z_hcr
+    pgi    = mean(z_pgi, G.w)
+    // Gini among poor
+    p = mm_order(G.Y, 1, rows(G.w)!=1)
+    p = select(p, z_hcr[p])
+    N = length(p)
+    if (N==0) Gp = 0 // no poor
     else {
-        a  = strtoreal(args[1])
-        pl = strtoreal(args[2])
-        if (pl>=.) pl = D.PL[G.p, selectindex(D.plvars:==args[2])]
+        Ys = G.Y[p]
+        ws = (rows(G.w)!=1 ? G.w[p] : G.w)
+        m  = mean(Ys, ws)
+        F  = _mm_ranks(Ys, ws, 3, 1, 1)
+        W = (rows(ws)==1 ? N*ws : quadsum(ws))
+        cp = cross(Ys, ws, F) / W
+        Gp = cp * 2 / m - 1
     }
-    Z = (pl :- G.Y) :* (G.Y :<= pl)
-    Z = (Z:/pl):^a :* (G.Y :<= pl)
-    if (hasmissing(Z)) D.b[i] = .
-    else               D.b[i] = mean(Z, G.w)
-    if (_dstat_sum_omit(D, i)) return
+    // sen poverty index
+    D.b[i] = pgi + (hcr - pgi) * Gp
     if (D.noIF) return
-    dstat_set_IF(D, G, i, (Z :- D.b[i]) / G.W)
+    if (N==0) z_Gp = J(G.N, 1, 0) // no poor
+    else {
+        B = z_Gp = J(G.N, 1, 0)
+        B[p] = _dstat_sum_gini_topsum(Ys, Ys:*ws, W)
+        z_Gp[p] = F
+        z_Gp = z_hcr :* ((z_Gp :- cp/m):*G.Y :+ B :- cp) * (2 / m) * (G.W/W)
+    }
+    z_hcr = Gp             * (z_hcr :- hcr)
+    z_pgi = (1+(hcr-1)*Gp) * (z_pgi :- pgi)
+    dstat_set_IF(D, G, i, (z_pgi + z_hcr + (hcr-pgi) * z_Gp) / G.W)
+}
+
+void dstat_sum_sst(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `RS'   pgi, Gp, m, cp
+    `RC'   pg, pl, Ys, ws, F, B, h
+    `IntC' p
+    pragma unused O
+    
+    pl = _dstat_sum_get_pline(D, G, o)
+    // poverty gap index
+    pg  = ((pl :- G.Y) :/ pl) :* (D.pstrong ? G.Y:<=pl : G.Y:<pl)
+    pgi = mean(pg, G.w)
+    // Gini of poverty gaps
+    p  = mm_order(pg, 1, rows(G.w)!=1)
+    Ys = pg[p]
+    ws = (rows(G.w)!=1 ? G.w[p] : G.w)
+    m  = mean(Ys, ws)
+    F  = _mm_ranks(Ys, ws, 3, 1, 1)
+    cp = cross(Ys, ws, F) / G.W
+    Gp = cp * 2 / m - 1 
+    // SST 
+    D.b[i] = pgi * (1 + Gp) 
+    if (D.noIF) return
+    // part of IF related to Gini
+    B = _dstat_sum_gini_topsum(Ys, Ys:*ws, G.W)
+    h = J(G.N, 1, 0)
+    h[p] = ((F :- cp/m):*Ys :+ B :- cp) * (2 / m)
+    // add part related to PGI
+    dstat_set_IF(D, G, i, ((1+Gp) * (pg :- pgi) + pgi * h) / G.W)
+}
+
+void dstat_sum_takayama(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `RS'   m, cp
+    `RC'   pl, Ys, ws, F, B, h
+    `IntC' p
+    pragma unused O
+    
+    pl = _dstat_sum_get_pline(D, G, o)
+    // generate censored outcomes
+    Ys = (D.pstrong ? G.Y:<=pl : G.Y:<pl)
+    Ys = (G.Y :* Ys) + (pl :* (1:-Ys))
+    // compute Gini from censored outcome
+    p  = mm_order(Ys, 1, rows(G.w)!=1)
+    Ys = Ys[p]
+    ws = (rows(G.w)!=1 ? G.w[p] : G.w)
+    m  = mean(Ys, ws)
+    F  = _mm_ranks(Ys, ws, 3, 1, 1)
+    cp = cross(Ys, ws, F) / G.W
+    D.b[i] = cp * 2 / m - 1 
+    if (D.noIF) return
+    B = _dstat_sum_gini_topsum(Ys, Ys:*ws, G.W)
+    h = J(G.N, 1, 0)
+    h[p] = ((F :- cp/m):*Ys :+ B :- cp) * (2 / m)
+    dstat_set_IF(D, G, i, h / G.W)
 }
 
 end

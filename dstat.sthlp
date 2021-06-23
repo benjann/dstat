@@ -1,5 +1,5 @@
 {smcl}
-{* 08jun2021}{...}
+{* 23jun2021}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -127,6 +127,8 @@ help for {hi:dstat}{...}
 {synopt:{opth z:var(varname)}}default sort variable for concentration measures
     {p_end}
 {synopt:{opt pl:ine(#|varname)}}default poverty line
+    {p_end}
+{synopt:{opt pstr:ong}}use "strong" poverty definition
     {p_end}
 
 {syntab:{help dstat##density:Subcommand {bf:density}}}
@@ -551,12 +553,32 @@ help for {hi:dstat}{...}
     {p_end}
 
 {syntab:Poverty measures}
-{synopt:{opt watts}[{cmd:(}{it:pline}{cmd:)}]}Watts index (see, e.g., Saisana 2014); {it:pline} specifies the poverty line(s) > 0; {it:pline} can
-    be {varname} or {it:#}; the default is as set by option {cmd:pline()}
+{synopt:{opt hcr}[{cmd:(}{it:pline}{cmd:)}]}head count ratio (i.e. proportion poor); {it:pline} specifies the
+    poverty line(s) > 0; {it:pline} can be {varname} or {it:#}; the default is as set by option {cmd:pline()}
+    {p_end}
+{synopt:{opt pgap}[{cmd:(}{it:pline}{cmd:)}]}poverty gap (proportion by which mean outcome of poor
+    is below poverty line)
+    {p_end}
+{synopt:{opt pgi}[{cmd:(}{it:pline}{cmd:)}]}poverty gap index; equal to {cmd:hcr}*{cmd:pgap}
     {p_end}
 {synopt:{opt fgt}[{cmd:(}{it:a}[{cmd:,}{it:pline}]{cmd:)}]}Foster–Greer–Thorbecke index with {it:a}>=0
-    (Foster et al. 1984, 2010); default is {it:a}=0 (headcount ratio);
-    {it:pline} specifies the poverty line(s) > 0; {it:pline} can be {varname} or {it:#}; the default is as set by option {cmd:pline()}
+    (Foster et al. 1984, 2010); default is {it:a}=0 (head count ratio); {it:a}=1 is equivalent to
+    {cmd:pgi}
+    {p_end}
+{synopt:{opt sen}[{cmd:(}{it:pline}{cmd:)}]}Sen poverty index (Sen 1976; using the
+    replication invariant version of the index, also see Shorrocks 1995)
+    {p_end}
+{synopt:{opt sst}[{cmd:(}{it:pline}{cmd:)}]}Sen-Shorrocks-Thon poverty index
+    (see, e.g., Osberg and Xu 2008)
+    {p_end}
+{synopt:{opt takayama}[{cmd:(}{it:pline}{cmd:)}]}Takayama poverty index
+    (Takayama 1979)
+    {p_end}
+{synopt:{opt watts}[{cmd:(}{it:pline}{cmd:)}]}Watts index (see, e.g., Saisana 2014)
+    {p_end}
+{synopt:{opt chu}[{cmd:(}{it:a}[{cmd:,}{it:pline}]{cmd:)}]}Clark-Hemming-Ulph poverty index with {it:a} in [0,100]
+    (Clark et al. 1981); default is {it:a}=50; {it:a}=0 is equivalent to
+    1-exp(-{cmd:watts}); {it:a}=100 is equivalent to {cmd:fgt(1)}
     {p_end}
 {synoptline}
 
@@ -969,6 +991,13 @@ help for {hi:dstat}{...}
     {opt pline(#|varname)} specifies a default poverty line for poverty
     measures, either as a single value or as a variable containing observation-specific
     values.
+
+{phang}
+    {opt pstrong} selects the poverty definition to be applied (see Donaldson and
+    Weymark 1986). The default is to use the "weak" definition, that is, to treat
+    outcomes equal to the poverty line as non-poor. Specify {cmd:pstrong} to treat
+    these cases as poor ("strong" definition). The choice of definition is relevant
+    only for some of the poverty measures.
 
 {marker density}{...}
 {dlgtab:Subcommand density}
@@ -1608,8 +1637,10 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(generalized)}}{cmd:generalized} or empty{p_end}
 {synopt:{cmd:e(absolute)}}{cmd:absolute} or empty{p_end}
 {synopt:{cmd:e(average)}}{cmd:average} or empty{p_end}
+{synopt:{cmd:e(relax)}}{cmd:relax} or empty{p_end}
 {synopt:{cmd:e(zvar)}}name of sort variable specified in {cmd:zvar()}{p_end}
 {synopt:{cmd:e(pline)}}poverty line variable specified in {cmd:pline()}{p_end}
+{synopt:{cmd:e(pstrong)}}{cmd:pstrong} or empty{p_end}
 {synopt:{cmd:e(generate)}}name(s) of generated variable(s){p_end}
 {synopt:{cmd:e(clustvar)}}name of cluster variable{p_end}
 {synopt:{cmd:e(vce)}}{it:vcetype} specified in {cmd:vce()}{p_end}
@@ -1663,6 +1694,10 @@ help for {hi:dstat}{...}
     Computational Statistics & Data Analysis 50: 733-759.
     {p_end}
 {phang}
+    Clark, S., R. Hemming, D. Ulph (1981). On Indices for the Measurement of Poverty. The
+    Economic Journal 91(362): 515-526
+    {p_end}
+{phang}
     Cwik, J., J. Mielniczuk (1993). Data-dependent bandwidth choice for a grade density
     kernel estimate. Statistics & Probability Letters 16: 397-405.
     {p_end}
@@ -1674,6 +1709,10 @@ help for {hi:dstat}{...}
     DiNardo, J.E., N. Fortin, T. Lemieux (1996). Labour Market Institutions and
     the Distribution of Wages, 1973-1992: A Semiparametric Approach. Econometrica
     64(5): 1001-1046.
+    {p_end}
+{phang}
+    Donaldson, D., J.A. Weymark (1986). Properties of Fixed-Population Poverty Indices. International
+    Economic Review 27(3): 667-688.
     {p_end}
 {phang}
     Firpo, S., N.M. Fortin, T. Lemieux (2009). Unconditional Quantile
@@ -1719,6 +1758,10 @@ help for {hi:dstat}{...}
     {browse "http://ideas.repec.org/p/bss/wpaper/35.html"}.
     {p_end}
 {phang}
+    Osberg, L., K. Xu (2008). How Should We Measure Poverty in a Changing World? Methodological
+    Issues and Chinese Case Study. Review of Development Economics 12(2): 419–441.
+    {p_end}
+{phang}
     Rios-Avila, F. (2020). Recentered influence functions (RIFs) in Stata: RIF
     regression and RIF decomposition. The Stata Journal 20(1): 51-94.
     {p_end}
@@ -1732,7 +1775,17 @@ help for {hi:dstat}{...}
     Research. Dordrecht: Springer. DOI: {browse "http://doi.org/10.1007/978-94-007-0753-5_3197":10.1007/978-94-007-0753-5_3197}
     {p_end}
 {phang}
+    Sen, A. (1976). Poverty: An Ordinal Approach to Measurement. Econometrica 44(2): 219-231.
+    {p_end}
+{phang}
     Shorrocks, A.F. (1980). The Class of Additively Decomposable Inequality Measures. Econometrica 48(3): 613-625.
+    {p_end}
+{phang}
+    Shorrocks, A.F. (1995). Revisiting the Sen Poverty Index. Econometrica 63(5): 1225-1230.
+    {p_end}
+{phang}
+    Takayama, N. (1979). Poverty, income inequality, and their measures: Professor Sen's
+    axiomatic approach reconsidered. Econometrica 47(3): 747-759.
     {p_end}
 {phang}
     Wand, M.P., M.C. Jones (1995). Kernel Smoothing. London: Chapman and Hall.
@@ -1759,15 +1812,46 @@ help for {hi:dstat}{...}
 {title:Also see}
 
 {psee}
-    Online: help for {helpb mean}, {helpb proportion}, {helpb total}, {helpb ci},
-    {helpb summarize}, {helpb tabstat}, {helpb centile}, {helpb pctile}, {helpb cumul}, {helpb kdensity},
-    {helpb table}, {helpb histogram}, {helpb teffects ipw}
+    Online: help for
+    {helpb centile},
+    {helpb ci},
+    {helpb cumul},
+    {helpb histogram},
+    {helpb kdensity},
+    {helpb mean},
+    {helpb pctile},
+    {helpb proportion},
+    {helpb summarize},
+    {helpb table},
+    {helpb tabstat},
+    {helpb tabulate},
+    {helpb teffects ipw},
+    {helpb total}
 
 {psee}
     Packages from the SSC Archive (type {cmd:ssc describe} {it:name} for
-    more information): {helpb rif}, {helpb kdens}, {helpb kmatch}, {helpb lorenz},
-    {helpb pshare}, {helpb glcurve}, {helpb svylorenz}, {helpb svygei:svygei_svyatk},
-    {helpb ineqdeco}, {helpb povdeco}, {helpb sumdist}, {helpb robstat},
-    {helpb fre}, {helpb catplot}, {helpb cdfplot}, {helpb distplot},
-    {helpb reldist}, {helpb moremata}
+    more information):
+    {helpb akdensity},
+    {helpb apoverty},
+    {helpb catplot},
+    {helpb cdfplot},
+    {helpb dfl},
+    {helpb distplot},
+    {helpb eqprhistogram},
+    {helpb fre},
+    {helpb glcurve},
+    {helpb ineqdeco},
+    {helpb kdens},
+    {helpb kmatch},
+    {helpb lorenz},
+    {helpb moremata},
+    {helpb povdeco},
+    {helpb poverty},
+    {helpb pshare},
+    {helpb reldist},
+    {helpb rif},
+    {helpb robstat},
+    {helpb sumdist},
+    {helpb svygei:svygei_svyatk},
+    {helpb svylorenz}
 
