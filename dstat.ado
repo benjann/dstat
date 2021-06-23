@@ -1,4 +1,4 @@
-*! version 1.1.3  23jun2021  Ben Jann
+*! version 1.1.4  23jun2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -2746,6 +2746,7 @@ void dstat_parse_stats_hasdens(`Int' n)
     asarray(A, "lmc"     , (`f'lmc(),      `p'0(),    &.))                      // left medcouple tail weight
     asarray(A, "rmc"     , (`f'rmc(),      `p'0(),    &.))                      // right medcouple tail weight
     // inequality
+    asarray(A, "hoover"  , (`f'hoover(),     `p'0(),    &.))                    // Hoover aka Robin Hood aka Ricci-Schutz aka Pietra index
     asarray(A, "gini"    , (`f'gini(),     `p'1(),    &(., ., 0)))              // Gini coefficient
     asarray(A, "agini"   , (`f'agini(),    `p'1(),    &(., ., 0)))              // absolute Gini coefficient
     asarray(A, "mld"     , (`f'mld(),      `p'0(),    &.))                      // mean log deviation
@@ -2795,7 +2796,7 @@ void dstat_parse_stats_hasdens(`Int' n)
     asarray(A, "sen"     , (`f'sen(),      `p'pl(),   &(0, .)))                 // Sen poverty index
     asarray(A, "sst"     , (`f'sst(),      `p'pl(),   &(0, .)))                 // Sen-Shorrocks-Thon poverty index
     asarray(A, "takayama", (`f'takayama(), `p'pl(),   &(0, .)))                 // Takayama poverty index
-        // Hoover index/robin hood index, TIP
+        // TIP ...
     return(A)
 }
 
@@ -6954,6 +6955,22 @@ void dstat_sum_rmc(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
             :+ (.25:-(G.Y:>q))*(4 - 32*mean(d, G.w)/(dq*(1-mc)))) / dH
     IF = IF :- mean(IF, G.w) // make sure that IF is centered at zero
     dstat_set_IF(D, G, i, IF / G.W)
+}
+
+void dstat_sum_hoover(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `RS' t
+    `RC' z, z2
+    pragma unused o
+    pragma unused O
+    
+    t  = _dstat_mean(G)
+    z  = G.Y :- t
+    z2 = abs(z)
+    D.b[i] = mean(z2, G.w) / (2 * t)
+    if (D.noIF) return
+    dstat_set_IF(D, G, i, ((z2 / (2 * t) :- D.b[i])
+        - mean(sign(z) * t + z2, G.w) / (2 * t^2) * z) / G.W)
 }
 
 void dstat_sum_gini(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)

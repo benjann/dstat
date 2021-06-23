@@ -481,6 +481,8 @@ help for {hi:dstat}{...}
     {p_end}
 
 {syntab:Inequality measures}
+{synopt:{opt hoover}}Hoover index (Robin Hood index)
+    {p_end}
 {synopt:{opt gini}[{cmd:(}{it:df}{cmd:)}]}Gini coefficient; {it:df} applies
     small-sample adjustment; default is {it:df}=0
     {p_end}

@@ -39,7 +39,8 @@ Installation from GitHub:
 
 Main changes:
 
-    23jun2021 (version 1.1.3)
+    23jun2021 (version 1.1.4)
+    - additional inequality statistic: hoover index (robin hood index)
     - additional poverty statistics: hcr (head count ratio), pgap (poverty gap),
       pgi (poverty gap index), sen (Sen poverty index), sst (Sen-Shorrocks-Thon),
       takayama (Takayama poverty index), chu (Clark-Hemming-Ulph)
