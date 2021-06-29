@@ -39,6 +39,22 @@ Installation from GitHub:
 
 Main changes:
 
+    29jun2021 (version 1.1.5)
+    - -dstat tip- (Tip curve) added
+    - option range() added to subcommands density, cdf, ccdf, quantile, lorenz, tip
+    - association measures added: corr (correlation), cov (covariance), spearman
+      (Spearman's rank correlation)
+    - additional poverty measures: apgap (absolute poverty gap), apgi (absolute
+      poverty gap index)
+    - contrast(lag) and contrast(lead) now allowed in over()
+    - can now specify custom p1 and p2 with -iqrn-
+    - observations with missing on variables specified in zvar() or pline() (or
+      corresponding variables specified as arguments to individual statistics) are
+      no longer excluded from the overall estimation sample if -nocasewise- is 
+      specified
+    - number of obs and sum of weights now returned for each parameter in e(nobs)
+      and e(sumw)
+
     23jun2021 (version 1.1.4)
     - additional inequality statistic: hoover index (robin hood index)
     - additional poverty statistics: hcr (head count ratio), pgap (poverty gap),
