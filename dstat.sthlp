@@ -1,5 +1,5 @@
 {smcl}
-{* 29jun2021}{...}
+{* 30jun2021}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -595,6 +595,9 @@ help for {hi:dstat}{...}
 {synopt:{opt chu}[{cmd:(}{it:a}[{cmd:,}{it:pline}]{cmd:)}]}Clark-Hemming-Ulph poverty index with {it:a} in [0,100]
     (Clark et al. 1981); default is {it:a}=50; {it:a}=0 is equivalent to
     1-exp(-{cmd:watts}); {it:a}=100 is equivalent to {cmd:fgt(1)}
+    {p_end}
+{synopt:[{cmd:a}]{cmd:tip}{cmd:(}{it:p}[{cmd:,}{it:pline}]{cmd:)}}TIP ordinate,
+    {it:p} in [0,100]; specify {cmd:atip()} for absolute TIP ordinates
     {p_end}
 
 {syntab:Association}
@@ -1751,8 +1754,6 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(id)}}subpopulation IDs of estimates{p_end}
 {synopt:{cmd:e(cref)}}contrast reference indicators{p_end}
 {synopt:{cmd:e(bwidth)}}kernel bandwidth(s) of density estimation{p_end}
-{synopt:{cmd:e(hcr)}}head count ratios ({cmd:dstat tip} only){p_end}
-{synopt:{cmd:e(pgi)}}poverty gap indices ({cmd:dstat tip} only){p_end}
 {synopt:{cmd:e(_N)}}number of observations by subpopulation{p_end}
 {synopt:{cmd:e(_W)}}sum of weights by subpopulation{p_end}
 

@@ -39,6 +39,12 @@ Installation from GitHub:
 
 Main changes:
 
+    30jun2021 (version 1.1.6)
+    - additional poverty measures: tip (TIP ordinate) and atip (absolute TIP ordinate)
+    - -datat tip- failed if a variables was specified in -pline()- instead of a
+      fixed value; this is fixed
+    - -dstat tip- no longer returns HCR and PGI in e()
+
     29jun2021 (version 1.1.5)
     - -dstat tip- (Tip curve) added
     - option range() added to subcommands density, cdf, ccdf, quantile, lorenz, tip

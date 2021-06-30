@@ -1,4 +1,4 @@
-*! version 1.1.5  29jun2021  Ben Jann
+*! version 1.1.6  30jun2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -1654,6 +1654,7 @@ program _Estimate, eclass
             exit 198
         }
         Parse_pline, `pline' // returns pline, plvar
+        local zvars `plvar'
     }
     else if "`subcmd'"=="summarize" {
         Parse_pline, `pline' // returns pline, plvar
@@ -1830,7 +1831,7 @@ program _Estimate, eclass
     }
     
     // estimate
-    tempname b nobs sumw cref id omit IFtot AT BW _N _W HCR PGI
+    tempname b nobs sumw cref id omit IFtot AT BW _N _W /*HCR PGI*/
     mata: dstat()
     // process IFs
     if "`generate'"!="" {
@@ -2075,8 +2076,8 @@ program _Estimate, eclass
     else if "`subcmd'"=="tip" {
         if "`absolute'"!="" local title "Absolute TIP curve"
         else                local title "TIP curve"
-        eret matrix hcr = `HCR'
-        eret matrix pgi = `PGI'
+        // eret matrix hcr = `HCR'
+        // eret matrix pgi = `PGI'
     }
     else if "`subcmd'"=="summarize" {
         eret local slist `"`slist'"'
@@ -2866,6 +2867,8 @@ void dstat_parse_stats_hasdens(`Int' n)
     asarray(A, "sen"     , (`f'sen(),      `p'pl(),   &.))                      // Sen poverty index
     asarray(A, "sst"     , (`f'sst(),      `p'pl(),   &.))                      // Sen-Shorrocks-Thon poverty index
     asarray(A, "takayama", (`f'takayama(), `p'pl(),   &.))                      // Takayama poverty index
+    asarray(A, "tip"     , (`f'tip(),      `p'1pl(),  &(0, 100, .)))            // TIP ordinate
+    asarray(A, "atip"    , (`f'atip(),     `p'1pl(),  &(0, 100, .)))            // absolute TIP ordinate
     // association
     asarray(A, "corr"    , (`f'corr(),     `p'z(),    &.))                      // correlation
     asarray(A, "cov"     , (`f'cov(),      `p'z1(),   &(., ., 1)))              // covariance
@@ -3762,7 +3765,7 @@ struct `DATA' {
     `Bool'  pstrong    // use strong poverty definition (summarize, tip)
     `RS'    pline      // default poverty line (summarize, tip)
     `SS'    plvar      // default poverty line variable (summarize, tip)
-    `RR'    hcr, pgi   // containers to store HCR and PGI (tip)
+    // `RR'    hcr, pgi   // containers to store HCR and PGI (tip)
 }
 
 void dstat()
@@ -3966,11 +3969,11 @@ void dstat()
         dstat_store_eqvec(D, D.bwidth, st_local("BW"))
     }
     else st_local("hasdens", "0")
-    // HCR and PIG for dstat tip
-    if (D.cmd=="tip") {
-        dstat_store_eqvec(D, D.hcr, st_local("HCR"))
-        dstat_store_eqvec(D, D.pgi, st_local("PGI"))
-    }
+    // // HCR and PIG for dstat tip
+    // if (D.cmd=="tip") {
+    //     dstat_store_eqvec(D, D.hcr, st_local("HCR"))
+    //     dstat_store_eqvec(D, D.pgi, st_local("PGI"))
+    // }
     // - _N and _W
     D.eqs = strofreal(D.overlevels)
     if (D.total | length(D.eqs)==0) D.eqs = D.eqs, "total"
@@ -6028,7 +6031,7 @@ void dstat_tip(`Data' D)
     `RC'   AT
     `Grp'  G
     
-    D.hcr = D.pgi = J(1, D.nvars*D.nover, .)
+    // D.hcr = D.pgi = J(1, D.nvars*D.nover, .)
     if   (D.abs) t = 1 // absolute
     else         t = 0 // relative
     if (D.plvar!="") z = 1
@@ -6045,17 +6048,17 @@ void dstat_tip(`Data' D)
             dstat_set_cstripe(D, G, i, j, a, b, (D.novalues ? 
                 "tip":+strofreal(1::b-a+1) : strofreal(AT, D.vfmt)))
             if (G.N==0) dstat_noobs(D, a, b)
-            else D.b[|a \ b|] = _dstat_tip(D, G, AT, t, a, b, z)
+            else D.b[|a \ b|] = _dstat_tip(D, G, AT, t, a, b, 
+                                z<. ? D.Z[G.p, z] : D.pline)
         }
     }
 }
 
-`RC' _dstat_tip(`Data' D, `Grp' G, `RC' P, `Int' t, `Int' a, `Int' b, `Int' z)
+`RC' _dstat_tip(`Data' D, `Grp' G, `RC' P, `Int' t, `Int' a, `Int' b, `RC' pl)
 {   // determine tip ordinates
-    `RC' pl, pg, p, p2, L, hc
+    `RC' pg, p, p2, L, hc
     `RM' cdf
-
-    pl = z<. ? D.Z[G.p, z] : D.pline 
+    
     hc = D.pstrong ? G.Y:<=pl : G.Y:<pl
     if (t==1) pg =  (pl :- G.Y)        :* hc
     else      pg = ((pl :- G.Y) :/ pl) :* hc
@@ -6066,16 +6069,16 @@ void dstat_tip(`Data' D)
     L = P[p2] * cdf[rows(cdf),2]
         // using cdf[rows(cdf),2] instead of G.W to avoid precision issues at P=1
     L[p2] = mm_fastipolate(cdf[,2], cdf[,1], L)
-    D.hcr[G.k] = mean(hc, G.w)
-    D.pgi[G.k] = cdf[rows(cdf),1] / G.W
-    if (D.noIF==0) dstat_tip_IF(D, G, a, b, P, pg, cdf[rows(cdf),2])
+    // D.hcr[G.k] = mean(hc, G.w)
+    // D.pgi[G.k] = cdf[rows(cdf),1] / G.W
+    if (D.noIF==0) dstat_tip_IF(D, G, a, b, P, pg)
     return(L / G.W)
 }
 
-void dstat_tip_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `RC' P, `RC' pg, `RS' T)
+void dstat_tip_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `RC' P, `RC' pg)
 {
     `Int' i, j
-    `RS'  p, L
+    `RS'  p, t
     `RC'  q, zq, z
     
     q = -mm_quantile(-pg, G.w, P, 2)
@@ -6089,8 +6092,8 @@ void dstat_tip_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `RC' P, `RC' pg, `RS' T)
         zq = (pg:>=q[j])
         p  = mean(zq, G.w)   // set p=mean(zq) to ensure mean(IF)=0
         z  = pg :* zq
-        L  = quadsum(z:*G.w) // set L=sum(z) to ensure mean(IF)=0
-        dstat_set_IF(D, G, i, (z :- L/T :+ q[j] * (p :- zq)) / G.W)
+        t  = mean(z, G.w)    // set t=mean(z) to ensure mean(IF)=0
+        dstat_set_IF(D, G, i, (z :- t :+ q[j] * (p :- zq)) / G.W)
     }
 }
 
@@ -8171,6 +8174,38 @@ void dstat_sum_takayama(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     h = J(G.N, 1, 0)
     h[p] = ((F :- cp/m):*Ys :+ B :- cp) * (2 / m)
     dstat_set_IF(D, G, i, h / G.W)
+}
+
+void dstat_sum_tip(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    pragma unused O
+    _dstat_sum_tip(D, G, i, 0, o)
+}
+
+void dstat_sum_atip(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    pragma unused O
+    _dstat_sum_tip(D, G, i, 1, o)
+}
+
+void _dstat_sum_tip(`Data' D, `Grp' G, `Int' i, `Int' t, `SS' o)
+{
+    `SR'  args
+    `RS'  at
+    `Int' l
+    `RC'  pl
+    
+    args = tokens(o)
+    l = length(args)
+    if (l==1) {
+        at  = strtoreal(o) / 100
+        pl = _dstat_sum_get_pline(D, G, "")
+    }
+    else {
+        at = strtoreal(args[1]) / 100
+        pl = _dstat_sum_get_pline(D, G, args[2])
+    }
+    D.b[i] = _dstat_tip(D, G, at, t, i, i, pl) // also computes IF
 }
 
 void dstat_sum_corr(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
