@@ -39,6 +39,12 @@ Installation from GitHub:
 
 Main changes:
 
+    01jul2021 (version 1.1.7)
+    - statistic hdquantile() added
+    - SEs of quantile(0) and quantile(1) now set to 0
+    - -dstat pdf- now allowed as alias for -dstat pdf-
+    - better error message if an invalid subcommand is specified
+
     30jun2021 (version 1.1.6)
     - additional poverty measures: tip (TIP ordinate) and atip (absolute TIP ordinate)
     - -datat tip- failed if a variables was specified in -pline()- instead of a

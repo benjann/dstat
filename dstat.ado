@@ -1,4 +1,4 @@
-*! version 1.1.6  30jun2021  Ben Jann
+*! version 1.1.7  01jul2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -29,6 +29,12 @@ program dstat, eclass properties(svyb svyj)
     capt Parse_subcmd `subcmd' // expands subcmd
     if _rc==1 exit _rc
     if _rc { // try summarize
+        capt confirm variable `subcmd'
+        if _rc==1 exit _rc
+        if _rc {
+            di as err `"invalid subcommand: `subcmd'"'
+            exit 198
+        }
         local 00 `"`subcmd' `00'"'
         local subcmd summarize
     }
@@ -81,6 +87,10 @@ end
 
 program Parse_subcmd
     if `"`0'"'==substr("density",1,max(1,strlen(`"`0'"'))) {
+        c_local subcmd density
+        exit
+    }
+    if `"`0'"'=="pdf" {
         c_local subcmd density
         exit
     }
@@ -2757,122 +2767,124 @@ void dstat_parse_stats_hasdens(`Int' n)
     `T' A
     
     A = asarray_create()
+    // experimental
     // general
-    asarray(A, "q"       , (`f'q(),        `p'1(),    &(0, 100, .)))            // quantile at #
-    asarray(A, "p"       , (`f'p(),        `p'1(),    &(0, 100, .)))            // quantile at #
-    asarray(A, "quantile", (`f'quantile(), `p'1(),    &(0, 100, .)))            // quantile at #
-    asarray(A, "d"       , (`f'd(),        `p'1(),    &(., ., .)))              // kernel density at #
-    asarray(A, "density" , (`f'density(),  `p'1(),    &(., ., .)))              // kernel density at #
-    asarray(A, "hist"    , (`f'hist(),     `p'2(),    &(., ., .)))              // histogram density within [#,#]
-    asarray(A, "cdf"     , (`f'cdf(),      `p'1(),    &(., ., .)))              // cdf at #
-    asarray(A, "cdfm"    , (`f'cdfm(),     `p'1(),    &(., ., .)))              // mid cdf at #
-    asarray(A, "cdff"    , (`f'cdff(),     `p'1(),    &(., ., .)))              // floor cdf at #
-    asarray(A, "ccdf"    , (`f'ccdf(),     `p'1(),    &(., ., .)))              // complementary cdf at #
-    asarray(A, "ccdfm"   , (`f'ccdfm(),    `p'1(),    &(., ., .)))              // mid ccdf at #
-    asarray(A, "ccdff"   , (`f'ccdff(),    `p'1(),    &(., ., .)))              // floor ccdf at #
-    asarray(A, "prop"    , (`f'prop(),     `p'1or2(), &(., ., .)))              // proportion equal to # or within [#,#]
-    asarray(A, "pct"     , (`f'pct(),      `p'1or2(), &(., ., .)))              // percent equal to # or within [#,#]
-    asarray(A, "f"       , (`f'f(),        `p'1or2(), &(., ., .)))              // frequency equal to # or within [#,#]
-    asarray(A, "freq"    , (`f'freq(),     `p'1or2(), &(., ., .)))              // frequency equal to # or within [#,#]
-    asarray(A, "total"   , (`f'total(),    `p'1or2(), &(., ., 0)))              // overall total or total equal to # or within [#,#]
-    asarray(A, "min"     , (`f'min(),      `p'0(),    &.))                      //
-    asarray(A, "max"     , (`f'max(),      `p'0(),    &.))                      //
-    asarray(A, "range"   , (`f'range(),    `p'0(),    &.))                      //
-    asarray(A, "midrange", (`f'midrange(), `p'0(),    &.))                      // (max+min)/2
+    asarray(A, "q"         , (`f'q(),         `p'1(),    &(0, 100, .)))         // quantile at #
+    asarray(A, "p"         , (`f'p(),         `p'1(),    &(0, 100, .)))         // quantile at #
+    asarray(A, "quantile"  , (`f'quantile(),  `p'1(),    &(0, 100, .)))         // quantile at #
+    asarray(A, "hdquantile", (`f'hdquantile(),`p'1(),    &(0, 100, .)))         // Harrell&Davis (1982) quantile at #
+    asarray(A, "d"         , (`f'd(),         `p'1(),    &(., ., .)))           // kernel density at #
+    asarray(A, "density"   , (`f'density(),   `p'1(),    &(., ., .)))           // kernel density at #
+    asarray(A, "hist"      , (`f'hist(),      `p'2(),    &(., ., .)))           // histogram density within [#,#]
+    asarray(A, "cdf"       , (`f'cdf(),       `p'1(),    &(., ., .)))           // cdf at #
+    asarray(A, "cdfm"      , (`f'cdfm(),      `p'1(),    &(., ., .)))           // mid cdf at #
+    asarray(A, "cdff"      , (`f'cdff(),      `p'1(),    &(., ., .)))           // floor cdf at #
+    asarray(A, "ccdf"      , (`f'ccdf(),      `p'1(),    &(., ., .)))           // complementary cdf at #
+    asarray(A, "ccdfm"     , (`f'ccdfm(),     `p'1(),    &(., ., .)))           // mid ccdf at #
+    asarray(A, "ccdff"     , (`f'ccdff(),     `p'1(),    &(., ., .)))           // floor ccdf at #
+    asarray(A, "prop"      , (`f'prop(),      `p'1or2(), &(., ., .)))           // proportion equal to # or within [#,#]
+    asarray(A, "pct"       , (`f'pct(),       `p'1or2(), &(., ., .)))           // percent equal to # or within [#,#]
+    asarray(A, "f"         , (`f'f(),         `p'1or2(), &(., ., .)))           // frequency equal to # or within [#,#]
+    asarray(A, "freq"      , (`f'freq(),      `p'1or2(), &(., ., .)))           // frequency equal to # or within [#,#]
+    asarray(A, "total"     , (`f'total(),     `p'1or2(), &(., ., 0)))           // overall total or total equal to # or within [#,#]
+    asarray(A, "min"       , (`f'min(),       `p'0(),    &.))                   //
+    asarray(A, "max"       , (`f'max(),       `p'0(),    &.))                   //
+    asarray(A, "range"     , (`f'range(),     `p'0(),    &.))                   //
+    asarray(A, "midrange"  , (`f'midrange(),  `p'0(),    &.))                   // (max+min)/2
     // location
-    asarray(A, "mean"    , (`f'mean(),     `p'0(),    &.))                      // arithmetic mean
-    asarray(A, "gmean"   , (`f'gmean(),    `p'0(),    &.))                      // geometric mean
-    asarray(A, "hmean"   , (`f'hmean(),    `p'0(),    &.))                      // harmonic mean
-    asarray(A, "trim"    , (`f'trim(),     `p'1or2(), &(  0,  50, 25)))         // trimmed mean
-    asarray(A, "winsor"  , (`f'winsor(),   `p'1or2(), &(  0,  50, 25)))         // winsorized mean
-    asarray(A, "median"  , (`f'median(),   `p'0(),    &.))                      // median
-    asarray(A, "huber"   , (`f'huber(),    `p'1(),    &(63.7, 99.9, 95)))       // huber m-estimate of location
-    asarray(A, "biweight", (`f'biweight(), `p'1(),    &(0.1, 99.9, 95)))        // biweight m-estimate of location
-    asarray(A, "hl"      , (`f'hl(),       `p'0(),    &.))                      // Hodges-Lehmann estimator
+    asarray(A, "mean"      , (`f'mean(),      `p'0(),    &.))                   // arithmetic mean
+    asarray(A, "gmean"     , (`f'gmean(),     `p'0(),    &.))                   // geometric mean
+    asarray(A, "hmean"     , (`f'hmean(),     `p'0(),    &.))                   // harmonic mean
+    asarray(A, "trim"      , (`f'trim(),      `p'1or2(), &(  0,  50, 25)))      // trimmed mean
+    asarray(A, "winsor"    , (`f'winsor(),    `p'1or2(), &(  0,  50, 25)))      // winsorized mean
+    asarray(A, "median"    , (`f'median(),    `p'0(),    &.))                   // median
+    asarray(A, "huber"     , (`f'huber(),     `p'1(),    &(63.7, 99.9, 95)))    // huber m-estimate of location
+    asarray(A, "biweight"  , (`f'biweight(),  `p'1(),    &(0.1, 99.9, 95)))     // biweight m-estimate of location
+    asarray(A, "hl"        , (`f'hl(),        `p'0(),    &.))                   // Hodges-Lehmann estimator
     // scale
-    asarray(A, "sd"      , (`f'sd(),       `p'1(),    &(., ., 1)))              // standard deviation
-    asarray(A, "variance", (`f'variance(), `p'1(),    &(., ., 1)))              // variance
-    asarray(A, "mse"     , (`f'mse(),      `p'1or2(), &(., ., 0, 0)))           // mean squared error
-    asarray(A, "smse"    , (`f'smse(),     `p'1or2(), &(., ., 0, 0)))           // square-root of MSE
-    asarray(A, "iqr"     , (`f'iqr(),      `p'2(),    &(0, 100, 25, 75)))       // inter quantile range
-    asarray(A, "iqrn"    , (`f'iqrn(),     `p'2(),    &(0, 100, 25, 75)))       // normalized inter quantile range
-    asarray(A, "mad"     , (`f'mad(),      `p'1or2(), &(., ., 0, 0)))           // median (or mean) absolute deviation
-    asarray(A, "madn"    , (`f'madn(),     `p'1or2(), &(., ., 0, 0)))           // normalized MAD
-    asarray(A, "mae"     , (`f'mae(),      `p'1or2(), &(., ., 0, 0)))           // median (or mean) absolute error
-    asarray(A, "maen"    , (`f'maen(),     `p'1or2(), &(., ., 0, 0)))           // normalized MAE
-    asarray(A, "md"      , (`f'md(),       `p'0(),    &.))                      // mean absolute pairwise difference
-    asarray(A, "mdn"     , (`f'mdn(),      `p'0(),    &.))                      // normalized mean absolute pairwise difference
-    asarray(A, "mscale"  , (`f'mscale(),   `p'1(),    &(1, 50, 50)))            // m-estimate of scale
-    asarray(A, "qn"      , (`f'qn(),       `p'0(),    &.))                      // Qn coefficient
+    asarray(A, "sd"        , (`f'sd(),        `p'1(),    &(., ., 1)))           // standard deviation
+    asarray(A, "variance"  , (`f'variance(),  `p'1(),    &(., ., 1)))           // variance
+    asarray(A, "mse"       , (`f'mse(),       `p'1or2(), &(., ., 0, 0)))        // mean squared error
+    asarray(A, "smse"      , (`f'smse(),      `p'1or2(), &(., ., 0, 0)))        // square-root of MSE
+    asarray(A, "iqr"       , (`f'iqr(),       `p'2(),    &(0, 100, 25, 75)))    // inter quantile range
+    asarray(A, "iqrn"      , (`f'iqrn(),      `p'2(),    &(0, 100, 25, 75)))    // normalized inter quantile range
+    asarray(A, "mad"       , (`f'mad(),       `p'1or2(), &(., ., 0, 0)))        // median (or mean) absolute deviation
+    asarray(A, "madn"      , (`f'madn(),      `p'1or2(), &(., ., 0, 0)))        // normalized MAD
+    asarray(A, "mae"       , (`f'mae(),       `p'1or2(), &(., ., 0, 0)))        // median (or mean) absolute error
+    asarray(A, "maen"      , (`f'maen(),      `p'1or2(), &(., ., 0, 0)))        // normalized MAE
+    asarray(A, "md"        , (`f'md(),        `p'0(),    &.))                   // mean absolute pairwise difference
+    asarray(A, "mdn"       , (`f'mdn(),       `p'0(),    &.))                   // normalized mean absolute pairwise difference
+    asarray(A, "mscale"    , (`f'mscale(),    `p'1(),    &(1, 50, 50)))         // m-estimate of scale
+    asarray(A, "qn"        , (`f'qn(),        `p'0(),    &.))                   // Qn coefficient
     // skewness
-    asarray(A, "skewness", (`f'skewness(), `p'0(),    &.))                      // classical skewness
-    asarray(A, "qskew"   , (`f'qskew(),    `p'1(),    &(0, 50, 25)))            // quantile skewness measure
-    asarray(A, "mc"      , (`f'mc(),       `p'0(),    &.))                      // medcouple
+    asarray(A, "skewness"  , (`f'skewness(),  `p'0(),    &.))                   // classical skewness
+    asarray(A, "qskew"     , (`f'qskew(),     `p'1(),    &(0, 50, 25)))         // quantile skewness measure
+    asarray(A, "mc"        , (`f'mc(),        `p'0(),    &.))                   // medcouple
     // kurtosis
-    asarray(A, "kurtosis", (`f'kurtosis(), `p'0(),    &.))                      // classical kurtosis
-    asarray(A, "qw"      , (`f'qw(),       `p'1(),    &(0, 50, 25)))            // quantile tail weight
-    asarray(A, "lqw"     , (`f'lqw(),      `p'1(),    &(0, 50, 25)))            // left quantile tail weight
-    asarray(A, "rqw"     , (`f'rqw(),      `p'1(),    &(0, 50, 25)))            // right quantile tail weight
-    asarray(A, "lmc"     , (`f'lmc(),      `p'0(),    &.))                      // left medcouple tail weight
-    asarray(A, "rmc"     , (`f'rmc(),      `p'0(),    &.))                      // right medcouple tail weight
+    asarray(A, "kurtosis"  , (`f'kurtosis(),  `p'0(),    &.))                   // classical kurtosis
+    asarray(A, "qw"        , (`f'qw(),        `p'1(),    &(0, 50, 25)))         // quantile tail weight
+    asarray(A, "lqw"       , (`f'lqw(),       `p'1(),    &(0, 50, 25)))         // left quantile tail weight
+    asarray(A, "rqw"       , (`f'rqw(),       `p'1(),    &(0, 50, 25)))         // right quantile tail weight
+    asarray(A, "lmc"       , (`f'lmc(),       `p'0(),    &.))                   // left medcouple tail weight
+    asarray(A, "rmc"       , (`f'rmc(),       `p'0(),    &.))                   // right medcouple tail weight
     // inequality
-    asarray(A, "hoover"  , (`f'hoover(),   `p'0(),    &.))                      // Hoover aka Robin Hood aka Ricci-Schutz aka Pietra index
-    asarray(A, "gini"    , (`f'gini(),     `p'1(),    &(., ., 0)))              // Gini coefficient
-    asarray(A, "agini"   , (`f'agini(),    `p'1(),    &(., ., 0)))              // absolute Gini coefficient
-    asarray(A, "mld"     , (`f'mld(),      `p'0(),    &.))                      // mean log deviation
-    asarray(A, "theil"   , (`f'theil(),    `p'0(),    &.))                      // Theil index
-    asarray(A, "cv"      , (`f'cv(),       `p'1(),    &(., ., 1)))              // coefficient of variation
-    asarray(A, "ge"      , (`f'ge(),       `p'1(),    &(., ., 1)))              // generalized entropy
-    asarray(A, "atkinson", (`f'atkinson(), `p'1(),    &(0, ., 1)))              // Atkinson inequality measure
-    asarray(A, "lvar"    , (`f'lvar(),     `p'1(),    &(., ., 1)))              // logarithmic variance
-    asarray(A, "vlog"    , (`f'vlog(),     `p'1(),    &(., ., 1)))              // variance of logarithm
-    asarray(A, "top"     , (`f'top(),      `p'1(),    &(0, 100, 10)))           // top share
-    asarray(A, "bottom"  , (`f'bottom(),   `p'1(),    &(0, 100, 40)))           // bottom share
-    asarray(A, "mid"     , (`f'mid(),      `p'2(),    &(0, 100, 40, 90)))       // mid share
-    asarray(A, "palma"   , (`f'palma(),    `p'0(),    &.))                      // palma ratio
-    asarray(A, "qratio"  , (`f'qratio(),   `p'2(),    &(0, 100, 10, 90)))       // quantile ratio
-    asarray(A, "sratio"  , (`f'sratio(),   `p'2or4(), &(0, 100, 0, 10, 90, 100))) // percentile share ratio
-    asarray(A, "lorenz"  , (`f'lorenz(),   `p'1(),    &(0, 100, .)))            // lorenz ordinate
-    asarray(A, "tlorenz" , (`f'tlorenz(),  `p'1(),    &(0, 100, .)))            // total (sum) lorenz ordinate
-    asarray(A, "glorenz" , (`f'glorenz(),  `p'1(),    &(0, 100, .)))            // generalized lorenz ordinate
-    asarray(A, "alorenz" , (`f'alorenz(),  `p'1(),    &(0, 100, .)))            // absolute lorenz ordinate
-    asarray(A, "elorenz" , (`f'elorenz(),  `p'1(),    &(0, 100, .)))            // equality gap lorenz ordinate
-    asarray(A, "share"   , (`f'share(),    `p'2(),    &(0, 100, ., .)))         // percentile share (proportion)
-    asarray(A, "dshare"  , (`f'dshare(),   `p'2(),    &(0, 100, ., .)))         // percentile share (density)
-    asarray(A, "tshare"  , (`f'tshare(),   `p'2(),    &(0, 100, ., .)))         // percentile share (total/sum)
-    asarray(A, "gshare"  , (`f'gshare(),   `p'2(),    &(0, 100, ., .)))         // percentile share (generalized)
-    asarray(A, "ashare"  , (`f'ashare(),   `p'2(),    &(0, 100, ., .)))         // percentile share (average)
+    asarray(A, "hoover"    , (`f'hoover(),    `p'0(),    &.))                   // Hoover aka Robin Hood aka Ricci-Schutz aka Pietra index
+    asarray(A, "gini"      , (`f'gini(),      `p'1(),    &(., ., 0)))           // Gini coefficient
+    asarray(A, "agini"     , (`f'agini(),     `p'1(),    &(., ., 0)))           // absolute Gini coefficient
+    asarray(A, "mld"       , (`f'mld(),       `p'0(),    &.))                   // mean log deviation
+    asarray(A, "theil"     , (`f'theil(),     `p'0(),    &.))                   // Theil index
+    asarray(A, "cv"        , (`f'cv(),        `p'1(),    &(., ., 1)))           // coefficient of variation
+    asarray(A, "ge"        , (`f'ge(),        `p'1(),    &(., ., 1)))           // generalized entropy
+    asarray(A, "atkinson"  , (`f'atkinson(),  `p'1(),    &(0, ., 1)))           // Atkinson inequality measure
+    asarray(A, "lvar"      , (`f'lvar(),      `p'1(),    &(., ., 1)))           // logarithmic variance
+    asarray(A, "vlog"      , (`f'vlog(),      `p'1(),    &(., ., 1)))           // variance of logarithm
+    asarray(A, "top"       , (`f'top(),       `p'1(),    &(0, 100, 10)))        // top share
+    asarray(A, "bottom"    , (`f'bottom(),    `p'1(),    &(0, 100, 40)))        // bottom share
+    asarray(A, "mid"       , (`f'mid(),       `p'2(),    &(0, 100, 40, 90)))    // mid share
+    asarray(A, "palma"     , (`f'palma(),     `p'0(),    &.))                   // palma ratio
+    asarray(A, "qratio"    , (`f'qratio(),    `p'2(),    &(0, 100, 10, 90)))    // quantile ratio
+    asarray(A, "sratio"    , (`f'sratio(),    `p'2or4(), &(0, 100, 0, 10, 90, 100))) // percentile share ratio
+    asarray(A, "lorenz"    , (`f'lorenz(),    `p'1(),    &(0, 100, .)))         // lorenz ordinate
+    asarray(A, "tlorenz"   , (`f'tlorenz(),   `p'1(),    &(0, 100, .)))         // total (sum) lorenz ordinate
+    asarray(A, "glorenz"   , (`f'glorenz(),   `p'1(),    &(0, 100, .)))         // generalized lorenz ordinate
+    asarray(A, "alorenz"   , (`f'alorenz(),   `p'1(),    &(0, 100, .)))         // absolute lorenz ordinate
+    asarray(A, "elorenz"   , (`f'elorenz(),   `p'1(),    &(0, 100, .)))         // equality gap lorenz ordinate
+    asarray(A, "share"     , (`f'share(),     `p'2(),    &(0, 100, ., .)))      // percentile share (proportion)
+    asarray(A, "dshare"    , (`f'dshare(),    `p'2(),    &(0, 100, ., .)))      // percentile share (density)
+    asarray(A, "tshare"    , (`f'tshare(),    `p'2(),    &(0, 100, ., .)))      // percentile share (total/sum)
+    asarray(A, "gshare"    , (`f'gshare(),    `p'2(),    &(0, 100, ., .)))      // percentile share (generalized)
+    asarray(A, "ashare"    , (`f'ashare(),    `p'2(),    &(0, 100, ., .)))      // percentile share (average)
     // concentration
-    asarray(A, "gci"     , (`f'gci(),      `p'z1(),   &(., ., 0)))              // Gini concentration index
-    asarray(A, "aci"     , (`f'aci(),      `p'z1(),   &(., ., 0)))              // absolute Gini concentration index
-    asarray(A, "ccurve"  , (`f'ccurve(),   `p'1z(),   &(0, 100, .)))            // lorenz concentration ordinate
-    asarray(A, "tccurve" , (`f'tccurve(),  `p'1z(),   &(0, 100, .)))            // total concentration ordinate
-    asarray(A, "gccurve" , (`f'gccurve(),  `p'1z(),   &(0, 100, .)))            // generalized concentration ordinate
-    asarray(A, "accurve" , (`f'accurve(),  `p'1z(),   &(0, 100, .)))            // absolute concentration ordinate
-    asarray(A, "eccurve" , (`f'eccurve(),  `p'1z(),   &(0, 100, .)))            // equality gap concentration ordinate
-    asarray(A, "cshare"  , (`f'cshare(),   `p'2z(),   &(0, 100, ., .)))         // concentration share
-    asarray(A, "dcshare" , (`f'dcshare(),  `p'2z(),   &(0, 100, ., .)))         // concentration share as density
-    asarray(A, "gcshare" , (`f'gcshare(),  `p'2z(),   &(0, 100, ., .)))         // generalized concentration share
-    asarray(A, "tcshare" , (`f'tcshare(),  `p'2z(),   &(0, 100, ., .)))         // concentration share as total
-    asarray(A, "acshare" , (`f'acshare(),  `p'2z(),   &(0, 100, ., .)))         // concentration share as average
+    asarray(A, "gci"       , (`f'gci(),       `p'z1(),   &(., ., 0)))           // Gini concentration index
+    asarray(A, "aci"       , (`f'aci(),       `p'z1(),   &(., ., 0)))           // absolute Gini concentration index
+    asarray(A, "ccurve"    , (`f'ccurve(),    `p'1z(),   &(0, 100, .)))         // lorenz concentration ordinate
+    asarray(A, "tccurve"   , (`f'tccurve(),   `p'1z(),   &(0, 100, .)))         // total concentration ordinate
+    asarray(A, "gccurve"   , (`f'gccurve(),   `p'1z(),   &(0, 100, .)))         // generalized concentration ordinate
+    asarray(A, "accurve"   , (`f'accurve(),   `p'1z(),   &(0, 100, .)))         // absolute concentration ordinate
+    asarray(A, "eccurve"   , (`f'eccurve(),   `p'1z(),   &(0, 100, .)))         // equality gap concentration ordinate
+    asarray(A, "cshare"    , (`f'cshare(),    `p'2z(),   &(0, 100, ., .)))      // concentration share
+    asarray(A, "dcshare"   , (`f'dcshare(),   `p'2z(),   &(0, 100, ., .)))      // concentration share as density
+    asarray(A, "gcshare"   , (`f'gcshare(),   `p'2z(),   &(0, 100, ., .)))      // generalized concentration share
+    asarray(A, "tcshare"   , (`f'tcshare(),   `p'2z(),   &(0, 100, ., .)))      // concentration share as total
+    asarray(A, "acshare"   , (`f'acshare(),   `p'2z(),   &(0, 100, ., .)))      // concentration share as average
     // poverty
-    asarray(A, "hcr"     , (`f'hcr(),      `p'pl(),   &.))                      // Head count ratio
-    asarray(A, "pgap"    , (`f'pgap(),     `p'pl(),   &.))                      // poverty gap
-    asarray(A, "apgap"   , (`f'apgap(),    `p'pl(),   &.))                      // absolute poverty gap
-    asarray(A, "pgi"     , (`f'pgi(),      `p'pl(),   &.))                      // poverty gap index
-    asarray(A, "apgi"    , (`f'apgi(),     `p'pl(),   &.))                      // absolute poverty gap index
-    asarray(A, "fgt"     , (`f'fgt(),      `p'1pl(),  &(0,   ., 0)))            // FGT poverty measure
-    asarray(A, "chu"     , (`f'chu(),      `p'1pl(),  &(0, 100, 50)))           // Clark-Hemming-Ulph poverty measure
-    asarray(A, "watts"   , (`f'watts(),    `p'pl(),   &.))                      // Watts index
-    asarray(A, "sen"     , (`f'sen(),      `p'pl(),   &.))                      // Sen poverty index
-    asarray(A, "sst"     , (`f'sst(),      `p'pl(),   &.))                      // Sen-Shorrocks-Thon poverty index
-    asarray(A, "takayama", (`f'takayama(), `p'pl(),   &.))                      // Takayama poverty index
-    asarray(A, "tip"     , (`f'tip(),      `p'1pl(),  &(0, 100, .)))            // TIP ordinate
-    asarray(A, "atip"    , (`f'atip(),     `p'1pl(),  &(0, 100, .)))            // absolute TIP ordinate
+    asarray(A, "hcr"       , (`f'hcr(),       `p'pl(),   &.))                   // Head count ratio
+    asarray(A, "pgap"      , (`f'pgap(),      `p'pl(),   &.))                   // poverty gap
+    asarray(A, "apgap"     , (`f'apgap(),     `p'pl(),   &.))                   // absolute poverty gap
+    asarray(A, "pgi"       , (`f'pgi(),       `p'pl(),   &.))                   // poverty gap index
+    asarray(A, "apgi"      , (`f'apgi(),      `p'pl(),   &.))                   // absolute poverty gap index
+    asarray(A, "fgt"       , (`f'fgt(),       `p'1pl(),  &(0,   ., 0)))         // FGT poverty measure
+    asarray(A, "chu"       , (`f'chu(),       `p'1pl(),  &(0, 100, 50)))        // Clark-Hemming-Ulph poverty measure
+    asarray(A, "watts"     , (`f'watts(),     `p'pl(),   &.))                   // Watts index
+    asarray(A, "sen"       , (`f'sen(),       `p'pl(),   &.))                   // Sen poverty index
+    asarray(A, "sst"       , (`f'sst(),       `p'pl(),   &.))                   // Sen-Shorrocks-Thon poverty index
+    asarray(A, "takayama"  , (`f'takayama(),  `p'pl(),   &.))                   // Takayama poverty index
+    asarray(A, "tip"       , (`f'tip(),       `p'1pl(),  &(0, 100, .)))         // TIP ordinate
+    asarray(A, "atip"      , (`f'atip(),      `p'1pl(),  &(0, 100, .)))         // absolute TIP ordinate
     // association
-    asarray(A, "corr"    , (`f'corr(),     `p'z(),    &.))                      // correlation
-    asarray(A, "cov"     , (`f'cov(),      `p'z1(),   &(., ., 1)))              // covariance
-    asarray(A, "spearman", (`f'spearman(), `p'z(),    &.))                      // spearman rank correlation
+    asarray(A, "corr"      , (`f'corr(),      `p'z(),    &.))                   // correlation
+    asarray(A, "cov"       , (`f'cov(),       `p'z1(),   &(., ., 1)))           // covariance
+    asarray(A, "spearman"  , (`f'spearman(),  `p'z(),    &.))                   // spearman rank correlation
     return(A)
 }
 
@@ -5836,8 +5848,13 @@ void dstat_quantile_IF(`Data' D, `Grp' G, `Int' a, `Int' b)
     fx = D.S.d(D.b[|a \ b|], D.exact)
     l = 0
     for (i=a; i<=b; i++) {
-        z = (G.Y :<= D.b[i])
-        dstat_set_IF(D, G, i, (mean(z, G.w) :- z) / (G.W * fx[++l]))
+        l++
+        if (D.at[i]==0)      D.IF[,i] = J(D.N, 1, 0)
+        else if (D.at[i]==1) D.IF[,i] = J(D.N, 1, 0)
+        else {
+            z = (G.Y :<= D.b[i])
+            dstat_set_IF(D, G, i, (mean(z, G.w) :- z) / (G.W * fx[l]))
+        }
     }
 }
 
@@ -6174,6 +6191,13 @@ void dstat_sum(`Data' D)
     return(0)
 }
 
+void _dstat_sum_fixed(`Data' D, `Int' i, `RS' b)
+{
+    D.b[i] = b
+    if (D.noIF) return(1)
+    D.IF[,i] = J(D.N, 1, 0)
+}
+
 void _dstat_sum_invalid(`Data' D, `Grp' G, `SS' s, `Int' N)
 {
     `SS' t
@@ -6203,6 +6227,12 @@ void _dstat_sum_update_Y(`Data' D, `Grp' G, `RC' Z)
     }
 }
 
+`RC' _dstat_sum_ccdf(`RC' Y, `RC' w, `RS' W)
+{
+    return((quadsum(w) :- _mm_ranks(Y, w, 3, 1)) / W)
+}
+
+
 `RC' _dstat_sum_get_pline(`Data' D, `Grp' G, `SS' o)
 {
     `RC' pl
@@ -6223,6 +6253,11 @@ void _dstat_sum_update_Y(`Data' D, `Grp' G, `RC' Z)
         return(pl)
     }
     return(D.pline)
+}
+
+`SS' dstat_unab(`SS' v)
+{
+    return(st_varname(st_varindex(v, st_global("c(varabbrev)")=="on")))
 }
 
 void dstat_sum_q(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
@@ -6247,11 +6282,46 @@ void _dstat_sum_q(`Data' D, `Grp' G, `Int' i, `RS' p)
     `RC' z
     
     dstat_init_Ys(D, G)
+    if (p==0)      {; _dstat_sum_fixed(D, i, G.Ys[1]);   return; }
+    else if (p==1) {; _dstat_sum_fixed(D, i, G.Ys[G.N]); return; }
     D.b[i] = _mm_quantile(G.Ys, G.ws, p, D.qdef, D.wtype==1)
     if (D.noIF) return
     fx = _dstat_sum_d(D, G, D.b[i])
     z = (G.Y :<= D.b[i])
     dstat_set_IF(D, G, i, (mean(z, G.w) :- z) / (G.W * fx))
+}
+
+void dstat_sum_hdquantile(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    pragma unused O
+    
+    _dstat_sum_hdquantile(D, G, i, strtoreal(o)/100)
+}
+
+void _dstat_sum_hdquantile(`Data' D, `Grp' G, `Int' i, `RS' p)
+{
+    `RS'  a, b, c
+    `RC'  F, w, h, z
+
+    dstat_init_Ys(D, G)
+    if (D.wtype==1) {
+        display("{err}{bf:fweight}s not allowed with statistic {bf:hdq()}")
+        exit(101)
+    }
+    if (p==0)      {; _dstat_sum_fixed(D, i, G.Ys[1]);   return; }
+    else if (p==1) {; _dstat_sum_fixed(D, i, G.Ys[G.N]); return; }
+    a = p*(G.N+1)
+    b = (1-p)*(G.N+1)
+    F = 0 \ _mm_ranks(G.Ys, G.ws, 0, 0, 1) // break ties, normalize
+    w = mm_diff(ibeta(a, b, F))
+    D.b[i] = mean(G.Ys, w:*G.ws)
+    if (D.noIF) return
+    c = G.W / quadsum(w:*G.ws) // normalizing factor
+    z = (mm_diff(betaden(a, b, F)) * c) :* G.Ys :* G.ws
+    z = (quadsum(z) :- _mm_ranks(G.Y, z, 0, 0)) / G.W
+    h = J(G.N, 1, 0)
+    h[G.ps] = ((w*c):*G.Ys :- D.b[i]) + (z :- mean(z, G.ws))
+    dstat_set_IF(D, G, i, h / G.W)
 }
 
 void dstat_sum_d(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
@@ -6462,36 +6532,32 @@ void dstat_sum_min(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     pragma unused o
     pragma unused O
-    D.b[i] = min(G.Y)
-    if (D.noIF) return
-    D.IF[,i] = J(D.N, 1, 0)
+    
+    _dstat_sum_fixed(D, i, min(G.Y))
 }
 
 void dstat_sum_max(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     pragma unused o
     pragma unused O
-    D.b[i] = max(G.Y)
-    if (D.noIF) return
-    D.IF[,i] = J(D.N, 1, 0)
+
+    _dstat_sum_fixed(D, i, max(G.Y))
 }
 
 void dstat_sum_range(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     pragma unused o
     pragma unused O
-    D.b[i] = mm_diff(minmax(G.Y))
-    if (D.noIF) return
-    D.IF[,i] = J(D.N, 1, 0)
+
+    _dstat_sum_fixed(D, i, mm_diff(minmax(G.Y)))
 }
 
 void dstat_sum_midrange(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     pragma unused o
     pragma unused O
-    D.b[i] = sum(minmax(G.Y))/2
-    if (D.noIF) return
-    D.IF[,i] = J(D.N, 1, 0)
+
+    _dstat_sum_fixed(D, i, sum(minmax(G.Y))/2)
 }
 
 void dstat_sum_mean(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
@@ -6977,7 +7043,7 @@ void dstat_sum_md(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     // In analogy to the Gini coefficient the main moment condition of the MD
     // can be written as h = 2*(2*F - 1)*Y - MD
     B = J(G.N, 1, .)
-    B[G.ps] = _dstat_sum_gini_topsum(G.Ys, G.Ys:*G.ws, G.W)
+    B[G.ps] = _dstat_sum_ccdf(G.Ys, G.Ys:*G.ws, G.W)
     F[G.ps] = F
     dstat_set_IF(D, G, i, ((4*F :- 2):*G.Y :- D.b[i] :+ 4*(B :- cov)) / G.W)
 }
@@ -7326,8 +7392,7 @@ void _dstat_sum_gini(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     // (the IF of the Gini coefficient has the same structure as the IF of the
     // relative PDF; see -reldist-)
     B = J(G.N, 1, .)
-    B[G.ps] = _dstat_sum_gini_topsum(G.Ys, G.Ys:*G.ws, G.W)
-    //B[G.ps] = _dstat_sum_gini_topsum(G.Ys, G.Ys:*G.ws, G.W, G.N)
+    B[G.ps] = _dstat_sum_ccdf(G.Ys, G.Ys:*G.ws, G.W)
     F[G.ps] = F
     if (abs) {
         dstat_set_IF(D, G, i, (((2*F :- 1):*G.Y + 2*(B :- cp))*c :- D.b[i]) / G.W)
@@ -7337,39 +7402,6 @@ void _dstat_sum_gini(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
         // = 1/m * (c*(2*F :- 1):*G.Y :- D.b[i]:*G.Y :+ c*2*(B :- cp)) / G.W
     }
 }
-
-`RC' _dstat_sum_gini_topsum(`RC' Y, `RC' Yw, `RS' W)
-{
-    return((quadsum(Yw) :- _mm_ranks(Y, Yw, 3, 1)) / W)
-}
-/*
-`RC' _dstat_sum_gini_topsum(`RC' Y, `RC' Yw, `RS' W, `RS' N)
-{
-    `RC' p
-    
-    p = N::1
-    return(_mm_ranks(-Y[p], Yw[p], 3, 1)[p]/W)
-}
-`RC' _dstat_sum_gini_topsum(`RC' Y, `RC' Yw, `RS' W, `RS' N)
-{
-    `Int' i, i1
-    `RS'  y1
-    `RC'  T
-    
-    T = quadrunningsum(Yw[N::1])[N::1] // reverse running sum of Yw
-    for (i=N; i; i--) {
-        i1 = i
-        y1 = Y[i1]
-        for (; i; i--) {
-            if (Y[i]!=y1) break
-        }
-        i++
-        if (i==i1) T[i] = T[i] - Yw[i]/2
-        else       T[|i\i1|] = J(i1-i+1, 1, T[i] - quadsum(Yw[|i\i1|])/2)
-    }
-    return(T/W)
-}
-*/
 
 void dstat_sum_mld(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
 {
@@ -7794,7 +7826,7 @@ void _dstat_sum_gci(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     // compute IF
     if (D.noIF) return
     B = J(G.N, 1, .)
-    B[G.ps] = _dstat_sum_gini_topsum(G.Zs, (G.Ys:-m):*G.ws, G.W)
+    B[G.ps] = _dstat_sum_ccdf(G.Zs, (G.Ys:-m):*G.ws, G.W)
     F[G.ps] = F
     if (abs) {
         dstat_set_IF(D, G, i, ((F:-mF):*(G.Y:-m) :+ B :- 2*cov) * ((2*c)/G.W))
@@ -8111,7 +8143,7 @@ void dstat_sum_sen(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     if (N==0) z_Gp = J(G.N, 1, 0) // no poor
     else {
         B = z_Gp = J(G.N, 1, 0)
-        B[p] = _dstat_sum_gini_topsum(Ys, Ys:*ws, W)
+        B[p] = _dstat_sum_ccdf(Ys, Ys:*ws, W)
         z_Gp[p] = F
         z_Gp = z_hcr :* ((z_Gp :- cp/m):*G.Y :+ B :- cp) * (2 / m) * (G.W/W)
     }
@@ -8143,7 +8175,7 @@ void dstat_sum_sst(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     D.b[i] = pgi * (1 + Gp) 
     if (D.noIF) return
     // part of IF related to Gini
-    B = _dstat_sum_gini_topsum(Ys, Ys:*ws, G.W)
+    B = _dstat_sum_ccdf(Ys, Ys:*ws, G.W)
     h = J(G.N, 1, 0)
     h[p] = ((F :- cp/m):*Ys :+ B :- cp) * (2 / m)
     // add part related to PGI
@@ -8170,7 +8202,7 @@ void dstat_sum_takayama(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     cp = cross(Ys, ws, F) / G.W
     D.b[i] = cp * 2 / m - 1 
     if (D.noIF) return
-    B = _dstat_sum_gini_topsum(Ys, Ys:*ws, G.W)
+    B = _dstat_sum_ccdf(Ys, Ys:*ws, G.W)
     h = J(G.N, 1, 0)
     h[p] = ((F :- cp/m):*Ys :+ B :- cp) * (2 / m)
     dstat_set_IF(D, G, i, h / G.W)
@@ -8298,25 +8330,15 @@ void dstat_sum_spearman(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     // compute IF
     if (D.noIF) return
     hY = hZ = J(G.N, 1, .)
-    hY[pY] = _dstat_sum_gini_topsum(FY[pY], (FZ:*G.w)[pY], G.W)
-    hZ[pZ] = _dstat_sum_gini_topsum(FZ[pZ], (FY:*G.w)[pZ], G.W)
+    hY[pY] = _dstat_sum_ccdf(FY[pY], (FZ:*G.w)[pY], G.W)
+    hZ[pZ] = _dstat_sum_ccdf(FZ[pZ], (FY:*G.w)[pZ], G.W)
     hYZ    = (FY:*FZ + hY + hZ) :- 3*(cov + 0.25)
-    hY[pY] = _dstat_sum_gini_topsum(FY[pY], (2*FY:*G.w)[pY], G.W)
+    hY[pY] = _dstat_sum_ccdf(FY[pY], (2*FY:*G.w)[pY], G.W)
     hY     = (FY:^2 + hY) :- 3*(vy + 0.25)
-    hZ[pZ] = _dstat_sum_gini_topsum(FZ[pZ], (2*FZ:*G.w)[pZ], G.W)
+    hZ[pZ] = _dstat_sum_ccdf(FZ[pZ], (2*FZ:*G.w)[pZ], G.W)
     hZ     = (FZ:^2 + hZ) :- 3*(vz + 0.25)
     dstat_set_IF(D, G, i, (hYZ - cov * (hY/(2*vy) + hZ/(2*vz))) /
                           (sqrt(vy)*sqrt(vz) * G.W))
-}
-
-
-// --------------------------------------------------------------------------
-// varia
-// --------------------------------------------------------------------------
-
-`SS' dstat_unab(`SS' v)
-{
-    return(st_varname(st_varindex(v, st_global("c(varabbrev)")=="on")))
 }
 
 

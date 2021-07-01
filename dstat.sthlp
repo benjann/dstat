@@ -1,5 +1,5 @@
 {smcl}
-{* 30jun2021}{...}
+{* 01jul2021}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -43,6 +43,7 @@ help for {hi:dstat}{...}
 
 {p2colset 15 28 30 2}{...}
 {p2col:{opt d:ensity}}density function{p_end}
+{p2col:{opt pdf}}alias for {cmd:density}{p_end}
 {p2col:{opt h:istogram}}histogram{p_end}
 {p2col:{opt p:roportion}}probability distribution{p_end}
 {p2col:{opt c:df}}cumulative distribution function{p_end}
@@ -384,6 +385,8 @@ help for {hi:dstat}{...}
 {synopt:{opt quantile}{cmd:(}{it:p}{cmd:)}}{it:p}/100 quantile; {it:p} in [0,100]
     {p_end}
 {synopt:{opt p}{cmd:(}{it:p}{cmd:)}}alias for {cmd:quantile()}
+    {p_end}
+{synopt:{opt hdquantile}{cmd:(}{it:p}{cmd:)}}{it:p}/100 Harrell/Davis (1982) quantile; {it:p} in [0,100]; not allowed with {cmd:fweight}s
     {p_end}
 {synopt:{opt density}{cmd:(}{it:x}{cmd:)}}kernel density at value {it:x}
     {p_end}
@@ -1827,6 +1830,10 @@ help for {hi:dstat}{...}
     Estimation. Journal of the American Statistical Association 69: 383-393.
     {p_end}
 {phang}
+    Harrell, F.E., C.E. Davis (1982). A New Distribution-Free Quantile Estimator. Biometrika
+    69: 635-640.
+    {p_end}
+{phang}
     Hinkley, D. V. (1975). On power transformations to symmetry. Biometrika
     62(1): 101-111.
     {p_end}
@@ -1926,6 +1933,7 @@ help for {hi:dstat}{...}
     {helpb apoverty},
     {helpb catplot},
     {helpb cdfplot},
+    {helpb ci2},
     {helpb dfl},
     {helpb distplot},
     {helpb eqprhistogram},
