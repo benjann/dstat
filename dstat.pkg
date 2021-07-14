@@ -1,9 +1,9 @@
 v 3
 d dstat: Stata module to compute summary statistics and distribution functions including standard errors and optional covariate balancing
 d 
-d Author: Ben Jann, University of Bern, ben.jann@soz.unibe.ch
+d Author: Ben Jann, University of Bern, ben.jann@unibe.ch
 d
-d Distribution-Date: 20210701
+d Distribution-Date: 20210714
 f dstat.sthlp
 f dstat.ado
 f dstat_svyr.ado

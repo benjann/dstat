@@ -1,5 +1,5 @@
 {smcl}
-{* 01jul2021}{...}
+{* 14jul2021}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -46,6 +46,7 @@ help for {hi:dstat}{...}
 {p2col:{opt pdf}}alias for {cmd:density}{p_end}
 {p2col:{opt h:istogram}}histogram{p_end}
 {p2col:{opt p:roportion}}probability distribution{p_end}
+{p2col:{opt freq:uency}}alias for {cmd:proportion} with option {cmd:frequency}{p_end}
 {p2col:{opt c:df}}cumulative distribution function{p_end}
 {p2col:{opt cc:df}}complementary CDF/survival function{p_end}
 {p2col:{opt q:uantile}}quantile function{p_end}
@@ -100,6 +101,8 @@ help for {hi:dstat}{...}
 {synopt:{help dstat##repopts:{it:reporting_options}}}reporting options
     {p_end}
 {synopt:{opt qdef(#)}}quantile definition
+    {p_end}
+{synopt:{opt hdq:uantile}}synonym for {cmd:qdef(10)} (Harrell-Davis quantiles)
     {p_end}
 {synopt:{it:{help dstat##densopts:density_options}}}details of density estimation
     {p_end}
@@ -161,6 +164,8 @@ help for {hi:dstat}{...}
 {synopt:{opt com:mon}}use common bin definitions across subpopulations
     {p_end}
 {synopt:{opth at(numlist)}}custom bin definitions
+    {p_end}
+{synopt:{opt disc:rete}}treat data as discrete (calls {cmd:dstat proportion})
     {p_end}
 {synopt:{cmdab:unc:onditional}}rescale results by relative size of subpopulation
     {p_end}
@@ -386,7 +391,7 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt p}{cmd:(}{it:p}{cmd:)}}alias for {cmd:quantile()}
     {p_end}
-{synopt:{opt hdquantile}{cmd:(}{it:p}{cmd:)}}{it:p}/100 Harrell/Davis (1982) quantile; {it:p} in [0,100]; not allowed with {cmd:fweight}s
+{synopt:{opt hdquantile}{cmd:(}{it:p}{cmd:)}}{it:p}/100 Harrell/Davis (1982) quantile; {it:p} in [0,100]
     {p_end}
 {synopt:{opt density}{cmd:(}{it:x}{cmd:)}}kernel density at value {it:x}
     {p_end}
@@ -466,7 +471,7 @@ help for {hi:dstat}{...}
     normalized MAE, equal to 1/invnormal(0.75) * {cmd:mae} or (sqrt(pi/2) * {cmd:mae} if {it:l}!=0)
     {p_end}
 {synopt:{opt md}[{cmd:n}]}mean absolute pairwise difference; equal to 2 * {cmd:mean} * {cmd:gini}; specify {cmd:mdn} for
-    normalized MD, equal to sqrt(pi)/2 * {cmd:md}   
+    normalized MD, equal to sqrt(pi)/2 * {cmd:md}
     {p_end}
 {synopt:{opt mscale}[{cmd:(}{it:bp}{cmd:)}]}M estimate of scale with breakdown
     point {it:bp} in [1,50]; default is {it:bp}=50
@@ -540,7 +545,7 @@ help for {hi:dstat}{...}
     {cmd:q}({it:p2})/{cmd:q}({it:p1}); default is {it:p1}=10 and {it:p2}=90
     {p_end}
 {synopt:{opt sratio}[{cmd:(}{it:l1}{cmd:,}{it:u1}{cmd:,}{it:l2}{cmd:,}{it:u2}{cmd:)}]}percentile
-    share ratio; default is {it:l1}=0, {it:u1}=10, {it:l2}=90, {it:u2}=100; can also specify 
+    share ratio; default is {it:l1}=0, {it:u1}=10, {it:l2}=90, {it:u2}=100; can also specify
     {cmd:sratio(}{it:u1}{cmd:,}{it:l2}{cmd:)}
     {p_end}
 {synopt:[*]{cmd:lorenz}{cmd:(}{it:p}{cmd:)}}Lorenz ordinate, {it:p} in [0,100];
@@ -607,7 +612,7 @@ help for {hi:dstat}{...}
 {synopt:{opt corr}[{cmd:(}{it:{help varname:zvar}}{cmd:)}]}correlation coefficient;
     {it:zvar} specifies the secondary variable; default is as set by option {cmd:zvar()}
     {p_end}
-{synopt:{opt cov}[{cmd:(}{it:{help varname:zvar}}[{cmd:,}{it:df}]{cmd:)}]}covariance; {it:df} applies small-sample 
+{synopt:{opt cov}[{cmd:(}{it:{help varname:zvar}}[{cmd:,}{it:df}]{cmd:)}]}covariance; {it:df} applies small-sample
     adjustment; default is {it:df}=1; can also specify {opt cov(df)}
     {p_end}
 {synopt:{opt spearman}[{cmd:(}{it:{help varname:zvar}}{cmd:)}]}Spearman's rank correlation
@@ -654,10 +659,10 @@ help for {hi:dstat}{...}
     will be used as the basis for the contrasts, depending on whether option
     {cmd:total} has been specified or not. Alternatively, specify
     the value of the reference subpopulation in parentheses (this may also be
-    a subpopulation that has been excluded by {cmd:select()}) or 
+    a subpopulation that has been excluded by {cmd:select()}) or
     type {cmd:contrast(lag)} or {cmd:contrast(lead)} to take stepwise contrasts
     with respect to the previous or next subpopulation, respectively. {cmd:contrast}
-    implies {cmd:common} (if relevant). 
+    implies {cmd:common} (if relevant).
 
 {pmore2}
     The estimates from the reference (sub)population will be included among the
@@ -807,10 +812,22 @@ help for {hi:dstat}{...}
 
 {phang}
     {opt qdef(#)} sets the quantile definition to be used when computing
-    quantiles, with {it:#} in {c -(}0,...,9{c )-}. The default is
-    {cmd:qdef(2)}. Definitions 1-9 are as described in Hyndman and Fan
-    (1996), definition 0 is the "high" quantile; see
+    quantiles, with {it:#} in {c -(}0,...,10{c )-}. The default is
+    {cmd:qdef(2)} (same as, e.g. {helpb summarize}). Definitions 1-9 are as
+    described in Hyndman and Fan (1996), definition 0 is the "high" quantile,
+    and definition 10 is the Harrell-Davis quantile (Harrell and Davis 1982); see
     {helpb mf_mm_quantile:mm_quantile()} for more information.
+
+{phang}
+    {opt hdquantile} is a synonym for {cmd:qdef(10)} (Harrell-Davis
+    quantiles). Only one of {opt hdquantile} and {opt qdef()} is allowed.
+
+{pmore}
+    The Harrell-Davis estimator typically leads to somewhat smoother quantile
+    functions that the other quantile definitions. Furthermore, standard errors
+    for Harrell-Davis quantiles do not depend on density estimation; they thus
+    tend to be more reliable than standard errors for other quantile if there is
+    heaping in the data.
 
 {marker densopts}{...}
 {phang}
@@ -1017,7 +1034,7 @@ help for {hi:dstat}{...}
     will not be dropped from the overall estimation sample.
 
 {phang}
-    {opth zvar(varname)} specifies a default secondary variable for 
+    {opth zvar(varname)} specifies a default secondary variable for
     association measures and concentration measures.
 
 {phang}
@@ -1050,7 +1067,7 @@ help for {hi:dstat}{...}
 {phang}
     {opt range(a b)} specifies the range of the evaluation grid. The default is
     is to determine the range of the grid from the data; see option {cmd:n()}. Option
-    {cmd:range()} overrides {cmd:common}. Only one of {cmd:range()} and 
+    {cmd:range()} overrides {cmd:common}. Only one of {cmd:range()} and
     {cmd:at()} is allowed.
 
 {phang}
@@ -1119,6 +1136,13 @@ help for {hi:dstat}{...}
     cutpoint is smaller than or equal to the minimum of the data and the last
     cutpoint is larger than or equal to the maximum ({cmd:dstat} does {it:not} check
     this condition and does not display a warning if the condition is violated).
+
+{phang}
+    {cmd:discrete} treats the data as discrete and estimates the probability of
+    each observed level in the data. The option is implemented as a
+    redirection to subcommand {cmd:proportion} with option {cmd:nocategorical}. Options
+    {cmd:n()} and {cmd:ep} are not allowed together with {cmd:discrete}; the other
+    options are as described for {help dstat##prop:subcommand {bf:proportion}}.
 
 {phang}
     {cmd:unconditional} rescales results by the relative size of
@@ -1190,7 +1214,7 @@ help for {hi:dstat}{...}
 {phang}
     {opt range(a b)} specifies the range of the evaluation grid. The default is
     is to determine the range of the grid from the data; see option {cmd:n()}. Option
-    {cmd:range()} overrides {cmd:common}. Only one of {cmd:range()} and 
+    {cmd:range()} overrides {cmd:common}. Only one of {cmd:range()} and
     {cmd:at()} is allowed.
 
 {phang}
@@ -1314,7 +1338,7 @@ help for {hi:dstat}{...}
 {dlgtab:Subcommand tip}
 
 {phang}
-    {opt pline(#|varname)} specifies the poverty line, either as a single 
+    {opt pline(#|varname)} specifies the poverty line, either as a single
     value or as a variable containing observation-specific
     values. Option {cmd:pline()} is required.
 
@@ -1894,7 +1918,7 @@ help for {hi:dstat}{...}
 {title:Author}
 
 {pstd}
-    Ben Jann, University of Bern, ben.jann@soz.unibe.ch
+    Ben Jann, University of Bern, ben.jann@unibe.ch
 
 {pstd}
     Thanks for citing this software as follows:

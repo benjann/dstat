@@ -1,4 +1,4 @@
-*! version 1.1.7  01jul2021  Ben Jann
+*! version 1.1.8  14jul2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -21,22 +21,32 @@ program dstat, eclass properties(svyb svyj)
         Predict `00'
         exit
     }
+    local version : di "version " string(_caller()) ":"
     if substr(`"`subcmd'"',1,1)=="(" {  // omitted summarize
         local 00 `0'
         local subcmd summarize
     }
-    local version : di "version " string(_caller()) ":"
-    capt Parse_subcmd `subcmd' // expands subcmd
-    if _rc==1 exit _rc
-    if _rc { // try summarize
-        capt confirm variable `subcmd'
+    else if `"`subcmd'"'==substr("frequency",1,max(4,strlen(`"`subcmd'"'))) {
+        // alias for -proportion, frequency-
+        local subcmd proportion
+        Parse_frequency `00'
+    }
+    else {
+        capt Parse_subcmd `subcmd' // expands subcmd
         if _rc==1 exit _rc
-        if _rc {
-            di as err `"invalid subcommand: `subcmd'"'
-            exit 198
+        if _rc { // try summarize
+            capt confirm variable `subcmd'
+            if _rc==1 exit _rc
+            if _rc {
+                di as err `"invalid subcommand: `subcmd'"'
+                exit 198
+            }
+            local 00 `"`subcmd' `00'"'
+            local subcmd summarize
         }
-        local 00 `"`subcmd' `00'"'
-        local subcmd summarize
+        else if "`subcmd'"=="histogram" {
+            Parse_hist_discrete `00' // redirect to proportion if nocategprical
+        }
     }
     Get_diopts `subcmd' `00' // returns 00, diopts, dioptshaslevel
     tempname BW AT
@@ -83,6 +93,20 @@ program dstat, eclass properties(svyb svyj)
             describe `e(generate)'
         }
     }
+end
+
+program Parse_frequency
+    _parse comma lhs 0 : 0
+    syntax [, FREQuency * ]
+    c_local 00 `lhs', frequency `options'
+end
+
+program Parse_hist_discrete
+    _parse comma lhs 0 : 0
+    syntax [, DISCrete NOCATegorical PROPortion * ]
+    if "`discrete'"=="" exit
+    c_local subcmd proportion
+    c_local 00 `lhs', nocategorical `options'
 end
 
 program Parse_subcmd
@@ -805,7 +829,10 @@ program _Replay
             di as txt _col(`c1') "Bandwidth" _col(`c2') "= " as res `bwidth'
         }
         else if "`subcmd'"=="quantile" {
-            di as txt _col(`c1') "Quantile type" _col(`c2') "= " as res %10.0g e(qdef)
+            local qdef = e(qdef)
+            if `qdef'==10 local qdef "hdquantile"
+            else          local qdef "def. `qdef'"
+            di as txt _col(`c1') "Quantile type" _col(`c2') "= " as res %10s "`qdef'"
         }
         else if "`subcmd'"=="lorenz" | "`subcmd'"=="share" {
             if `"`e(zvar)'"'!="" {
@@ -998,7 +1025,7 @@ program Graph
     if `"`contrast'"'!="" mata: dstat_drop_cref("`B'", 0, 1)
     local b matrix(`B')
     if `"`subcmd'"'!="summarize" {
-        if !(`"`subcmd'"'=="proportion" & `"`e(novalues)'"'=="") {
+        if !(`"`subcmd'"'=="proportion" & `"`e(novalues)'"'=="" & `"`e(categorical)'"'!="") {
             tempname AT
             matrix `AT' = e(at)
             if `"`contrast'"'!="" mata: dstat_drop_cref("`AT'", 0, 1)
@@ -1554,7 +1581,7 @@ program _Estimate, eclass
     else exit 499
     syntax `lhs' [if] [in] [fw iw pw/], [ ///
             NOVALues VFormat(str) NOCASEwise ///
-            qdef(numlist max=1 int >=0 <=9) ///
+            qdef(numlist max=1 int >=0 <=10) HDQuantile ///
             Over(str) TOTal BALance(str) ///
             vce(str) NOSE Level(cilevel) ///
             Generate(passthru) rif(str) Replace ///
@@ -1570,7 +1597,15 @@ program _Estimate, eclass
         confirm format `vformat'
     }
     else local vformat %9.0g
-    if "`qdef'"=="" local qdef 2
+    if "`hdquantile'"!="" {
+        if "`qdef'"!="" & "`qdef'"!="10" {
+            di as err "{bf:qdef()} and {bf:hdquantile} not both allowed"
+        }
+        local qdef 10
+    }
+    else {
+        if "`qdef'"=="" local qdef 2
+    }
     if "`subcmd'"=="proportion" {
         if "`nocategorical'"=="" local categorical "categorical"
     }
@@ -3651,6 +3686,24 @@ void _dstat_cstripe(`SS' nm, `SM' S, `Bool' row)
 }
 
 // --------------------------------------------------------------------------
+// other helper functions
+// --------------------------------------------------------------------------
+
+`SS' dstat_unab(`SS' v)
+{
+    return(st_varname(st_varindex(v, st_global("c(varabbrev)")=="on")))
+}
+
+`RC' dstat_invp(`Int' N, `IntC' p, `RC' x)
+{
+    `RC' y
+    
+    y = J(N, 1, .)
+    y[p] = x
+    return(y)
+}
+
+// --------------------------------------------------------------------------
 // dstat core
 // --------------------------------------------------------------------------
 
@@ -4848,14 +4901,8 @@ void dstat_reset_Y(`Data' D, `Grp' G)
 
 void dstat_update_Y(`Data' D, `Grp' G, `RC' y)
 {
-    `RC' touse
-    
-    if (rows(G.pp)) {
-        touse = J(G.G0.N, 1, 0)
-        touse[G.pp] = (y:<.)
-        _dstat_init_Y(D, G, 1, 1, touse)
-    }
-    else _dstat_init_Y(D, G, 1, 1, y:<.)
+    if (rows(G.pp)==0) _dstat_init_Y(D, G, 1, 1, y:<.)
+    else _dstat_init_Y(D, G, 1, 1, dstat_invp(G.G0.N, G.pp, (y:<.)))
     G.reset = 1
 }
 
@@ -5814,7 +5861,7 @@ void dstat_quantile(`Data' D)
     `RC'   AT
     `Grp'  G
     
-    if (D.noIF==0) D.hasdens = `TRUE'
+    if (D.noIF==0 & D.qdef!=10) D.hasdens = `TRUE'
     G.k = b = 0
     for (i=1; i<=D.nover; i++) {
         dstat_init_grp(D, G, i)
@@ -5830,6 +5877,10 @@ void dstat_quantile(`Data' D)
                 "q":+strofreal(1::b-a+1) : strofreal(AT, D.vfmt)))
             if (G.N==0) dstat_noobs(D, a, b)
             else {
+                if (D.qdef==10) {
+                    _dstat_sum_hdquantile(D, G, a, b, AT)
+                    continue
+                }
                 D.b[|a \ b|] = _mm_quantile(G.Ys, G.ws, AT, D.qdef, D.wtype==1)
                 if (D.noIF==0) {
                     dstat_set_density(D, G)
@@ -6232,7 +6283,6 @@ void _dstat_sum_update_Y(`Data' D, `Grp' G, `RC' Z)
     return((quadsum(w) :- _mm_ranks(Y, w, 3, 1)) / W)
 }
 
-
 `RC' _dstat_sum_get_pline(`Data' D, `Grp' G, `SS' o)
 {
     `RC' pl
@@ -6253,11 +6303,6 @@ void _dstat_sum_update_Y(`Data' D, `Grp' G, `RC' Z)
         return(pl)
     }
     return(D.pline)
-}
-
-`SS' dstat_unab(`SS' v)
-{
-    return(st_varname(st_varindex(v, st_global("c(varabbrev)")=="on")))
 }
 
 void dstat_sum_q(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
@@ -6284,6 +6329,10 @@ void _dstat_sum_q(`Data' D, `Grp' G, `Int' i, `RS' p)
     dstat_init_Ys(D, G)
     if (p==0)      {; _dstat_sum_fixed(D, i, G.Ys[1]);   return; }
     else if (p==1) {; _dstat_sum_fixed(D, i, G.Ys[G.N]); return; }
+    if (D.qdef==10) {
+        _dstat_sum_hdquantile(D, G, i, i, p)
+        return
+    }
     D.b[i] = _mm_quantile(G.Ys, G.ws, p, D.qdef, D.wtype==1)
     if (D.noIF) return
     fx = _dstat_sum_d(D, G, D.b[i])
@@ -6295,33 +6344,61 @@ void dstat_sum_hdquantile(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     pragma unused O
     
-    _dstat_sum_hdquantile(D, G, i, strtoreal(o)/100)
+    dstat_init_Ys(D, G)
+    _dstat_sum_hdquantile(D, G, i, i, strtoreal(o)/100)
 }
 
-void _dstat_sum_hdquantile(`Data' D, `Grp' G, `Int' i, `RS' p)
+void _dstat_sum_hdquantile(`Data' D, `Grp' G, `Int' a, `Int' b, `RC' p)
 {
-    `RS'  a, b, c
-    `RC'  F, w, h, z
-
-    dstat_init_Ys(D, G)
-    if (D.wtype==1) {
-        display("{err}{bf:fweight}s not allowed with statistic {bf:hdq()}")
-        exit(101)
-    }
-    if (p==0)      {; _dstat_sum_fixed(D, i, G.Ys[1]);   return; }
-    else if (p==1) {; _dstat_sum_fixed(D, i, G.Ys[G.N]); return; }
-    a = p*(G.N+1)
-    b = (1-p)*(G.N+1)
-    F = 0 \ _mm_ranks(G.Ys, G.ws, 0, 0, 1) // break ties, normalize
-    w = mm_diff(ibeta(a, b, F))
-    D.b[i] = mean(G.Ys, w:*G.ws)
+    D.b[|a \ b|] = _mm_hdq(G.Ys, G.ws, p, D.wtype==1)
     if (D.noIF) return
-    c = G.W / quadsum(w:*G.ws) // normalizing factor
-    z = (mm_diff(betaden(a, b, F)) * c) :* G.Ys :* G.ws
-    z = (quadsum(z) :- _mm_ranks(G.Y, z, 0, 0)) / G.W
-    h = J(G.N, 1, 0)
-    h[G.ps] = ((w*c):*G.Ys :- D.b[i]) + (z :- mean(z, G.ws))
-    dstat_set_IF(D, G, i, h / G.W)
+    _dstat_sum_hdq_IF(0, D, G, a, b, p)
+}
+
+`T' _dstat_sum_hdq_IF(`Bool' noset, `Data' D, `Grp' G, `Int' i0, `Int' i1, `RC' p)
+{   // obtain IFs in analogy to the jackknife approach by Harrell and Davis
+    // (1982); in the unweighted case, results are equivalent to
+    // hdquantiles_sd() from Python's -scipy-
+    `RS'  i, k, n
+    `RC'  F, F0
+    `RM'  IF
+    
+    if      (rows(G.w)==1) n = G.N * G.w
+    else if (D.wtype==1)   n = G.W
+    else                   n = G.W^2 / quadsum(G.w:^2)
+    if (G.w==1) F = 0 \ (1::n)/(n-1)
+    else {
+        F  = _mm_ranks(G.Ys, G.ws, 0, 0, 1) * (n/(n-1))
+        F0 = F :- (1 / (n-1))
+    }
+    k = 0
+    if (noset) {
+        IF = J(G.N, i1-i0+1, .)
+        for (i=i0; i<=i1; i++) {
+            k++
+            IF[,k] = __dstat_sum_hdq_IF(G, p[k], F, F0, n)
+        }
+        return(IF)
+    }
+    for (i=i0; i<=i1; i++) {
+        dstat_set_IF(D, G, i, __dstat_sum_hdq_IF(G, p[++k], F, F0, n))
+    }
+}
+
+`RC' __dstat_sum_hdq_IF(`Grp' G, `RS' p, `RC' F, `RC' F0, `RS' n)
+{
+    `RS'  a, b
+    `RC'  d, h
+    
+    if (p==0) return(J(G.N, 1, 0))
+    if (p==1) return(J(G.N, 1, 0))
+    a = p * (n + 1)
+    b = (1 - p) * (n + 1)
+    if (G.w==1) d = mm_diff(ibeta(a, b, F)) * (1-n)
+    else        d = (ibeta(a, b, F)-ibeta(a, b, F0)) * (1-n)
+    h = quadrunningsum(d:*(G.Ys[|2\G.N|]\0))
+    h = (0\quadrunningsum(d:*G.Ys))[|1\G.N|] + (h[G.N] :- (0\h[|1\G.N-1|]))
+    return(dstat_invp(G.N, G.ps, h :- mean(h, G.ws)) / G.W)
 }
 
 void dstat_sum_d(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
@@ -6339,8 +6416,7 @@ void dstat_sum_density(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     dstat_init_Ys(D, G)
     D.b[i] = _dstat_sum_d(D, G, at)
     if (D.noIF) return
-    z = J(G.N, 1, .)
-    z[G.ps] = D.S.K(D.S.X(), at, D.S.h()*D.S.l())
+    z = dstat_invp(G.N, G.ps, D.S.K(D.S.X(), at, D.S.h()*D.S.l()))
     if (D.exact) dstat_set_IF(D, G, i, (z :- D.b[i])/G.W)
     else         dstat_set_IF(D, G, i, (z :- mean(z, G.w))/G.W)
 }
@@ -6832,22 +6908,18 @@ void dstat_sum_smse(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 
 void dstat_sum_iqr(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    `RC' p, q, fx, z1, z2
+    `RS' b1
+    `RC' p, IF1
     
-    if (o!="") p = strtoreal(tokens(o)')
-    else       p = O[(3,4)]'
-    p = p / 100
-    dstat_init_Ys(D, G)
-    q = _mm_quantile(G.Ys, G.ws, p, D.qdef, D.wtype==1)
-    D.b[i] = q[2] - q[1]
+    if (o!="") p = strtoreal(tokens(o)') / 100
+    else       p = O[(3,4)]' / 100
+    _dstat_sum_q(D, G, i, p[1]) // lower quantile
+    b1 = D.b[i]
+    if (D.noIF==0) IF1 = D.IF[,i]
+    _dstat_sum_q(D, G, i, p[2]) // upper quantile
+    D.b[i] = D.b[i] - b1
     if (D.noIF) return
-    fx = _dstat_sum_d(D, G, q)
-    z1 = (G.Y :<= q[1])
-    z2 = (G.Y :<= q[2])
-    dstat_set_IF(D, G, i,
-        (mean(z2, G.w) :- z2) / (G.W * fx[2])   // upper quartile
-      - (mean(z1, G.w) :- z1) / (G.W * fx[1])   // lower quartile
-        )
+    D.IF[,i] = D.IF[,i] - IF1
 }
 
 void dstat_sum_iqrn(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
@@ -6856,9 +6928,9 @@ void dstat_sum_iqrn(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     `RC' p
 
     dstat_sum_iqr(D, G, i, o, O)
-    if (o!="") p = strtoreal(tokens(o)')
-    else       p = O[(3,4)]'
-    c = 1 / (invnormal(p[2]/100) - invnormal(p[1]/100))
+    if (o!="") p = strtoreal(tokens(o)') / 100
+    else       p = O[(3,4)]' / 100
+    c = 1 / (invnormal(p[2]) - invnormal(p[1]))
     D.b[i] = D.b[i] * c
     if (D.noIF) return
     D.IF[,i] = D.IF[,i] * c
@@ -7042,8 +7114,7 @@ void dstat_sum_md(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     if (D.noIF) return
     // In analogy to the Gini coefficient the main moment condition of the MD
     // can be written as h = 2*(2*F - 1)*Y - MD
-    B = J(G.N, 1, .)
-    B[G.ps] = _dstat_sum_ccdf(G.Ys, G.Ys:*G.ws, G.W)
+    B = dstat_invp(G.N, G.ps, _dstat_sum_ccdf(G.Ys, G.Ys:*G.ws, G.W))
     F[G.ps] = F
     dstat_set_IF(D, G, i, ((4*F :- 2):*G.Y :- D.b[i] :+ 4*(B :- cov)) / G.W)
 }
@@ -7391,8 +7462,7 @@ void _dstat_sum_gini(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     // h = (2*F - 1)*Y - G*Y (see Binder & Kovacevic 1995)
     // (the IF of the Gini coefficient has the same structure as the IF of the
     // relative PDF; see -reldist-)
-    B = J(G.N, 1, .)
-    B[G.ps] = _dstat_sum_ccdf(G.Ys, G.Ys:*G.ws, G.W)
+    B = dstat_invp(G.N, G.ps, _dstat_sum_ccdf(G.Ys, G.Ys:*G.ws, G.W))
     F[G.ps] = F
     if (abs) {
         dstat_set_IF(D, G, i, (((2*F :- 1):*G.Y + 2*(B :- cp))*c :- D.b[i]) / G.W)
@@ -7674,10 +7744,10 @@ void dstat_sum_sratio(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     }
     else p = O[|3\6|]'
     p = p / 100
-    _dstat_sum_share(D, G, i, p[|1\2|]) // lower quantile
+    _dstat_sum_share(D, G, i, p[|1\2|]) // lower share
     b1 = D.b[i]
     if (D.noIF==0) IF1 = D.IF[,i]
-    _dstat_sum_share(D, G, i, p[|3\4|]) // upper quantile
+    _dstat_sum_share(D, G, i, p[|3\4|]) // upper share
     b2 = D.b[i]
     D.b[i] = b2 / b1
     if (_dstat_sum_omit(D, i)) return
@@ -7825,8 +7895,7 @@ void _dstat_sum_gci(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     if (_dstat_sum_omit(D, i)) return
     // compute IF
     if (D.noIF) return
-    B = J(G.N, 1, .)
-    B[G.ps] = _dstat_sum_ccdf(G.Zs, (G.Ys:-m):*G.ws, G.W)
+    B = dstat_invp(G.N, G.ps, _dstat_sum_ccdf(G.Zs, (G.Ys:-m):*G.ws, G.W))
     F[G.ps] = F
     if (abs) {
         dstat_set_IF(D, G, i, ((F:-mF):*(G.Y:-m) :+ B :- 2*cov) * ((2*c)/G.W))

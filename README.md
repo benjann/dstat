@@ -39,6 +39,17 @@ Installation from GitHub:
 
 Main changes:
 
+    14jul2021 (version 1.1.8)
+    - option -discrete- now allowed in -dstat histogram-; -dstat histogram, discrete-
+      is an alias for -dstat proportion, nocategorical-
+    - graphs after -dstat proportion- now use a continuous axis instead of a categorical
+      axis if option -nocategorical- has been specified
+    - -dstat frequency- can now be used as alias for -dstat proportion, frequency-
+    - statistic hdquantile() now fully supports weights; computation of influence
+      functions has been improved
+    - option -qdef(10)- can now be specified to use Harrell-Davis quantiles; option
+      -hdquantile- is a synonym for -qdef(10)-
+
     01jul2021 (version 1.1.7)
     - statistic hdquantile() added
     - SEs of quantile(0) and quantile(1) now set to 0
