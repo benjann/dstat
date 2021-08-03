@@ -1,4 +1,4 @@
-*! version 1.1.8  14jul2021  Ben Jann
+*! version 1.1.9  14jul2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -810,15 +810,17 @@ program _Replay
         local nopvalues nopvalues
     }
     if "`header'"=="" {
-        _Replay_header `nopvalues'
         if "`nopvalues'"!="" {
+            local w1 15
             local c1 35
-            local c2 51
         }
         else {
+            local w1 17
             local c1 49
-            local c2 67
         }
+        local c2 = `c1' + `w1' + 1
+        local w2 10
+        _Replay_header, `nopvalues' head2left(`w1') head2right(`w2')
         if "`subcmd'"=="density" {
             di as txt _col(`c1') "Kernel" _col(`c2') "= " /*
                 */as res %10s abbrev(e(kernel),10)
@@ -831,7 +833,7 @@ program _Replay
         else if "`subcmd'"=="quantile" {
             local qdef = e(qdef)
             if `qdef'==10 local qdef "hdquantile"
-            else          local qdef "def. `qdef'"
+            else          local qdef "qdef(`qdef')"
             di as txt _col(`c1') "Quantile type" _col(`c2') "= " as res %10s "`qdef'"
         }
         else if "`subcmd'"=="lorenz" | "`subcmd'"=="share" {
@@ -953,15 +955,18 @@ program _Replay
     }
 end
 
-prog _Replay_header, eclass 
-    if `"`0'"'=="" { // table includes p-values
-        _coef_table_header, nomodeltest
+prog _Replay_header, eclass
+    syntax [, nopvalues * ]
+    if      c(stata_version)<17            local options
+    else if d(`c(born_date)')<d(13jul2021) local options
+    if "`pvalues'"=="" { // table includes p-values
+        _coef_table_header, nomodeltest `options'
         exit
     }
     nobreak { // no p-values: mimic header of -total-
         ereturn local cmd "total"
         capture noisily break {
-            _coef_table_header, nomodeltest
+            _coef_table_header, nomodeltest `options'
         }
         local rc = _rc
         ereturn local cmd "dstat"

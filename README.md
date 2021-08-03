@@ -39,6 +39,10 @@ Installation from GitHub:
 
 Main changes:
 
+    03aug2021 (version 1.1.9)
+    - fixed header layout in Stata 17, employing _coef_table_header options
+      introduced in the 13jul2021 update of Stata 17
+  
     14jul2021 (version 1.1.8)
     - option -discrete- now allowed in -dstat histogram-; -dstat histogram, discrete-
       is an alias for -dstat proportion, nocategorical-
