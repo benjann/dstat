@@ -39,6 +39,12 @@ Installation from GitHub:
 
 Main changes:
 
+    20nov2021 (version 1.2.0)
+    - a bug in -nocasewise- led to erroneous selection of observations or crashed
+      dstat in some situations; this is fixed
+    - added statistics for categorical variables: hhi, hhin, gimp, entropy, hill,
+      renyi, mindex, uc, cramer
+
     03aug2021 (version 1.1.9)
     - fixed header layout in Stata 17, employing _coef_table_header options
       introduced in the 13jul2021 update of Stata 17

@@ -1,5 +1,5 @@
 {smcl}
-{* 14jul2021}{...}
+{* 20nov2021}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -506,7 +506,7 @@ help for {hi:dstat}{...}
     {p_end}
 
 {syntab:Inequality measures}
-{synopt:{opt hoover}}Hoover index (Robin Hood index)
+{synopt:{opt hoover}}Hoover index (Robin Hood index, Ricci-Schutz, Pietra index)
     {p_end}
 {synopt:{opt gini}[{cmd:(}{it:df}{cmd:)}]}Gini coefficient; {it:df} applies
     small-sample adjustment; default is {it:df}=0
@@ -616,6 +616,43 @@ help for {hi:dstat}{...}
     adjustment; default is {it:df}=1; can also specify {opt cov(df)}
     {p_end}
 {synopt:{opt spearman}[{cmd:(}{it:{help varname:zvar}}{cmd:)}]}Spearman's rank correlation
+    {p_end}
+
+{syntab:Categorical data (univariate)}
+{synopt:{opt hhi}}Herfindahl–Hirschman index (Herfindahl index, Simpson index)
+    {p_end}
+{synopt:{opt hhin}}normalized Herfindahl index; qual to ({cmd:hhi}-1/K)/(1-1/K), where
+    K is the number of categories
+    {p_end}
+{synopt:{opt gimp}}Gini impurity (Gini–Simpson index, Blau index, Gibbs–Martin index); 
+    equal to 1-{cmd:hhi}
+    {p_end}
+{synopt:{opt entropy}[{cmd:(}{it:base}{cmd:)}]}Shannon entropy; {it:base} specifies
+    the base of the logarithm (default is natural logarithm)
+    {p_end}
+{synopt:{opt hill}[{cmd:(}{it:q}{cmd:)}]}Hill number (true diversity, 
+    effective number of species); {it:q} specifies the order of the diversity; 
+    default is {it:q}=1 such that {cmd:hill} = exp({cmd:entropy})
+    {p_end}
+{synopt:{opt renyi}[{cmd:(}{it:q}{cmd:)}]}Rényi entropy; 
+    equal to ln({cmd:hill(}{it:q}{cmd:)}); default is {it:q}=1 such that
+    {cmd:renyi} = {cmd:entropy}
+    {p_end}
+
+{syntab:Categorical data (bivariate)}
+{synopt:{opt mindex}[{cmd:(}{it:{help varname:zvar}}[{cmd:,}{it:base}]{cmd:)}]}mutual information index;
+    {it:zvar} specifies the secondary variable; default is as set by option {cmd:zvar()};
+    {it:base} specifies the base of the logarithm (default is natural logarithm); 
+    can also specify {opt mindex(base)}
+    {p_end}
+{synopt:{opt uc}[{cmd:l}|{cmd:r}][{cmd:(}{it:{help varname:zvar}}{cmd:)}]}uncertainty coefficient (UC);
+    {cmd:ucl} returns the asymmetric coefficient with respect to the left-hand side variable (the main variable), 
+    {cmd:ucr} is with respect to the right-hand side variable (the secondary variable), {cmd:uc} returns the
+    symmetric uncertainty coefficient (weighted average of {cmd:ucl} and {cmd:ucr});
+    {it:zvar} as for {cmd:mindex}
+    {p_end}
+{synopt:{opt cramer}[{cmd:(}{it:{help varname:zvar}}{cmd:)}]}Cramér's V;
+    {it:zvar} as for {cmd:mindex}
     {p_end}
 {synoptline}
 

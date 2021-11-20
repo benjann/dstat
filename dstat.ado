@@ -1,4 +1,4 @@
-*! version 1.1.9  14jul2021  Ben Jann
+*! version 1.2.0  20nov2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -2868,7 +2868,7 @@ void dstat_parse_stats_hasdens(`Int' n)
     asarray(A, "lmc"       , (`f'lmc(),       `p'0(),    &.))                   // left medcouple tail weight
     asarray(A, "rmc"       , (`f'rmc(),       `p'0(),    &.))                   // right medcouple tail weight
     // inequality
-    asarray(A, "hoover"    , (`f'hoover(),    `p'0(),    &.))                   // Hoover aka Robin Hood aka Ricci-Schutz aka Pietra index
+    asarray(A, "hoover"    , (`f'hoover(),    `p'0(),    &.))                   // Hoover index
     asarray(A, "gini"      , (`f'gini(),      `p'1(),    &(., ., 0)))           // Gini coefficient
     asarray(A, "agini"     , (`f'agini(),     `p'1(),    &(., ., 0)))           // absolute Gini coefficient
     asarray(A, "mld"       , (`f'mld(),       `p'0(),    &.))                   // mean log deviation
@@ -2925,6 +2925,18 @@ void dstat_parse_stats_hasdens(`Int' n)
     asarray(A, "corr"      , (`f'corr(),      `p'z(),    &.))                   // correlation
     asarray(A, "cov"       , (`f'cov(),       `p'z1(),   &(., ., 1)))           // covariance
     asarray(A, "spearman"  , (`f'spearman(),  `p'z(),    &.))                   // spearman rank correlation
+    // categorical
+    asarray(A, "hhi"       , (`f'hhi(),       `p'0(),    &.))                   // Herfindahl–Hirschman index
+    asarray(A, "hhin"      , (`f'hhin(),      `p'0(),    &.))                   // normalized hhi
+    asarray(A, "gimp"      , (`f'gimp(),      `p'0(),    &.))                   // Gini impurity
+    asarray(A, "entropy"   , (`f'entropy(),   `p'1(),    &(0, ., 0)))           // Shannon entropy
+    asarray(A, "hill"      , (`f'hill(),      `p'1(),    &(0, ., 1)))           // Hill number
+    asarray(A, "renyi"     , (`f'renyi(),     `p'1(),    &(0, ., 1)))           // Rényi entropy
+    asarray(A, "mindex"    , (`f'mindex(),    `p'z1(),   &(0, ., 0)))           // mutual information
+    asarray(A, "uc"        , (`f'uc(),        `p'z1(),   &(0, ., 0)))           // uncertainty coefficient (symmetric)
+    asarray(A, "ucl"       , (`f'ucl(),       `p'z1(),   &(0, ., 0)))           // uncertainty coefficient (left)
+    asarray(A, "ucr"       , (`f'ucr(),       `p'z1(),   &(0, ., 0)))           // uncertainty coefficient (right)
+    asarray(A, "cramer"    , (`f'cramer(),    `p'z1(),   &(0, ., 0)))           // Cramér's V
     return(A)
 }
 
@@ -2946,7 +2958,6 @@ void _dstat_parse_error(`SS' s)
 `SS' _dstat_parse_stats_1(`Zvar' Z, `SS' s0, `SS' s, `SS' o, `RR' O)
 {   // name# or name(#)
     pragma unused Z
-    
     if (__dstat_parse_stats_1(o, O[1], O[2], O[3])) return(s+o)
     _dstat_parse_error(s0)
 }
@@ -3699,11 +3710,11 @@ void _dstat_cstripe(`SS' nm, `SM' S, `Bool' row)
     return(st_varname(st_varindex(v, st_global("c(varabbrev)")=="on")))
 }
 
-`RC' dstat_invp(`Int' N, `IntC' p, `RC' x)
+`RC' dstat_invp(`Int' N, `IntC' p, `RC' x, | `RS' x0)
 {
     `RC' y
     
-    y = J(N, 1, .)
+    y = J(N, 1, x0)
     y[p] = x
     return(y)
 }
@@ -4907,7 +4918,7 @@ void dstat_reset_Y(`Data' D, `Grp' G)
 void dstat_update_Y(`Data' D, `Grp' G, `RC' y)
 {
     if (rows(G.pp)==0) _dstat_init_Y(D, G, 1, 1, y:<.)
-    else _dstat_init_Y(D, G, 1, 1, dstat_invp(G.G0.N, G.pp, (y:<.)))
+    else _dstat_init_Y(D, G, 1, 1, dstat_invp(G.G0.N, G.pp, (y:<.), 0))
     G.reset = 1
 }
 
@@ -5092,6 +5103,123 @@ void dstat_set_nobs_sumw(`Data' D, `Grp' G, `Int' a, | `Int' b)
     }
     return(*D.mvj[G.j])
 }
+
+`RM' dstat_freq(`Data' D, `Grp' G)
+{
+    if (G.N==0) return(J(G.N, 2, .))
+    dstat_init_Ys(D, G)
+    return(_dstat_freq(G.Ys, G.ws, G.N))
+}
+
+`RM' _dstat_freq(`RC' Y, `RC' w, `Int' n)
+{   // return frequency table of Y (single variable); Y assumed sorted
+    `Int' i, j, i0
+    `RS'  y0
+    `RM'  H
+    
+    H = J(n, 2, .)
+    j = 0
+    i0 = 1
+    y0 = Y[i0]
+    if (rows(w)==1) {
+        for (i=2;i<=n; i++) {
+            if (Y[i]!=y0) {
+                H[++j,] = (y0, (i-i0)*w)
+                i0 = i
+                y0 = Y[i0]
+            }
+        }
+        H[++j,] = (y0, (i-i0)*w)
+        return(H[|1,1 \ j,2|])
+    }
+    for (i=2;i<=n; i++) {
+        if (Y[i]!=y0) {
+            H[++j,] = (y0, quadsum(w[|i0\i-1|]))
+            i0 = i
+            y0 = Y[i0]
+        }
+    }
+    H[++j,] = (y0, quadsum(w[|i0\i-1|]))
+    return(H[|1,1 \ j,2|])
+}
+
+void _dstat_freq2(`RM' Y, `RC' w, `Int' n) // Y will be replaced
+{   // return frequency table of Y (multiple variables); Y not assumed sorted
+    `Int'  i, j, i0, k
+    `IntR' kk
+    `RR'   y0
+    
+    k = cols(Y); kk = 1..k
+    j = 0
+    i0 = 1
+    if (rows(w)==1) {
+        Y = mm_sort(Y, kk, 1), J(n,1,.) // stable sort oder
+        y0 = Y[i0,kk]
+        for (i=2;i<=n; i++) {
+            if (Y[i,kk]!=y0) {
+                Y[++j,] = (y0, (i-i0)*w)
+                i0 = i
+                y0 = Y[i0,kk]
+            }
+        }
+        Y[++j,] = (y0, (i-i0)*w)
+    }
+    else {
+        Y = mm_sort((Y,w), kk, 1) // stable sort oder
+        y0 = Y[i0,kk]
+        for (i=2;i<=n; i++) {
+            if (Y[i,kk]!=y0) {
+                Y[++j,] = (y0, quadsum(Y[|i0,k+1 \ i-1,.|]))
+                i0 = i
+                y0 = Y[i0,kk]
+            }
+        }
+        Y[++j,] = (y0, quadsum(Y[|i0,k+1 \ i-1,.|]))
+    }
+    Y = Y[|1,1 \ j,.|]
+}
+
+/*
+`RC' _dstat_freq(`RC' x0, `RC' w, `RC' at)
+{   // assumes that x0 and at are integer
+    // also assumes that values are within a "reasonable" range, such that
+    // f will not consume excessive memory
+    `Int'  i, xi, r, offset
+    `IntR' minmax
+    `IntC' x, c
+    `RC'   f
+    
+    minmax  = minmax(x0\at)
+    offset = minmax[1] - 1
+    r = minmax[2] - minmax[1] + 1
+    x = x0 :- offset  // faster than applying offset within loop
+    if (rows(w)==1) {
+        f = J(r,1,0)
+        for (i=rows(x);i;i--) {
+            xi = x[i]
+            f[xi] = f[xi] + w
+        }
+        return(f[at:-offset])
+    }
+    if (any(w:!=trunc(w))) { // use mean updating if weights are noninteger
+        f = c = J(r,1,0)
+        for (i=rows(x);i;i--) {
+            xi = x[i]
+            c[xi] = c[xi] + 1
+            f[xi] = f[xi] + (w[i]-f[xi])/c[xi] 
+        }
+        return(f[at:-offset] :* c[at:-offset])
+    }
+    f = J(r,1,0)
+    for (i=rows(x);i;i--) {
+        xi = x[i]
+        if (xi>r) continue
+        if (xi<1) continue
+        f[xi] = f[xi] + w[i]
+    }
+    return(f[at:-offset])
+}
+*/
 
 /*
 `RC' dstat_put_omit(`SM' cstripe, `RV' omit)
@@ -5743,7 +5871,7 @@ void dstat_prop(`Data' D)
     `T'   A
     
     // obtain frequency table
-    H = dstat_prop_freq(D, G)
+    H = dstat_freq(D, G)
     // post H as hash table
     A = asarray_create("real")
     asarray_notfound(A, 0)
@@ -5758,87 +5886,6 @@ void dstat_prop(`Data' D)
     if (D.freq) return(F)
                 return(F / W)
 }
-
-`RM' dstat_prop_freq(`Data' D, `Grp' G)
-{
-    if (G.N==0) return(J(G.N, 2, .))
-    dstat_init_Ys(D, G)
-    return(_dstat_prop_freq(G.Ys, G.ws, G.N))
-}
-
-`RM' _dstat_prop_freq(`RC' Y, `RC' w, `Int' n)
-{
-    `Int' i, j, i0
-    `RS'  y0
-    `RM'  H
-    
-    H = J(n, 2, .)
-    j = 0
-    i0 = 1
-    y0 = Y[i0]
-    if (rows(w)==1) {
-        for (i=2;i<=n; i++) {
-            if (Y[i]!=y0) {
-                H[++j,] = (y0, (i-i0)*w)
-                i0 = i
-                y0 = Y[i0]
-            }
-        }
-        H[++j,] = (y0, (i-i0)*w)
-        return(H[|1,1 \ j,2|])
-    }
-    for (i=2;i<=n; i++) {
-        if (Y[i]!=y0) {
-            H[++j,] = (y0, quadsum(w[|i0\i-1|]))
-            i0 = i
-            y0 = Y[i0]
-        }
-    }
-    H[++j,] = (y0, quadsum(w[|i0\i-1|]))
-    return(H[|1,1 \ j,2|])
-}
-
-/*
-`RC' dstat_freq(`RC' x0, `RC' w, `RC' at)
-{   // assumes that x0 and at are integer
-    // also assumes that values are within a "reasonable" range, such that
-    // f will not consume excessive memory
-    `Int'  i, xi, r, offset
-    `IntR' minmax
-    `IntC' x, c
-    `RC'   f
-    
-    minmax  = minmax(x0\at)
-    offset = minmax[1] - 1
-    r = minmax[2] - minmax[1] + 1
-    x = x0 :- offset  // faster than applying offset within loop
-    if (rows(w)==1) {
-        f = J(r,1,0)
-        for (i=rows(x);i;i--) {
-            xi = x[i]
-            f[xi] = f[xi] + w
-        }
-        return(f[at:-offset])
-    }
-    if (any(w:!=trunc(w))) { // use mean updating if weights are noninteger
-        f = c = J(r,1,0)
-        for (i=rows(x);i;i--) {
-            xi = x[i]
-            c[xi] = c[xi] + 1
-            f[xi] = f[xi] + (w[i]-f[xi])/c[xi] 
-        }
-        return(f[at:-offset] :* c[at:-offset])
-    }
-    f = J(r,1,0)
-    for (i=rows(x);i;i--) {
-        xi = x[i]
-        if (xi>r) continue
-        if (xi<1) continue
-        f[xi] = f[xi] + w[i]
-    }
-    return(f[at:-offset])
-}
-*/
 
 void dstat_prop_IF(`Data' D, `Grp' G, `Int' a, `Int' b)
 {
@@ -6283,9 +6330,32 @@ void _dstat_sum_update_Y(`Data' D, `Grp' G, `RC' Z)
     }
 }
 
-`RC' _dstat_sum_ccdf(`RC' Y, `RC' w, `RS' W)
+`RC' _dstat_sum_get_z1(`Data' D, `Grp' G, `SS' o, `RR' O, `RC' o1)
 {
-    return((quadsum(w) :- _mm_ranks(Y, w, 3, 1)) / W)
+    `Int' l
+    `SR'  args
+    `RC'  Z
+    
+    args = tokens(o)
+    l = length(args)
+    if (l==0) {
+        Z = D.Z[G.p, selectindex(D.zvars:==D.zvar)]
+        o1 = O[3]
+    }
+    else if (l==1) {
+        o1 = strtoreal(args[1])
+        if (o1<.) Z = D.Z[G.p, selectindex(D.zvars:==D.zvar)]
+        else {
+            Z = D.Z[G.p, selectindex(D.zvars:==dstat_unab(args[1]))]
+            o1 = O[3]
+        }
+    }
+    else {
+        Z = D.Z[G.p, selectindex(D.zvars:==dstat_unab(args[1]))]
+        o1 = strtoreal(args[2])
+    }
+    _dstat_sum_update_Y(D, G, Z)
+    return(Z)
 }
 
 `RC' _dstat_sum_get_pline(`Data' D, `Grp' G, `SS' o)
@@ -6296,7 +6366,6 @@ void _dstat_sum_update_Y(`Data' D, `Grp' G, `RC' Z)
         if (strtoreal(o)>=.) {
             pl = D.Z[G.p, selectindex(D.zvars:==dstat_unab(o))]
             _dstat_sum_update_Y(D, G, pl)
-            pl = select(pl, pl:<.)
             return(pl)
         }
         return(strtoreal(o))
@@ -6304,10 +6373,14 @@ void _dstat_sum_update_Y(`Data' D, `Grp' G, `RC' Z)
     if (D.plvar!="") {
         pl = D.Z[G.p, selectindex(D.zvars:==D.plvar)]
         _dstat_sum_update_Y(D, G, pl)
-        pl = select(pl, pl:<.)
         return(pl)
     }
     return(D.pline)
+}
+
+`RC' _dstat_sum_ccdf(`RC' Y, `RC' w, `RS' W)
+{
+    return((quadsum(w) :- _mm_ranks(Y, w, 3, 1)) / W)
 }
 
 void dstat_sum_q(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
@@ -8340,32 +8413,11 @@ void dstat_sum_corr(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 
 void dstat_sum_cov(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    `Int' l
-    `SR'  args
     `RS'  df, c, mY, mZ
     `RM'  mv
     `RC'  Z
     
-    // settings
-    args = tokens(o)
-    l = length(args)
-    if (l==0) {
-        Z  = D.Z[G.p, selectindex(D.zvars:==D.zvar)]
-        df = O[3]
-    }
-    else if (l==1) {
-        df = strtoreal(args[1])
-        if (df<.) Z = D.Z[G.p, selectindex(D.zvars:==D.zvar)]
-        else {
-            Z  = D.Z[G.p, selectindex(D.zvars:==dstat_unab(args[1]))]
-            df = O[3]
-        }
-    }
-    else {
-        Z  = D.Z[G.p, selectindex(D.zvars:==dstat_unab(args[1]))]
-        df = strtoreal(args[2])
-    }
-    _dstat_sum_update_Y(D, G, Z)
+    Z = _dstat_sum_get_z1(D, G, o, O, df=1)
     // compute correlation
     mv  = mm_meanvariance0((G.Y, Z), G.w)
     if (df!=0) { // small-sample adjustment
@@ -8415,6 +8467,291 @@ void dstat_sum_spearman(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
                           (sqrt(vy)*sqrt(vz) * G.W))
 }
 
+void dstat_sum_hhi(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    pragma unused o
+    pragma unused O
+    (void) _dstat_sum_hhi(D, G, i)
+}
+
+void dstat_sum_hhin(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `Int' K
+    pragma unused o
+    pragma unused O
+    
+    K = _dstat_sum_hhi(D, G, i)
+    if (D.omit[i]) return
+    if (K==1) {
+        D.b[i] = 1
+        return
+    }
+    D.b[i] = (D.b[i] - 1/K) / (1 - 1/K)
+    if (D.noIF) return
+    D.IF[,i] = D.IF[,i] / (1 - 1/K)
+}
+
+`Int' _dstat_sum_hhi(`Data' D, `Grp' G, `Int' i)
+{
+    `Int' K, j
+    `RM' H
+    `RC' h
+    
+    H = dstat_freq(D, G)
+    H[,2] = (H[,2]/G.W)
+    K = rows(H)
+    D.b[i] = quadsum(H[,2]:^2)
+    if (_dstat_sum_omit(D, i)) return(K)
+    if (D.noIF) return(K)
+    h = J(G.N, 1, 0)
+    for (j=K;j;j--) h = h + H[j,2]*((G.Y:==H[j,1]) :- H[j,2])
+    dstat_set_IF(D, G, i, h * (2/G.W))
+    return(K)
+}
+
+void dstat_sum_gimp(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    pragma unused o
+    pragma unused O
+    
+    (void) _dstat_sum_hhi(D, G, i)
+    if (D.omit[i]) return
+    D.b[i] = 1 - D.b[i]
+    if (D.noIF) return
+    D.IF[,i] = -D.IF[,i]
+}
+
+void dstat_sum_entropy(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `Int' base, j
+    `RS'  c
+    `RM'  H
+    `RC'  h
+    
+    if (o!="") base = strtoreal(o)
+    else       base = O[3] // base=0 => ln()
+    H = dstat_freq(D, G)
+    H[,2] = (H[,2]/G.W)
+    if (base==0) D.b[i] = -quadsum(H[,2] :* ln(H[,2]))
+    else         D.b[i] = -quadsum(H[,2] :* (ln(H[,2])/ln(base)))
+    if (_dstat_sum_omit(D, i)) return
+    if (D.noIF) return
+    h = J(G.N, 1, 0)
+    for (j=rows(H);j;j--) {
+        c = ln(H[j,2]) + 1
+        if (base!=0) c = c / ln(base)
+        h = h + c*((G.Y:==H[j,1]) :- H[j,2])
+    }
+    dstat_set_IF(D, G, i, -h/G.W)
+}
+
+void dstat_sum_hill(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `Int' q, j
+    `RS'  b0
+    `RM'  H
+    `RC'  h
+    
+    if (o!="") q = strtoreal(o)
+    else       q = O[3]
+    H = dstat_freq(D, G)
+    H[,2] = (H[,2]/G.W)
+    if (q==1) {
+        b0 = -quadsum(H[,2] :* ln(H[,2]))
+        D.b[i] = exp(b0)
+    }
+    else {
+        b0 = quadsum(H[,2]:^q)
+        D.b[i] = b0^(1/(1-q))
+    }
+    if (_dstat_sum_omit(D, i)) return
+    if (D.noIF) return
+    h = J(G.N, 1, 0)
+    j = rows(H)
+    if (q==1) {
+        for (;j;j--) h = h + (ln(H[j,2]) + 1) * ((G.Y:==H[j,1]) :- H[j,2])
+        h = exp(b0) :* -h
+    }
+    else {
+        for (;j;j--) h = h + (q * H[j,2]:^(q-1)) * ((G.Y:==H[j,1]) :- H[j,2])
+        h = ((1/(1-q))*b0^(1/(1-q)-1)) :* h 
+    }
+    dstat_set_IF(D, G, i, h/G.W)
+}
+
+void dstat_sum_renyi(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `Int' q
+    `RS'  b0
+    
+    if (o!="") q = strtoreal(o)
+    else       q = O[3]
+    if (q==1) {
+        dstat_sum_entropy(D, G, i, "", J(1,3,0))
+        return
+    }
+    dstat_sum_hill(D, G, i, "", J(1,3,q))
+    if (D.omit[i]) return
+    b0 = D.b[i]
+    D.b[i] = ln(b0)
+    if (D.noIF) return
+    D.IF[,i] = (1/b0) :* D.IF[,i]
+}
+
+void dstat_sum_mindex(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    _dstat_sum_minfo(1, D, G, i, o, O)
+}
+
+void dstat_sum_uc(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    _dstat_sum_minfo(2, D, G, i, o, O)
+}
+
+void dstat_sum_ucl(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    _dstat_sum_minfo(3, D, G, i, o, O)
+}
+
+void dstat_sum_ucr(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    _dstat_sum_minfo(4, D, G, i, o, O)
+}
+
+void _dstat_sum_minfo(`Int' stat, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{   // stat: 0 = joint entropy [not used]
+    //       1 = M index
+    //       2 = uncertainty coefficient (symmetric)
+    //       3 = uncertainty coefficient (left)
+    //       4 = uncertainty coefficient (right)
+    // could also add support for conditional entropy:
+    //     H(Y|Z) = H(Y,Z) - H(Z)  and  H(Z|Y) = H(Y,Z) - H(Y)
+    `Int' base, j
+    `RS'  b, bY, bZ, c
+    `RM'  H, HY, HZ
+    `RC'  Z, h, hY, hZ
+    
+    Z = _dstat_sum_get_z1(D, G, o, O, base=0)
+    // compute statistic
+    _dstat_freq2(H = (G.Y, Z), G.w, G.N)
+    H[,3]  = (H[,3]/G.W)
+    if (base==0) b = -quadsum(H[,3] :* ln(H[,3]))
+    else         b = -quadsum(H[,3] :* (ln(H[,3])/ln(base)))
+    if (stat) {
+        _dstat_freq2(HY = H[,1], H[,3], rows(H))
+        if (base==0) bY = -quadsum(HY[,2] :* ln(HY[,2]))
+        else         bY = -quadsum(HY[,2] :* (ln(HY[,2])/ln(base)))
+        _dstat_freq2(HZ = H[,2], H[,3], rows(H))
+        if (base==0) bZ = -quadsum(HZ[,2] :* ln(HZ[,2]))
+        else         bZ = -quadsum(HZ[,2] :* (ln(HZ[,2])/ln(base)))
+    }
+    if      (stat==1)  D.b[i] =    bY + bZ - b              // M index
+    else if (stat==2)  D.b[i] = 2*(bY + bZ - b) / (bY + bZ) // UC symmetric
+    else if (stat==3)  D.b[i] =   (bY + bZ - b) / bY        // UC left
+    else if (stat==4)  D.b[i] =   (bY + bZ - b) / bZ        // UC right
+    else               D.b[i] =              b              // joint entropy
+    if (_dstat_sum_omit(D, i)) return
+    // compute IF
+    if (D.noIF) return
+    h = J(G.N, 1, 0)
+    for (j=rows(H);j;j--) {
+        c = ln(H[j,3]) + 1
+        if (base!=0) c = c / ln(base)
+        h = h + c*((G.Y:==H[j,1]:&Z:==H[j,2]) :- H[j,3])
+    }
+    if (stat) {
+        hY = J(G.N, 1, 0)
+        for (j=rows(HY);j;j--) {
+            c = ln(HY[j,2]) + 1
+            if (base!=0) c = c / ln(base)
+            hY = hY + c*((G.Y:==HY[j,1]) :- HY[j,2])
+        }
+        hZ = J(G.N, 1, 0)
+        for (j=rows(HZ);j;j--) {
+            c = ln(HZ[j,2]) + 1
+            if (base!=0) c = c / ln(base)
+            hZ = hZ + c*((Z:==HZ[j,1]) :- HZ[j,2])
+        }
+    }
+    if      (stat==1)  h = hY + hZ - h                           // M index
+    else if (stat==2)  h = 2*(b/(bY+bZ)^2*(hY + hZ) - h/(bY+bZ)) // UC symmetric
+    else if (stat==3)  h = (b-bZ)/bY^2*hY + hZ/bY - h/bY         // UC left
+    else if (stat==4)  h = hY/bZ + (b-bY)/bZ^2*hZ - h/bZ         // UC right
+    dstat_set_IF(D, G, i, -h/G.W)
+}
+
+void dstat_sum_cramer(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `Int' bc
+    `Int' j, c, C, r, R
+    `RS'  b, pij, pi, pj, d
+    `T'   A
+    `RM'  H, HY, HZ
+    `RC'  Z, h
+    pragma unset bc     // bias correction not implemented yet
+    pragma unused bc
+    
+    Z = _dstat_sum_get_z1(D, G, o, O, bc=0)
+    // compute statistic
+    _dstat_freq2(H = (G.Y, Z), G.w, G.N)
+    H[,3]  = (H[,3]/G.W)
+    _dstat_freq2(HY = H[,1], H[,3], rows(H))
+    _dstat_freq2(HZ = H[,2], H[,3], rows(H))
+    A = asarray_create("real",2) // post in asarray() to fill empty cells 
+    asarray_notfound(A, 0)
+    for (j=rows(H); j; j--) asarray(A, H[j,(1,2)], H[j,3])
+    R = rows(HY); C = rows(HZ)
+    H = J(R*C,1,.)
+    j = 0
+    for (r=R;r;r--) {
+        for (c=C;c;c--) {
+            pi  = HY[r,2]
+            pj  = HZ[c,2]
+            pij = asarray(A, (HY[r,1], HZ[c,1]))
+            H[++j] = (pij - pi*pj)^2 / (pi*pj)
+        }
+    }
+    b = quadsum(H)
+    D.b[i] = sqrt(b / min((R-1, C-1)))
+    if (_dstat_sum_omit(D, i)) return
+    // compute IF
+    if (D.noIF) return
+    h = J(G.N, 1, 0)
+    // - contributions of cells
+    for (r=R;r;r--) {
+        for (c=C;c;c--) {
+            pi  = HY[r,2]
+            pj  = HZ[c,2]
+            pij = asarray(A, (HY[r,1], HZ[c,1]))
+            d = 2 * (pij/(pi*pj) - 1)
+            h = h + d * ((G.Y:==HY[r,1]:&Z:== HZ[c,1]) :- pij)
+        }
+    }
+    // - contributions of rows
+    for (r=R;r;r--) {
+        d = 0
+        pi = HY[r,2]
+        for (c=C;c;c--) {
+            pj  = HZ[c,2]
+            pij = asarray(A, (HY[r,1], HZ[c,1]))
+            d = d + (pij - pi*pj)*(pij + pi*pj) / (pi^2*pj)
+        }
+        h = h - d * ((G.Y:==HY[r,1]) :- pi)
+    }
+    // - contributions of columns
+    for (c=C;c;c--) {
+        d = 0
+        pj = HZ[c,2]
+        for (r=R;r;r--) {
+            pi  = HY[r,2]
+            pij = asarray(A, (HY[r,1], HZ[c,1]))
+            d = d + (pij - pi*pj)*(pij + pi*pj) / (pi*pj^2)
+        }
+        h = h - d * ((Z:==HZ[c,1]) :- pj)
+    }
+    h = h / (2 * sqrt(b * min((R-1, C-1))))
+    dstat_set_IF(D, G, i, h/G.W)
+}
 
 end
 
