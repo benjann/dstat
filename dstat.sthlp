@@ -1,5 +1,5 @@
 {smcl}
-{* 20nov2021}{...}
+{* 25nov2021}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -568,11 +568,13 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:[*]{cmd:ccurve}{cmd:(}{it:p}[{cmd:,}{it:{help varname:zvar}}]{cmd:)}}concentration curve ordinate,
     {it:p} in [0,100]; prefix {it:*} is empty for default, {cmd:g} for generalized, {cmd:t} for total,
-    {cmd:a} for absolute, {cmd:e} for equality gap
+    {cmd:a} for absolute, {cmd:e} for equality gap;
+    {it:zvar} as for {cmd:gci}
     {p_end}
 {synopt:[*]{cmd:cshare}{cmd:(}{it:p1}{cmd:,}{it:p2}[{cmd:,}{it:{help varname:zvar}}]{cmd:)}}concentration share,
     {it:p1} and {it:p2} in [0,100]; prefix {it:*} is empty for default, {cmd:d} for density,
-    {cmd:g} for generalized, {cmd:t} for total, {cmd:a} for average
+    {cmd:g} for generalized, {cmd:t} for total, {cmd:a} for average;
+    {it:zvar} as for {cmd:gci}
     {p_end}
 
 {syntab:Poverty measures}
@@ -580,32 +582,41 @@ help for {hi:dstat}{...}
     poverty line > 0; {it:pline} can be {varname} or {it:#}; default is as set by option {cmd:pline()}
     {p_end}
 {synopt:[{cmd:a}]{opt pgap}[{cmd:(}{it:pline}{cmd:)}]}poverty gap (proportion by which mean outcome of poor
-    is below {it:pline}); specify {cmd:apgap} for absolute poverty gap ({it:pline} - mean outcome of poor)
+    is below {it:pline}); specify {cmd:apgap} for absolute poverty gap ({it:pline} - mean outcome of poor);
+    {it:pline} as for {cmd:hci}
     {p_end}
 {synopt:[{cmd:a}]{opt pgi}[{cmd:(}{it:pline}{cmd:)}]}poverty gap index; equal to {cmd:hcr}*{cmd:pgap}; specify
-    {cmd:apgi} for absolute poverty gap index, equal to {cmd:hcr}*{cmd:apgap}
+    {cmd:apgi} for absolute poverty gap index, equal to {cmd:hcr}*{cmd:apgap};
+    {it:pline} as for {cmd:hci}
     {p_end}
 {synopt:{opt fgt}[{cmd:(}{it:a}[{cmd:,}{it:pline}]{cmd:)}]}Foster–Greer–Thorbecke index with {it:a}>=0
     (Foster et al. 1984, 2010); default is {it:a}=0 (head count ratio); {it:a}=1 is equivalent to
-    {cmd:pgi}
+    {cmd:pgi};
+    {it:pline} as for {cmd:hci}
     {p_end}
 {synopt:{opt sen}[{cmd:(}{it:pline}{cmd:)}]}Sen poverty index (Sen 1976; using the
-    replication invariant version of the index, also see Shorrocks 1995)
+    replication invariant version of the index, also see Shorrocks 1995);
+    {it:pline} as for {cmd:hci}
     {p_end}
 {synopt:{opt sst}[{cmd:(}{it:pline}{cmd:)}]}Sen-Shorrocks-Thon poverty index
-    (see, e.g., Osberg and Xu 2008)
+    (see, e.g., Osberg and Xu 2008);
+    {it:pline} as for {cmd:hci}
     {p_end}
 {synopt:{opt takayama}[{cmd:(}{it:pline}{cmd:)}]}Takayama poverty index
-    (Takayama 1979)
+    (Takayama 1979);
+    {it:pline} as for {cmd:hci}
     {p_end}
-{synopt:{opt watts}[{cmd:(}{it:pline}{cmd:)}]}Watts index (see, e.g., Saisana 2014)
+{synopt:{opt watts}[{cmd:(}{it:pline}{cmd:)}]}Watts index (see, e.g., Saisana 2014);
+    {it:pline} as for {cmd:hci}
     {p_end}
 {synopt:{opt chu}[{cmd:(}{it:a}[{cmd:,}{it:pline}]{cmd:)}]}Clark-Hemming-Ulph poverty index with {it:a} in [0,100]
     (Clark et al. 1981); default is {it:a}=50; {it:a}=0 is equivalent to
-    1-exp(-{cmd:watts}); {it:a}=100 is equivalent to {cmd:fgt(1)}
+    1-exp(-{cmd:watts}); {it:a}=100 is equivalent to {cmd:fgt(1)};
+    {it:pline} as for {cmd:hci}
     {p_end}
 {synopt:[{cmd:a}]{cmd:tip}{cmd:(}{it:p}[{cmd:,}{it:pline}]{cmd:)}}TIP ordinate,
-    {it:p} in [0,100]; specify {cmd:atip()} for absolute TIP ordinates
+    {it:p} in [0,100]; specify {cmd:atip()} for absolute TIP ordinates;
+    {it:pline} as for {cmd:hci}
     {p_end}
 
 {syntab:Association}
@@ -613,9 +624,23 @@ help for {hi:dstat}{...}
     {it:zvar} specifies the secondary variable; default is as set by option {cmd:zvar()}
     {p_end}
 {synopt:{opt cov}[{cmd:(}{it:{help varname:zvar}}[{cmd:,}{it:df}]{cmd:)}]}covariance; {it:df} applies small-sample
-    adjustment; default is {it:df}=1; can also specify {opt cov(df)}
+    adjustment; default is {it:df}=1; can also specify {opt cov(df)};
+    {it:zvar} as for {cmd:corr}
     {p_end}
-{synopt:{opt spearman}[{cmd:(}{it:{help varname:zvar}}{cmd:)}]}Spearman's rank correlation
+{synopt:{opt spearman}[{cmd:(}{it:{help varname:zvar}}{cmd:)}]}Spearman's rank correlation;
+    {it:zvar} as for {cmd:corr}
+    {p_end}
+{synopt:{opt taua}[{cmd:(}{it:{help varname:zvar}}{cmd:)}]}Kendall's tau-a (using fast algorithm by Newson 2006);
+    {it:zvar} as for {cmd:corr}
+    {p_end}
+{synopt:{opt taub}[{cmd:(}{it:{help varname:zvar}}{cmd:)}]}Kendall's tau-b (using fast algorithm by Newson 2006);
+    {it:zvar} as for {cmd:corr}
+    {p_end}
+{synopt:{opt somersd}[{cmd:(}{it:{help varname:zvar}}{cmd:)}]}Somers' D (using fast algorithm by Newson 2006);
+    {it:zvar} as for {cmd:corr}
+    {p_end}
+{synopt:{opt gamma}[{cmd:(}{it:{help varname:zvar}}{cmd:)}]}Goodman and Kruskal's gamma (using fast algorithm by Newson 2006);
+    {it:zvar} as for {cmd:corr}
     {p_end}
 
 {syntab:Categorical data (univariate)}
@@ -645,7 +670,7 @@ help for {hi:dstat}{...}
     {it:base} specifies the base of the logarithm (default is natural logarithm); 
     can also specify {opt mindex(base)}
     {p_end}
-{synopt:{opt uc}[{cmd:l}|{cmd:r}][{cmd:(}{it:{help varname:zvar}}{cmd:)}]}uncertainty coefficient (UC);
+{synopt:{opt uc}[{cmd:l}|{cmd:r}][{cmd:(}{it:{help varname:zvar}}{cmd:)}]}uncertainty coefficient;
     {cmd:ucl} returns the asymmetric coefficient with respect to the left-hand side variable (the main variable), 
     {cmd:ucr} is with respect to the right-hand side variable (the secondary variable), {cmd:uc} returns the
     symmetric uncertainty coefficient (weighted average of {cmd:ucl} and {cmd:ucr});
@@ -655,6 +680,16 @@ help for {hi:dstat}{...}
     {it:zvar} as for {cmd:mindex}
     {p_end}
 {synoptline}
+
+{pstd}
+    {it:Note on output formatting in Stata 15 (or in Stata 16 prior to the update of March 30, 2021):} If
+    statistics with parameters in parentheses are requested, {cmd:dstat summarize}
+    may possibly display a somewhat disarranged output table. Type
+
+        {cmd:. version 14: dstat summarize} {it:...}
+
+{pstd}
+    to obtain an improved table in such a case.
 
 
 {marker options}{...}
@@ -1703,7 +1738,7 @@ help for {hi:dstat}{...}
     of unionized workers as the reference distribution:
 
 {p 8 12 2}
-        . {stata "dstat (mean) wage if e(sample), over(union) balance(eb: grade hours ttl_exp tenure, reference(1)) rif(RIF0c)"}
+        . {stata "dstat (mean) wage, over(union) balance(eb: grade hours ttl_exp tenure, reference(1)) rif(RIF0c)"}
         {p_end}
 {p 8 12 2}
         . {stata "dstat (mean) wage if e(sample), over(union) rif(RIF0 RIF1)"}
@@ -1916,6 +1951,9 @@ help for {hi:dstat}{...}
     Working Papers 35. Available from
     {browse "http://ideas.repec.org/p/bss/wpaper/35.html"}.
     {p_end}
+{phang}
+    Newson, R. (2006). Efficient Calculation of Jackknife Confidence 
+    Intervals for Rank Statistics. Journal of Statistical Software 15(1).
 {phang}
     Osberg, L., K. Xu (2008). How Should We Measure Poverty in a Changing World? Methodological
     Issues and Chinese Case Study. Review of Development Economics 12(2): 419–441.

@@ -39,6 +39,29 @@ Installation from GitHub:
 
 Main changes:
 
+    25nov2021 (version 1.2.1 )
+    - added association statistics: taua, taub, somersd, gamma; using a fast
+      algorithm by R. Newson (2006. Efficient Calculation of Jackknife Confidence 
+      Intervals for Rank Statistics. Journal of Statistical Software 15/1) to
+      compute the difference in the sum of concordant and discordant pairs
+    - dstat automatically (and silently) recentered (all) influence functions if
+      any IF had a relative error (i.e. deviation from zero relative to the value
+      of the statistic) larger than 1e-14; a corresponding warning message was only
+      displayed if any IF had a relative error larger than 1e-6; the former type
+      of recentering is now discarded; that is, recentering is now only applied
+      if at least one relative error is larger than 1e-6 (all IFs will be
+      affected) and a warning message is always displayed if recentering is applied
+    - option -relax- could cause error in some situations; this is fixed
+    - dstat no longer enforces user version 14.2 when writing coefficient names to
+      e(b) (enforcing user version 14.2 caused issues with bootstrap and similar
+      commands); a consequence of this is that in Stata 15 (and in Stata 16 prior
+      to the 30mar2021 update) the results table from -dstat summarize- might look
+      slightly awkward if statistics with parameters in parentheses are specified;
+      type -version 14: dstat summarize ...- for better output in these cases
+    - over-legend is no longer displayed if the coefficients table is suppressed
+    - subcmd is now always set to -summarize-, if no known subcmd is specified; for
+      example, -datat x1-x5- now works
+
     20nov2021 (version 1.2.0)
     - a bug in -nocasewise- led to erroneous selection of observations or crashed
       dstat in some situations; this is fixed
