@@ -649,17 +649,17 @@ help for {hi:dstat}{...}
 {synopt:{opt hhin}}normalized Herfindahl index; qual to ({cmd:hhi}-1/K)/(1-1/K), where
     K is the number of categories
     {p_end}
-{synopt:{opt gimp}}Gini impurity (Gini–Simpson index, Blau index, Gibbs–Martin index); 
+{synopt:{opt gimp}}Gini impurity (Gini–Simpson index, Blau index, Gibbs–Martin index);
     equal to 1-{cmd:hhi}
     {p_end}
 {synopt:{opt entropy}[{cmd:(}{it:base}{cmd:)}]}Shannon entropy; {it:base} specifies
     the base of the logarithm (default is natural logarithm)
     {p_end}
-{synopt:{opt hill}[{cmd:(}{it:q}{cmd:)}]}Hill number (true diversity, 
-    effective number of species); {it:q} specifies the order of the diversity; 
+{synopt:{opt hill}[{cmd:(}{it:q}{cmd:)}]}Hill number (true diversity,
+    effective number of species); {it:q} specifies the order of the diversity;
     default is {it:q}=1 such that {cmd:hill} = exp({cmd:entropy})
     {p_end}
-{synopt:{opt renyi}[{cmd:(}{it:q}{cmd:)}]}Rényi entropy; 
+{synopt:{opt renyi}[{cmd:(}{it:q}{cmd:)}]}Rényi entropy;
     equal to ln({cmd:hill(}{it:q}{cmd:)}); default is {it:q}=1 such that
     {cmd:renyi} = {cmd:entropy}
     {p_end}
@@ -667,11 +667,11 @@ help for {hi:dstat}{...}
 {syntab:Categorical data (bivariate)}
 {synopt:{opt mindex}[{cmd:(}{it:{help varname:zvar}}[{cmd:,}{it:base}]{cmd:)}]}mutual information index;
     {it:zvar} specifies the secondary variable; default is as set by option {cmd:zvar()};
-    {it:base} specifies the base of the logarithm (default is natural logarithm); 
+    {it:base} specifies the base of the logarithm (default is natural logarithm);
     can also specify {opt mindex(base)}
     {p_end}
 {synopt:{opt uc}[{cmd:l}|{cmd:r}][{cmd:(}{it:{help varname:zvar}}{cmd:)}]}uncertainty coefficient;
-    {cmd:ucl} returns the asymmetric coefficient with respect to the left-hand side variable (the main variable), 
+    {cmd:ucl} returns the asymmetric coefficient with respect to the left-hand side variable (the main variable),
     {cmd:ucr} is with respect to the right-hand side variable (the secondary variable), {cmd:uc} returns the
     symmetric uncertainty coefficient (weighted average of {cmd:ucl} and {cmd:ucr});
     {it:zvar} as for {cmd:mindex}
@@ -1952,8 +1952,9 @@ help for {hi:dstat}{...}
     {browse "http://ideas.repec.org/p/bss/wpaper/35.html"}.
     {p_end}
 {phang}
-    Newson, R. (2006). Efficient Calculation of Jackknife Confidence 
+    Newson, R. (2006). Efficient Calculation of Jackknife Confidence
     Intervals for Rank Statistics. Journal of Statistical Software 15(1).
+    {p_end}
 {phang}
     Osberg, L., K. Xu (2008). How Should We Measure Poverty in a Changing World? Methodological
     Issues and Chinese Case Study. Review of Development Economics 12(2): 419–441.
