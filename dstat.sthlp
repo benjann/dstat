@@ -1,5 +1,5 @@
 {smcl}
-{* 25nov2021}{...}
+{* 27nov2021}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}

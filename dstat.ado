@@ -1,4 +1,4 @@
-*! version 1.2.1  25nov2021  Ben Jann
+*! version 1.2.2  27nov2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -2612,9 +2612,15 @@ version 14
 local DATA   dstat_data
 local Data   struct `DATA' scalar
 local GRP    dstat_grp
-local Grp    struct `GRP' scalar
+local Grp    class `GRP' scalar
 local GRP0   dstat_grp0
 local Grp0   struct `GRP0' scalar
+local YTMP   dstat_ytmpres
+local Ytmp   struct `YTMP' scalar
+local ZTMP   dstat_ztmpres
+local Ztmp   struct `ZTMP' scalar
+local YZTMP  dstat_yztmpres
+local YZtmp  struct `YZTMP' scalar
 local BAL    dstat_bal
 local Bal    struct `BAL' scalar
 local ZVAR   dstat_parse_stats_zvars
@@ -3714,6 +3720,35 @@ struct `BAL' {
     `RC'    wvar       // view on variable to store balancing weights
 }
 
+struct `YTMP' {
+    `IntC'  p          // sort order of Y
+    `RC'    Ys         // sorted Y
+    `RC'    ws         // weights sorted by Y
+    `RS'    mean       // mean of Y
+    `RC'    Yc, Wc     // running sums for Lorenz ordinates
+    `RS'    cd_K, cd_T // concordant/discordant pairs
+    `RC'    cd_k, cd_t // concordant/discordant pairs
+}
+
+struct `ZTMP' {
+    `Int'   z          // index of Z
+    `RC'    Z          // values of Z
+    `IntC'  p          // sort order of Z
+    `RC'    Zs         // sorted values of Z
+    `RS'    cd_U       // concordant/discordant pairs
+    `RC'    cd_u       // concordant/discordant pairs
+}
+
+struct `YZTMP' {
+    `RC'    Ys_z, Zs_y // Y (Z) sorted by order of Z (Y)
+    `RC'    ws_z       // w sorted by oder of Z
+    `RC'    Yc_z, Wc_z // running sums by order of Z for ccurve ordinates
+    `RC'    EY, EYat   // E(Y|Z=q) for ccurve IFs
+    `Bool'  cd_fast    // concordant/discordant pairs: type of algorithm
+    `RS'    cd_S, cd_V // concordant/discordant pairs
+    `RC'    cd_s, cd_v // concordant/discordant pairs
+}
+
 struct `GRP0' {
     `IntC'  p          // observations of current group
     `Int'   N          // number of obs
@@ -3723,13 +3758,14 @@ struct `GRP0' {
     `RC'    wc         // total weight - "pooled" component
 }
 
-struct `GRP' {
+class `GRP' {
     `Grp0'  G0         // backup overall group info if nocasewise
     `Int'   id         // value of group
     `IntC'  p          // observations of current group
     `IntC'  pp         // valid observation within current group (if nocw)
     `Int'   N          // number of obs
     `RC'    w          // total weight (including balancing)
+    `Int'   wtype      // weights: 0 none, 1 fw, 2 iw, 3 pw
     `RS'    W          // sum of weights
     `RC'    wb         // total weight / base weight
     `RC'    wc         // total weight - "pooled" component
@@ -3741,17 +3777,522 @@ struct `GRP' {
     `Bool'  reset      // flag for whether sample requires resetting (dstat sum)
     `Int'   j          // counter of current variable
     `RC'    Y          // current variable
-    `RS'    m          // mean of current variable
-    `RC'    Ys         // sorted current variable
-    `Int'   z          // optional variable determining sort order of Y
-    `RC'    Zs         // sorted z
-    `RC'    ws         // sorted weights
-    `RC'    ps         // permutation vector
-    `RC'    Yc         // cumulative outcome at unique Y (for lorenz ordinates)
-    `RC'    Wc         // cumulative weights at unique Y (for lorenz ordinates)
-    `Int'   Nc         // rows of Yc
-    `RC'    EY         // E(Y|Z) (for IFs of concentration curve)
-    `RC'    EYat       // evaluation points of E(Y|Z)
+    void    reset()    // clear ytmp, ztmp, yztmp
+    void    Zset()     // set Z variable and clear ztmp, yztmp
+    `Int'   z()        // index of Z
+    `RC'    Z()        // retrieve Z
+    `IntC'  pY(), pZ() // sort order of Y or Z
+    `RC'    Ys(), Zs() // sorted Y or Z
+    `RC'    ws(), wsZ()  // w sorted by Y or by Z
+    `RC'    YsZ(), ZsY() // Y sorted by Z, Z sorted by Y
+    `RS'    mean()       // mean of Y
+    `RC'    Yc(), Wc(), YcZ(), WcZ() // running sums for Lorenz ordinates
+    `RC'    EY(), EYat() // E(Y|Z=q) for ccurve IFs
+    void    cd_fast()    // set type of CD algorithm and reset results if needed
+    `RS'    cd_K(), cd_S(), cd_T(), cd_U(), cd_V()
+    `RC'    cd_k(), cd_s(), cd_t(), cd_u(), cd_v()
+    
+    private:
+    `Ytmp'  ytmp       // struct holding temporary results related to Y
+    `Ztmp'  ztmp       // struct holding temporary results related to Z
+    `YZtmp' yztmp      // struct holding temporary results related to Y x Z
+}
+
+void `GRP'::reset()
+{
+    ytmp  = `YTMP'()
+    ztmp  = `ZTMP'()
+    yztmp = `YZTMP'()
+}
+
+void `GRP'::Zset(`Int' z0, `RC' Z0)
+{
+    if (ztmp.z==z0) return // still same z
+    if (ztmp.z<.) {
+        ztmp  = `ZTMP'()
+        yztmp = `YZTMP'()
+    }
+    ztmp.z = z0
+    ztmp.Z = Z0
+}
+
+`IntC' `GRP'::pY()
+{
+    if (rows(ytmp.p)) return(ytmp.p)
+    ytmp.p = mm_order(Y,1,1) // stable sort
+    return(ytmp.p)
+}
+
+`RC' `GRP'::Ys()
+{
+    if (rows(ytmp.Ys)) return(ytmp.Ys)
+    ytmp.Ys = Y[pY()]
+    return(ytmp.Ys)
+}
+
+`RC' `GRP'::ws()
+{
+    if (rows(ytmp.ws)) return(ytmp.ws)
+    if (rows(w)==1) ytmp.ws = w
+    else            ytmp.ws = w[pY()]
+    return(ytmp.ws)
+}
+
+`Int' `GRP'::z() return(ztmp.z)
+
+`RC' `GRP'::Z() return(ztmp.Z)
+
+`IntC' `GRP'::pZ()
+{
+    if (rows(ztmp.p)) return(ztmp.p)
+    ztmp.p = mm_order(Z(),1,1) // stable sort
+    return(ztmp.p)
+}
+
+`RC' `GRP'::Zs()
+{
+    if (rows(ztmp.Zs)) return(ztmp.Zs)
+    ztmp.Zs = Z()[pZ()]
+    return(ztmp.Zs)
+}
+
+`RC' `GRP'::YsZ()
+{
+    if (rows(yztmp.Ys_z)) return(yztmp.Ys_z)
+    yztmp.Ys_z = Y[pZ()]
+    return(yztmp.Ys_z)
+}
+
+`RC' `GRP'::ZsY()
+{
+    if (rows(yztmp.Zs_y)) return(yztmp.Zs_y)
+    yztmp.Zs_y = Z()[pY()]
+    return(yztmp.Zs_y)
+}
+
+`RC' `GRP'::wsZ()
+{
+    if (rows(yztmp.ws_z)) return(yztmp.ws_z)
+    if (rows(w)==1) yztmp.ws_z = w
+    else            yztmp.ws_z = w[pZ()]
+    return(yztmp.ws_z)
+}
+
+`RS' `GRP'::mean()
+{
+    if (ytmp.mean>=.) ytmp.mean = ::mean(Y, w)
+    return(ytmp.mean)
+}
+
+`RC' `GRP'::Yc()
+{   // running sum of (weighted) outcome at unique values; including an origin
+    `RC' cdf
+    
+    if (rows(ytmp.Yc)) return(ytmp.Yc)
+    cdf = _mm_ecdf2(Ys(), ws(), 0, 1)
+    ytmp.Wc = 0 \ cdf[,2]
+    ytmp.Yc = 0 \ quadrunningsum(cdf[,1] :* mm_diff(ytmp.Wc))
+    return(ytmp.Yc)
+}
+
+`RC' `GRP'::Wc()
+{
+    if (rows(ytmp.Wc)) return(ytmp.Wc)
+    (void) Yc()
+    return(ytmp.Wc)
+}
+
+`RC' `GRP'::YcZ()
+{   // running sum of (weighted) outcome at unique values; including an origin
+    if (rows(yztmp.Yc_z)) return(yztmp.Yc_z)
+    yztmp.Yc_z = 0 \ _mm_ecdf2(Zs(), wsZ():*YsZ(), 0, 1)[,2]
+    return(yztmp.Yc_z)
+}
+
+`RC' `GRP'::WcZ()
+{
+    if (rows(yztmp.Wc_z)) return(yztmp.Wc_z)
+    yztmp.Wc_z = 0 \ _mm_ecdf2(Zs(), wsZ(), 0, 1)[,2]
+    return(yztmp.Wc_z)
+}
+
+`RC' `GRP'::EY()
+{   // estimates E(Y|Z=q) using local linear regression on a 100-point grid
+    // (using default lpoly settings for kernel and bandwidth); this will 
+    // be used for the IFs of concentration curve ordinates
+    `RS'   bw
+    `IntC' p
+    pragma unset bw
+
+    if (rows(yztmp.EY)) return(yztmp.EY)
+    if (wtype==1) {
+        // first compute bandwidth using rounded fweights
+        if (wsZ()!=ceil(wsZ())) {
+            (void) _dstat_lpoly(YsZ(), Zs(), round(wsZ()), 0, 1, bw)
+        }
+    }
+    // lpoly fit
+    yztmp.EYat = rangen(min(Zs()), max(Zs()), 100)
+    yztmp.EY   = _dstat_lpoly(YsZ(), Zs(), wsZ(), yztmp.EYat, wtype==1, bw)
+    if (hasmissing(yztmp.EY)) { // restrict grid to nonmissing points
+        p = selectindex(yztmp.EY:<.)
+        assert(length(p)) // lpoly failed
+        yztmp.EYat = yztmp.EYat[p]
+        yztmp.EY   = yztmp.EY[p]
+    }
+    return(yztmp.EY)
+}
+
+`RC' `GRP'::EYat()
+{
+    if (rows(yztmp.EYat)) return(yztmp.EYat)
+    (void) EY()
+    return(yztmp.EYat)
+}
+
+`RC' _dstat_lpoly(`RC' Y, `RC' Z, `RC' W, `RC' AT, `Bool' fw, `RS' bw)
+{   // obtain local linear fit using default settings; bw will be replaced
+    `Int'  n, r, N
+    `Bool' preserve
+    `SS'   y, z, w, at, ey, cmd
+    `RC'   EY
+
+    // write data
+    n = rows(Y)
+    r = rows(AT)
+    N = max((n, r))
+    preserve = (st_nobs()<N)
+    if (preserve) {
+        stata("preserve")
+        stata("quietly set obs "+strofreal(N,"%18.0g"))
+    }
+    (void) st_addvar("double", y  = st_tempname()); st_store((1,n), y, Y)
+    (void) st_addvar("double", z  = st_tempname()); st_store((1,n), z, Z)
+    (void) st_addvar("double", at = st_tempname()); st_store((1,r), at, AT)
+    // set weights (note: fweights are relevant only for bandwidth estimation)
+    if (rows(W)==1) {
+        if (fw & bw>=.) w = "[fw = "+strofreal(W)+"]"
+        else            w = ""
+    }
+    else {
+        (void) st_addvar("double", w  = st_tempname()); st_store((1,n), w, W)
+        if (fw & bw>=.) w = sprintf("[fw = %s]", w)
+        else            w = sprintf("[aw = %s]", w)
+    }
+    // run lpoly
+    ey = st_tempname()
+    cmd = sprintf("lpoly %s %s %s in 1/"+strofreal(n,"%18.0g"), y, z, w) +
+          sprintf(", nograph degree(1) at(%s) generate(%s)", at, ey) +
+          (bw<. ? (" bwidth("+strofreal(bw)+")") : "")
+    (void) _stata(cmd)
+    if (_st_varindex(ey)<.) {
+        EY = st_data((1,r), ey)
+        bw = st_numscalar("r(bwidth)")
+    }
+    else {
+        EY = J(r, 1, .)
+        bw = .
+    }
+    if (preserve) stata("restore")
+    return(EY)
+}
+
+void `GRP'::cd_fast(`RC' naive)
+{
+    `Bool' fast
+    
+    fast = (naive==0)
+    if (fast==yztmp.cd_fast) return
+    yztmp.cd_fast = fast
+    yztmp.cd_S = .
+    yztmp.cd_s = J(0,1,.)
+}
+
+`RS' `GRP'::cd_K()
+{
+    if (ytmp.cd_K<.) return(ytmp.cd_K)
+    if (rows(w)==1)  ytmp.cd_K = N - 1
+    else             ytmp.cd_K = quadsum(w :* cd_k()) / W
+    return(ytmp.cd_K)
+}
+
+`RS' `GRP'::cd_T()
+{
+    if (ytmp.cd_T<.) return(ytmp.cd_T)
+    if (rows(w)==1)  ytmp.cd_T = sum(cd_t()) / N
+    else             ytmp.cd_T = quadsum(w :* cd_t()) / W
+    return(ytmp.cd_T)
+}
+
+`RS' `GRP'::cd_U()
+{
+    if (ztmp.cd_U<.) return(ztmp.cd_U)
+    if (rows(w)==1)  ztmp.cd_U = sum(cd_u()) / N
+    else             ztmp.cd_U = quadsum(w :* cd_u()) / W
+    return(ztmp.cd_U)
+}
+
+`RS' `GRP'::cd_S()
+{
+    if (yztmp.cd_S<.) return(yztmp.cd_S)
+    if (rows(w)==1)   yztmp.cd_S = sum(cd_s()) / N
+    else              yztmp.cd_S = quadsum(w :* cd_s()) / W
+    return(yztmp.cd_S)
+}
+
+`RS' `GRP'::cd_V()
+{
+    if (yztmp.cd_V<.) return(yztmp.cd_V)
+    if (rows(w)==1)   yztmp.cd_V = sum(cd_v()) / N
+    else              yztmp.cd_V = quadsum(w :* cd_v()) / W
+    return(yztmp.cd_V)
+}
+
+`RC' `GRP'::cd_k()
+{
+    if (rows(ytmp.cd_k)) return(ytmp.cd_k)
+    if (rows(w)==1) ytmp.cd_k = J(N, 1, N-1)
+    else            ytmp.cd_k = W :- w
+    return(ytmp.cd_k)
+}
+
+`RC' `GRP'::cd_t()
+{
+    if (rows(ytmp.cd_t)) return(ytmp.cd_t)
+    ytmp.cd_t = J(N,1,.)
+    if (rows(w)==1) ytmp.cd_t[pY()] = __dstat_ifreq(Ys(), 1, N)  :- 1
+    else            ytmp.cd_t[pY()] = __dstat_ifreq(Ys(), ws(), N) - ws()
+    return(ytmp.cd_t)
+}
+
+`RC' `GRP'::cd_u()
+{
+    if (rows(ztmp.cd_u)) return(ztmp.cd_u)
+    ztmp.cd_u = J(N,1,.)
+    if (rows(w)==1) ztmp.cd_u[pZ()] = __dstat_ifreq(Zs(), 1, N)  :- 1
+    else {
+        ztmp.cd_u[pZ()] = __dstat_ifreq(Zs(), wsZ(), N)
+        ztmp.cd_u = ztmp.cd_u - w
+    }
+    return(ztmp.cd_u)
+}
+
+`RC' `GRP'::cd_s()
+{
+    if (rows(yztmp.cd_s)) return(yztmp.cd_s)
+    yztmp.cd_s = J(N,1,.)
+    if (yztmp.cd_fast) {
+        if (rows(w)==1) yztmp.cd_s[pY()] = _dstat_CD(Ys(), ZsY())
+        else            yztmp.cd_s[pY()] = _dstat_CD(Ys(), ZsY(), ws())
+    }
+    else {
+        if (rows(w)==1) yztmp.cd_s = _dstat_CD0(Y, Z(), N)
+        else            yztmp.cd_s = _dstat_CD0_w(Y, Z, w, N)
+    }
+    return(yztmp.cd_s)
+}
+
+`RC' `GRP'::cd_v()
+{
+    if (rows(yztmp.cd_v)) return(yztmp.cd_v)
+    yztmp.cd_v = J(N,1,.)
+    if (rows(w)==1) yztmp.cd_v = _dstat_ifreq((Y, Z()), 1, N) :- 1
+    else            yztmp.cd_v = _dstat_ifreq((Y, Z()), w, N) - w
+    return(yztmp.cd_v)
+}
+
+`IntC' _dstat_CD0(`RC' X, `RC' Y, `Int' n)
+{   // concordant-discordant sum; no weights; naive algorithm
+    `Int'  i
+    `IntC' s
+    
+    s = J(n,1,0)
+    for (i=n;i;i--) s[i] = sum(sign((X:-X[i]) :* (Y:-Y[i])))
+    return(s)
+}
+
+`IntC' _dstat_CD0_w(`RC' X, `RC' Y, `RC' w, `Int' n)
+{   // concordant-discordant sum; weighted; naive algorithm
+    `Int' i
+    `RC'  s
+    
+    s = J(n,1,0)
+    for (i=n;i;i--) s[i] = quadsum(w :* sign((X:-X[i]) :* (Y:-Y[i])))
+    return(s)
+}
+
+`RC' _dstat_CD(`RC' x, `RC' y, | `RC' w)
+{   // concordant-discordant sum; optionally weighted; fast algorithm
+    // adaption of tidottree() by Roger Newson, 15 September 2018
+    // data assumed sorted by x
+    `Int'  n, nx, ny, i, ii, a, b, root
+    `RC'   t, yval, wlt, weq, wgt
+    `IntC' xpanel 
+    `IntM' tree
+
+    // setup
+    n = rows(x)
+    if (n<1) return(J(0,1,0))
+    if (args()<3) w = J(n,1,1)
+    xpanel = _mm_panels(x)
+    nx     = rows(xpanel)
+    yval   = mm_unique(y)
+    ny     = rows(yval)
+    tree   = _dstat_CD_btree(ny)
+    root   = trunc((1 + ny) / 2)
+    t      = J(n,1,0)
+    
+    // 1 -> nx
+    wlt = weq = wgt = J(ny,1,0)
+    b = 0
+    for (i=1; i<=nx; i++) {
+        a = b + 1
+        b = b + xpanel[i]
+        for (ii=a; ii<=b; ii++) t[ii] = quadsum((t[ii],
+            _dstat_CD_l1(tree, root, y[ii], yval, wlt, weq, wgt)))
+        for (ii=a; ii<=b; ii++)
+            _dstat_CD_l2(tree, root, y[ii], yval, w[ii], wlt, weq, wgt)
+    }
+    
+    // nx -> 1
+    wlt = weq = wgt = J(ny,1,0)
+    a = b + 1
+    for (i=nx; i; i--) {
+        b = a - 1
+        a = a - xpanel[i]
+        for (ii=b; ii>=a; ii--) t[ii] = quadsum((t[ii],
+            -_dstat_CD_l1(tree, root, y[ii], yval, wlt, weq, wgt)))
+        for (ii=b; ii>=a; ii--) 
+            _dstat_CD_l2(tree, root, y[ii], yval, w[ii], wlt, weq, wgt)
+    }
+    return(t)
+}
+
+`RS' _dstat_CD_l1(`IntM' tree, `Int' root, `RS' yi, `RC' yval,
+    `RC' wlt, `RC' weq, `RC' wgt)
+{
+    `Int' node
+    `RS'  yj, l, g
+    
+    l = g = 0
+    node = root
+    while (node>0) {
+        yj = yval[node]
+        if (yi<yj) {
+            g = quadsum((g, wgt[node], weq[node]))
+            node = tree[node,1]
+        }
+        else if (yi>yj) {
+            l = quadsum((l, wlt[node], weq[node]))
+            node = tree[node,2]
+        }
+        else {
+            g = quadsum((g, wgt[node]))
+            l = quadsum((l, wlt[node]))
+            node = 0
+        }
+    }
+    return(l-g)
+}
+
+void _dstat_CD_l2(`IntM' tree, `Int' root, `RS' yi, `RC' yval, `RC' wi,
+    `RC' wlt, `RC' weq, `RC' wgt)
+{
+    `Int' node
+    `RS'  yj
+    
+    node = root
+    while (node>0) {
+        yj = yval[node]
+        if (yi<yj) {
+            wlt[node] = quadsum((wlt[node], wi))
+            node = tree[node,1]
+        }
+        else if (yi>yj) {
+            wgt[node] = quadsum((wgt[node], wi))
+            node = tree[node,2]
+        }
+        else {
+            weq[node] = quadsum((weq[node], wi))
+            node = 0
+        }
+    }
+}
+
+`IntM' _dstat_CD_btree(`Int' n)
+{   // adaption of blncdtree() by Roger Newson, 11 August 2005
+    `IntM' tree
+    
+    tree = J(n, 2, 0)
+    if (n<1) return(tree)
+    __dstat_CD_btree(tree, 1, n)
+    return(tree)
+}
+
+void __dstat_CD_btree(`IntM' tree, `Int' imin, `Int' imax)
+{   // adaption of _blncdtree() by Roger Newson, 11 August 2005
+    `Int' imid, inext
+
+    imid = trunc((imin + imax) / 2)
+    if (imid<=imin) { // left
+         tree[imid,1] = 0
+    }
+    else {
+      inext = imid - 1
+      tree[imid,1] = trunc((imin + inext) / 2)
+      __dstat_CD_btree(tree, imin, inext)
+    }
+    if (imid>=imax) {
+      tree[imid, 1] = 0
+    }
+    else {
+      inext = imid + 1
+      tree[imid,2] = trunc((inext + imax) / 2)
+      __dstat_CD_btree(tree, inext, imax)
+    }
+}
+
+`RC' _dstat_ifreq(`RM' Y, `RC' w, `Int' n)
+{   // returns for each row of Y the number (sum of weights) of duplicates;
+    // Y not assumed sorted
+    `IntC' p
+    `RC'   h
+
+    p = mm_order(Y, ., 1) // stable sort order
+    h = J(n, 1, .)
+    if (rows(w)==1) h[p] = __dstat_ifreq(Y[p,], w, n)
+    else            h[p] = __dstat_ifreq(Y[p,], w[p], n)
+    return(h)
+}
+
+`RC' __dstat_ifreq(`RM' Y, `RC' w, `Int' n)
+{   // returns for each row of Y the number (sum of weights) of duplicates;
+    // Y assumed sorted
+    `Int' i, j
+    `RC'  h
+
+    h = J(n, 1, .)
+    if (rows(w)==1) {
+        j = 1
+        for (i=2; i<=n; i++) {
+            if (Y[i,]!=Y[i-1,]) {
+                h[|j \ i-1|] = J(i-j, 1, i-j)
+                j = i
+            }
+        }
+        h[|j \ i-1|] = J(i-j, 1, i-j)
+        if (w!=1) return(h*w)
+        return(h)
+    }
+    j = 1
+    for (i=2; i<=n; i++) {
+        if (Y[i,]!=Y[i-1,]) {
+            h[|j \ i-1|] = J(i-j, 1, quadsum(w[|j \ i-1|]))
+            j = i
+        }
+    }
+    h[|j \ i-1|] = J(i-j, 1, quadsum(w[|j \ i-1|]))
+    return(h)
 }
 
 struct `DATA' {
@@ -4791,6 +5332,7 @@ void dstat_set_cstripe(`Data' D, `Grp' G, `Int' i, `Int' j, `Int' a, `Int' b, `S
     `Grp' G
     
     G.reset = 0
+    G.wtype = D.wtype
     if (i>cols(D.overlevels)) { // total
         G.id = G.p = .
         G.N  = D.N
@@ -4835,17 +5377,14 @@ void dstat_init_Y(`Data' D, `Grp' G, `Int' j, | `Int' zj)
     else hasmis = 0
     _dstat_init_Y(D, G, D.nocw | G.reset, hasmis, touse)
     G.reset = 0
-    D.S.data(J(0,1,.)) // clear density object
 }
 
 void _dstat_init_Y(`Data' D, `Grp' G, `Bool' reset, `Bool' hasmis, `BoolC' touse)
 {
     if (reset) __dstat_init_Y(D, G, hasmis, touse) // update index and weights
     G.Y = D.Y[G.p, G.j]
-    G.Ys = G.Zs = G.ws = G.Yc = G.Wc = J(0,1,.)
-    G.z = .
-    G.Nc = 0
-    G.m  = .
+    G.reset()
+    D.S.data(J(0,1,.)) // clear density object
 }
 
 void __dstat_init_Y(`Data' D, `Grp' G, `Bool' hasmis, `BoolC' touse)
@@ -4879,162 +5418,6 @@ void __dstat_init_Y(`Data' D, `Grp' G, `Bool' hasmis, `BoolC' touse)
     G.wb = G.G0.wb; G.wc = G.G0.wc
 }
 
-void dstat_reset_Y(`Data' D, `Grp' G)
-{
-    `Bool' hasmis
-    `RC'   y, touse
-    
-    if (G.reset==0) return
-    if (D.nocw) {
-        y = D.Y[G.G0.p,G.j]
-        hasmis = hasmissing(y)
-        if (hasmis) touse = (y:<.)
-    }
-    else hasmis = 0
-    _dstat_init_Y(D, G, 1, hasmis, touse)
-    G.reset = 0
-}
-
-void dstat_update_Y(`Data' D, `Grp' G, `RC' y)
-{
-    if (rows(G.pp)==0) _dstat_init_Y(D, G, 1, 1, y:<.)
-    else _dstat_init_Y(D, G, 1, 1, dstat_invp(G.G0.N, G.pp, (y:<.), 0))
-    G.reset = 1
-}
-
-void dstat_init_Ys(`Data' D, `Grp' G, | `Int' z)
-{
-    // sort Y and store in G
-    if (rows(G.Ys)) {
-        if (G.z==z) return // dstat_init_Ys() already applied
-    }
-    G.ws = G.w
-    if (z<.) {
-        G.z = z
-        G.Zs = D.Z[G.p, G.z]
-        if (rows(G.ws)!=1) {
-            G.ps = mm_order((G.Zs, G.Y), (1,2), 1) // stable sort
-            G.ws = G.ws[G.ps]
-        }
-        else G.ps = order((G.Zs, G.Y), (1,2))
-        G.Zs = G.Zs[G.ps]
-        G.Ys = G.Y[G.ps]
-    }
-    else {
-        G.z = .; G.Zs = J(0,1,.)
-        if (rows(G.ws)!=1) {
-            G.ps = mm_order(G.Y, 1, 1) // stable sort
-            G.ws = G.ws[G.ps]
-        }
-        else G.ps = order(G.Y, 1)
-        G.Ys = G.Y[G.ps]
-    }
-    // reset Yc
-    G.Yc = G.Wc = J(0,1,.)
-    G.Nc = 0
-}
-
-void dstat_init_Ycum(`Data' D, `Grp' G, | `Int' z)
-{   // computes running sum of (weighted) outcome at unique values; 
-    // also includes an origin
-    // this is used to compute lorenz ordinates
-    `RM' cdf
-    
-    if (G.Nc) {
-        if (G.z==z) return // dstat_init_Ycum() already applied
-    }
-    dstat_init_Ys(D, G, z)
-    if (G.z<.) {
-        G.Wc = 0 \ _mm_ecdf2(G.Zs, G.ws, 0, 1)[,2]
-        G.Yc = 0 \ _mm_ecdf2(G.Zs, G.ws:*G.Ys, 0, 1)[,2]
-        if (D.noIF==0) dstat_init_EY(D, G)
-    }
-    else {
-        cdf = _mm_ecdf2(G.Ys, G.ws, 0, 1)
-        G.Wc = 0 \ cdf[,2]
-        G.Yc = 0 \ quadrunningsum(cdf[,1] :* mm_diff(G.Wc))
-    }
-    G.Nc = rows(G.Yc)
-}
-
-void dstat_init_EY(`Data' D, `Grp' G)
-{   // estimates E(Y|Z=q) using local linear regression on a 100-point grid
-    // (using default lpoly settings for kernel and bandwidth); this will 
-    // be used for the IFs of concentration curve ordinates
-    `RS'   bw
-    `IntC' p
-    pragma unset bw
-    
-    if (D.wtype==1) {
-        // first compute bandwidth using rounded fweights
-        if (G.ws!=ceil(G.ws)) {
-            (void) _dstat_lpoly(G.Ys, G.Zs, round(G.ws), 0, 1, bw)
-        }
-    }
-    // lpoly fit
-    G.EYat = rangen(min(G.Zs), max(G.Zs), 100)
-    G.EY   = _dstat_lpoly(G.Ys, G.Zs, G.ws, G.EYat, D.wtype==1, bw)
-    if (hasmissing(G.EY)) { // restrict grid to nonmissing points
-        p = selectindex(G.EY:<.)
-        assert(length(p)) // lpoly failed
-        G.EYat = G.EYat[p]
-        G.EY   = G.EY[p]
-    }
-}
-
-`RC' _dstat_lpoly(`RC' Y, `RC' Z, `RC' W, `RC' AT, `Bool' fw, `RS' bw)
-{   // obtain local linear fit using default settings; bw will be replaced
-    `Int'  n, r, N
-    `Bool' preserve
-    `SS'   y, z, w, at, ey, cmd
-    `RC'   EY
-
-    // write data
-    n = rows(Y)
-    r = rows(AT)
-    N = max((n, r))
-    preserve = (st_nobs()<N)
-    if (preserve) {
-        stata("preserve")
-        stata("quietly set obs "+strofreal(N,"%18.0g"))
-    }
-    (void) st_addvar("double", y  = st_tempname()); st_store((1,n), y, Y)
-    (void) st_addvar("double", z  = st_tempname()); st_store((1,n), z, Z)
-    (void) st_addvar("double", at = st_tempname()); st_store((1,r), at, AT)
-    // set weights (note: fweights are relevant only for bandwidth estimation)
-    if (rows(W)==1) {
-        if (fw & bw>=.) w = "[fw = "+strofreal(W)+"]"
-        else            w = ""
-    }
-    else {
-        (void) st_addvar("double", w  = st_tempname()); st_store((1,n), w, W)
-        if (fw & bw>=.) w = sprintf("[fw = %s]", w)
-        else            w = sprintf("[aw = %s]", w)
-    }
-    // run lpoly
-    ey = st_tempname()
-    cmd = sprintf("lpoly %s %s %s in 1/"+strofreal(n,"%18.0g"), y, z, w) +
-          sprintf(", nograph degree(1) at(%s) generate(%s)", at, ey) +
-          (bw<. ? (" bwidth("+strofreal(bw)+")") : "")
-    (void) _stata(cmd)
-    if (_st_varindex(ey)<.) {
-        EY = st_data((1,r), ey)
-        bw = st_numscalar("r(bwidth)")
-    }
-    else {
-        EY = J(r, 1, .)
-        bw = .
-    }
-    if (preserve) stata("restore")
-    return(EY)
-}
-
-`RS' _dstat_mean(`Grp' G)
-{
-    if (G.m>=.) G.m = mean(G.Y, G.w)
-    return(G.m)
-}
-
 void dstat_noobs(`Data' D, `Int' a, `Int' b)
 {
     `Int' n
@@ -5046,11 +5429,12 @@ void dstat_noobs(`Data' D, `Int' a, `Int' b)
     D.IF[|1,a \ .,b|] = J(D.N, n, 0)
 }
 
-void dstat_set_density(`Data' D, `Grp' G)
+void dstat_set_density(`Data' D, `Grp' G, | `Bool' nosort)
 {
+    if (args()<3) nosort = 0
     if (rows(D.S.X())) return // dstat_set_density() already applied
-    if (rows(G.Ys)) D.S.data(G.Ys, G.ws, D.wtype>=2, 1) // use sorted data
-    else            D.S.data(G.Y , G.w , D.wtype>=2, 0) // use unsorted data
+    if (nosort) D.S.data(G.Y   , G.w   , D.wtype>=2, 0) // use unsorted data
+    else        D.S.data(G.Ys(), G.ws(), D.wtype>=2, 1) // sorted data
     if (D.bwidth[D.k]<.) D.S.bw(D.bwidth[D.k])
     if (D.S.h()>=.)      D.S.bw(epsilon(1))  // missing bandwidth
     D.bwidth[D.k] = D.S.h()
@@ -5084,11 +5468,10 @@ void dstat_set_nobs_sumw(`Data' D, `Grp' G, `Int' a, | `Int' b)
     return(*D.mvj[G.j])
 }
 
-`RM' dstat_freq(`Data' D, `Grp' G)
+`RM' dstat_freq(`Grp' G)
 {
     if (G.N==0) return(J(G.N, 2, .))
-    dstat_init_Ys(D, G)
-    return(_dstat_freq(G.Ys, G.ws, G.N))
+    return(_dstat_freq(G.Ys(), G.ws(), G.N))
 }
 
 `RM' _dstat_freq(`RC' Y, `RC' w, `Int' n)
@@ -5157,75 +5540,6 @@ void _dstat_freq2(`RM' Y, `RC' w, `Int' n) // Y will be replaced
     }
     Y = Y[|1,1 \ j,.|]
 }
-
-`RC' _dstat_ifreq(`RM' Y, `RC' w, `Int' n)
-{   // returns for each row of Y the number (sum of weights) of duplicates;
-    // Y not assumed sorted
-    `IntC' p
-    `RC'   h
-
-    p = mm_order(Y, ., 1) // stable sort order
-    h = J(n, 1, .)
-    if (rows(w)==1) h[p] = __dstat_ifreq(Y[p,], w, n)
-    else            h[p] = __dstat_ifreq(Y[p,], w[p], n)
-    return(h)
-}
-
-`RC' __dstat_ifreq(`RM' Y, `RC' w, `Int' n)
-{   // returns for each row of Y the number (sum of weights) of duplicates;
-    // Y assumed sorted
-    `Int' i, j
-    `RC'  h
-
-    h = J(n, 1, .)
-    if (rows(w)==1) {
-        j = 1
-        for (i=2; i<=n; i++) {
-            if (Y[i,]!=Y[i-1,]) {
-                h[|j \ i-1|] = J(i-j, 1, i-j)
-                j = i
-            }
-        }
-        h[|j \ i-1|] = J(i-j, 1, i-j)
-        if (w!=1) return(h*w)
-        return(h)
-    }
-    j = 1
-    for (i=2; i<=n; i++) {
-        if (Y[i,]!=Y[i-1,]) {
-            h[|j \ i-1|] = J(i-j, 1, quadsum(w[|j \ i-1|]))
-            j = i
-        }
-    }
-    h[|j \ i-1|] = J(i-j, 1, quadsum(w[|j \ i-1|]))
-    return(h)
-}
-
-/*
-`RC' dstat_put_omit(`SM' cstripe, `RV' omit)
-{   // adds omitted flags to cstripe and returns number of omitted terms
-    `Int' i, k_omit
-
-    k_omit = sum(omit)
-    if (k_omit) {
-        i = length(omit)
-        for (; i; i--) {
-            if (omit[i]) cstripe[i,2] = _dstat_put_omit(cstripe[i,2])
-        }
-    }
-    return(k_omit)
-}
-
-`SS' _dstat_put_omit(`SS' s)
-{
-    `SS' ospec
-    
-    stata("_ms_put_omit " + s)
-    ospec = st_global("s(ospec)")
-    if (ospec=="") ospec = s // _ms_put_omit failed
-    return(ospec)
-}
-*/
 
 // --------------------------------------------------------------------------
 // balancing
@@ -5437,7 +5751,7 @@ void dstat_density(`Data' D)
         G = dstat_init_grp(D, i)
         for (j=1; j<=D.nvars; j++) {
             dstat_init_Y(D, G, j)
-            if (G.N) dstat_set_density(D, G)
+            if (G.N) dstat_set_density(D, G, 1)
             a = b + 1
             if (D.AT[D.k]==NULL) {
                 b = a + D.n - 1
@@ -5851,7 +6165,7 @@ void dstat_prop(`Data' D)
     `T'   A
     
     // obtain frequency table
-    H = dstat_freq(D, G)
+    H = dstat_freq(G)
     // post H as hash table
     A = asarray_create("real")
     asarray_notfound(A, 0)
@@ -5899,7 +6213,6 @@ void dstat_quantile(`Data' D)
         G = dstat_init_grp(D, i)
         for (j=1; j<=D.nvars; j++) {
             dstat_init_Y(D, G, j)
-            dstat_init_Ys(D, G)
             AT = *D.AT[D.k]
             a = b + 1
             b = a + rows(AT) - 1
@@ -5913,7 +6226,7 @@ void dstat_quantile(`Data' D)
                     _dstat_sum_hdquantile(D, G, a, b, AT)
                     continue
                 }
-                D.b[|a \ b|] = _mm_quantile(G.Ys, G.ws, AT, D.qdef, D.wtype==1)
+                D.b[|a \ b|] = _mm_quantile(G.Ys(), G.ws(), AT, D.qdef, D.wtype==1)
                 if (D.noIF==0) {
                     dstat_set_density(D, G)
                     dstat_quantile_IF(D, G, a, b)
@@ -5964,6 +6277,7 @@ void dstat_lorenz(`Data' D)
         G = dstat_init_grp(D, i)
         for (j=1; j<=D.nvars; j++) {
             dstat_init_Y(D, G, j, z)
+            if (z<.) G.Zset(z, D.Z[G.p,z])
             AT = *D.AT[D.k]
             a = b + 1
             b = a + rows(AT) - 1
@@ -5973,56 +6287,66 @@ void dstat_lorenz(`Data' D)
                 "l":+strofreal(1::b-a+1) : strofreal(AT, D.vfmt)))
             if (G.N==0) dstat_noobs(D, a, b)
             else {
-                D.b[|a \ b|]  = _dstat_lorenz(D, G, AT, t, z)
-                if (D.noIF==0) dstat_lorenz_IF(D, G, a, b, t)
+                D.b[|a \ b|]  = _dstat_lorenz(G, AT, t, z)
+                if (D.noIF==0) dstat_lorenz_IF(D, G, a, b, t, z)
             }
         }
     }
 }
 
-`RC' _dstat_lorenz(`Data' D, `Grp' G, `RC' P, `Int' t, | `Int' z)
-{   // determine lorenz ordinates using interpolation
-    `RC' p, L
+`RC' _dstat_lorenz(`Grp' G, `RC' P, `Int' t, | `Int' z)
+{   // determine Lorenz ordinates using interpolation
+    `RS'  Ytot
+    `PS'  Yc, Wc
+    `RC'  p, L
 
-    dstat_init_Ycum(D, G, z)
+    if (z<.) {
+        Yc = &(G.YcZ())
+        Wc = &(G.WcZ())
+    }
+    else {
+        Yc = &(G.Yc())
+        Wc = &(G.Wc())
+    }
+    Ytot = (*Yc)[rows(*Yc)]
     p = order(P, 1)
-    L = P[p] * G.Wc[G.Nc]
-        // using G.Wc[G.Nc] instead of G.W to avoid precision issues at P=1
-    L[p] = mm_fastipolate(G.Wc, G.Yc, L)
+    L = P[p] * (*Wc)[rows(*Wc)]
+        // using Wc[rows(Wc)] instead of G.W to avoid precision issues at P=1
+    L[p] = mm_fastipolate(*Wc, *Yc, L)
         // (assuming that sum of weights>0 for each unique Y-value)
-    if (t==6) return((P - L/G.Yc[G.Nc]) * 100)  // equality gap in %
-    if (t==5) return(P - L/G.Yc[G.Nc])          // equality gap
-    if (t==4) return((L - P:*G.Yc[G.Nc]) / G.W) // absolute
-    if (t==3) return(L / G.W)                   // generalized
-    if (t==2) return(L)                         // total
-    if (t==1) return(L * (100/G.Yc[G.Nc]))      // ordinary in %
-              return(L = L / G.Yc[G.Nc])        // ordinary
+    if (t==6) return((P - L/Ytot) * 100)   // equality gap in %
+    if (t==5) return(P - L/Ytot)           // equality gap
+    if (t==4) return((L - P:*Ytot) / G.W)  // absolute
+    if (t==3) return(L / G.W)              // generalized
+    if (t==2) return(L)                    // total
+    if (t==1) return(L * (100/Ytot))       // ordinary in %
+              return(L = L / Ytot)         // ordinary
 }
 
-void dstat_lorenz_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `Int' t)
+void dstat_lorenz_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `Int' t, | `Int' z)
 {
     if (t==2) D.IFtot[|a \ b|] = D.b[|a \ b|] // total
-    D.IF[|1,a \ .,b|] = _dstat_lorenz_IF(D, G, D.at[|a \ b|], t, D.b[|a \ b|])
+    D.IF[|1,a\.,b|] = _dstat_lorenz_IF(D, G, D.at[|a \ b|], t, D.b[|a \ b|], z)
 }
 
-`RM' _dstat_lorenz_IF(`Data' D, `Grp' G, `RC' at, `Int' t, `RC' B)
+`RM' _dstat_lorenz_IF(`Data' D, `Grp' G, `RC' at, `Int' t, `RC' B, | `Int' z)
 {
     `Int' i, n
-    `RC'  q, ey, Z
+    `RC'  q, ey
     `RM'  IF
     
     n = rows(at)
-    if (G.z<.) {
-        q = _mm_quantile(G.Zs, G.ws, at, 2)
+    if (z<.) {
+        q = _mm_quantile(G.Zs(), G.wsZ(), at, 2)
         ey = _dstat_lorenz_IF_EY(G, q)
-        Z = D.Z[G.p, G.z]
     }
-    else ey = q = _mm_quantile(G.Ys, G.ws, at, 2)
+    else ey = q = _mm_quantile(G.Ys(), G.ws(), at, 2)
     IF = J(D.N, n, 0)
     for (i=1; i<=n; i++) {
         if (at[i]==0)               continue
         if (at[i]==1 & t!=2 & t!=3) continue
-        IF[,i] = __dstat_lorenz_IF(D, G, (G.z<. ? Z : G.Y):<=q[i], ey[i], t, B[i])
+        IF[,i] = __dstat_lorenz_IF(D, G, (z<. ? G.Z() : G.Y):<=q[i],
+            ey[i], t, B[i], z)
     }
     return(IF)
 }
@@ -6034,16 +6358,24 @@ void dstat_lorenz_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `Int' t)
     
     p  = order(at, 1)
     ey = J(rows(at), 1, .)
-    ey[p] = mm_fastipolate(G.EYat, G.EY, at[p], 1)
+    ey[p] = mm_fastipolate(G.EYat(), G.EY(), at[p], 1)
     return(ey)
 }
 
-`RC' __dstat_lorenz_IF(`Data' D, `Grp' G, `RC' Zq, `RS' ey, `Int' t, `RS' B)
+`RC' __dstat_lorenz_IF(`Data' D, `Grp' G, `RC' Zq, `RS' ey, `Int' t, `RS' B,
+    `Int' zvar)
 {
-    `RC' z, p, L, T, W, h
+    `RS' p, L, T, W
+    `RC' z, h
     
-    T   = G.Yc[G.Nc]
-    W   = G.Wc[G.Nc]
+    if (zvar<.) {
+        T = (G.YcZ())[rows(G.YcZ())]
+        W = (G.WcZ())[rows(G.WcZ())]
+    }
+    else {
+        T = (G.Yc())[rows(G.Yc())]
+        W = (G.Wc())[rows(G.Wc())]
+    }
     z   = G.Y :* Zq
     p   = mean(Zq, G.w)   // set p=mean(zq) to ensure mean(IF)=0
     L   = quadsum(z:*G.w) // set L=sum(z) to ensure mean(IF)=0
@@ -6080,6 +6412,7 @@ void dstat_share(`Data' D)
         G = dstat_init_grp(D, i)
         for (j=1; j<=D.nvars; j++) {
             dstat_init_Y(D, G, j, z)
+            if (z<.) G.Zset(z, D.Z[G.p,z])
             AT = *D.AT[D.k]
             h = mm_diff(AT) // bin width
             a = b + 1
@@ -6090,30 +6423,32 @@ void dstat_share(`Data' D)
                 "s":+strofreal(1::b-a)\"_ul" : strofreal(AT, D.vfmt)))
             if (G.N==0) dstat_noobs(D, a, b)
             else {
-                L = _dstat_lorenz(D, G, AT, t, z)
+                L = _dstat_lorenz(G, AT, t, z)
                 B = mm_diff(L)
                 if (d) B = B :* editmissing(1 :/ h, 0)
                 D.b[|a \ b|]  = B \ B[rows(B)]
-                if (D.noIF==0) dstat_share_IF(D, G, a, b, t, d, L)
+                if (D.noIF==0) dstat_share_IF(D, G, a, b, t, d, L, z)
             }
         }
     }
 }
 
-void dstat_share_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `Int' t, `Int' d, `RC' L)
+void dstat_share_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `Int' t, `Int' d, 
+    `RC' L, | `Int' z)
 {
     if (t==2) D.IFtot[|a \ b-1|] = D.b[|a \ b-1|] // total
-    D.IF[|1,a \ .,b-1|] = _dstat_share_IF(D, G, D.at[|a,1 \ b,1|], t, d, L)
+    D.IF[|1,a \ .,b-1|] = _dstat_share_IF(D, G, D.at[|a,1 \ b,1|], t, d, L, z)
     D.IF[,b] = J(D.N, 1, 0)
 }
 
-`RM' _dstat_share_IF(`Data' D, `Grp' G, `RC' at, `Int' t, `Int' d, `RC' L)
+`RM' _dstat_share_IF(`Data' D, `Grp' G, `RC' at, `Int' t, `Int' d, `RC' L, 
+    | `Int' z)
 {
     `Int' i, n
     `RM'  IF
     
     n = rows(at)
-    IF = _dstat_lorenz_IF(D, G, at, t, L)
+    IF = _dstat_lorenz_IF(D, G, at, t, L, z)
     for (i=1; i<n; i++) {
         if (d) IF[,i] = (IF[,i+1] - IF[,i]) * editmissing(1/(at[i+1]-at[i]), 0)
         else   IF[,i] =  IF[,i+1] - IF[,i]
@@ -6229,7 +6564,7 @@ void dstat_sum(`Data' D)
             }
             else {
                 for (ii=1; ii<=nn; ii++) {
-                    dstat_reset_Y(D, G) // (sample might have been modified)
+                    _dstat_sum_reset_Y(D, G) // (sample might have changed)
                     s = AT[ii]
                     o = _dstat_sum_split(s) // replaces s
                     P = asarray(A, mm_strexpand(s, list))
@@ -6240,6 +6575,29 @@ void dstat_sum(`Data' D)
             }
         }
     }
+}
+
+void _dstat_sum_reset_Y(`Data' D, `Grp' G)
+{
+    `Bool' hasmis
+    `RC'   y, touse
+    
+    if (G.reset==0) return
+    if (D.nocw) {
+        y = D.Y[G.G0.p,G.j]
+        hasmis = hasmissing(y)
+        if (hasmis) touse = (y:<.)
+    }
+    else hasmis = 0
+    _dstat_init_Y(D, G, 1, hasmis, touse)
+    G.reset = 0
+}
+
+void _dstat_sum_update_Y(`Data' D, `Grp' G, `RC' y)
+{
+    if (rows(G.pp)==0) _dstat_init_Y(D, G, 1, 1, y:<.)
+    else _dstat_init_Y(D, G, 1, 1, dstat_invp(G.G0.N, G.pp, (y:<.), 0))
+    G.reset = 1
 }
 
 `SS' _dstat_sum_split(`SS' s)
@@ -6301,61 +6659,100 @@ void _dstat_sum_invalid(`Data' D, `Grp' G, `SS' s, `Int' N)
     }
 }
 
-void _dstat_sum_update_Y(`Data' D, `Grp' G, `RC' Z)
+void _dstat_sum_set_z(`Data' D, `Grp' G, `SS' o, `RR' O, | `RC' o1)
 {
-    if (D.nocw==0) return
-    if (hasmissing(Z)) {
-        dstat_update_Y(D, G, Z)
-        Z = select(Z, Z:<.)
+    `Int' z
+    `RC'  Z
+    
+    if (args()<5) {
+        if (o=="") z = selectindex(D.zvars:==D.zvar)
+        else       z = selectindex(D.zvars:==dstat_unab(o))
     }
+    else           z = __dstat_sum_set_z(D, o, O, o1) // parse z1-syntax
+    Z = D.Z[G.p, z]
+    if (D.nocw) {
+        if (hasmissing(Z)) {
+            _dstat_sum_update_Y(D, G, Z) // update sample
+            G.Zset(z, Z[G.pp])
+            return
+        }
+    }
+    G.Zset(z, Z)
 }
 
-`RC' _dstat_sum_get_z1(`Data' D, `Grp' G, `SS' o, `RR' O, `RC' o1)
+`Int' __dstat_sum_set_z(`Data' D, `SS' o, `RR' O, `RC' o1)
 {
-    `Int' l
+    `Int' l, z
     `SR'  args
-    `RC'  Z
     
     args = tokens(o)
     l = length(args)
     if (l==0) {
-        Z = D.Z[G.p, selectindex(D.zvars:==D.zvar)]
+        z = selectindex(D.zvars:==D.zvar)
         o1 = O[3]
     }
     else if (l==1) {
         o1 = strtoreal(args[1])
-        if (o1<.) Z = D.Z[G.p, selectindex(D.zvars:==D.zvar)]
+        if (o1<.) z = selectindex(D.zvars:==D.zvar)
         else {
-            Z = D.Z[G.p, selectindex(D.zvars:==dstat_unab(args[1]))]
+            z = selectindex(D.zvars:==dstat_unab(args[1]))
             o1 = O[3]
         }
     }
     else {
-        Z = D.Z[G.p, selectindex(D.zvars:==dstat_unab(args[1]))]
+        z = selectindex(D.zvars:==dstat_unab(args[1]))
         o1 = strtoreal(args[2])
     }
-    _dstat_sum_update_Y(D, G, Z)
-    return(Z)
+    return(z)
 }
 
-`RC' _dstat_sum_get_pline(`Data' D, `Grp' G, `SS' o)
+`RC' _dstat_sum_get_pl(`Data' D, `Grp' G, `SS' o, `RR' O, | `RC' o1)
 {
-    `RC' pl
+    `Int' z
+    `SS'  s
+    `RC'  pl
     
-    if (o!="") {
-        if (strtoreal(o)>=.) {
-            pl = D.Z[G.p, selectindex(D.zvars:==dstat_unab(o))]
-            _dstat_sum_update_Y(D, G, pl)
-            return(pl)
+    // collect arguments
+    if (args()<5) s = o
+    else          s = __dstat_sum_get_pl(o, O, o1) // parse 1pl-syntax
+    // determine whether pl is a variable
+    if (s!="") {
+        if (strtoreal(s)>=.) {
+            z = selectindex(D.zvars:==dstat_unab(s))
         }
-        return(strtoreal(o))
     }
-    if (D.plvar!="") {
-        pl = D.Z[G.p, selectindex(D.zvars:==D.plvar)]
-        _dstat_sum_update_Y(D, G, pl)
-        return(pl)
+    else if (D.plvar!="") {
+        z = selectindex(D.zvars:==D.plvar)
     }
-    return(D.pline)
+    // if pl is not a variable: return scalar
+    if (z>=.) {
+        if (s!="") return(strtoreal(s))
+        return(D.pline)
+    }
+    // if pl is a variables: possibly update sample and return variable
+    pl = D.Z[G.p, z]
+    if (D.nocw==0) return(pl)
+    if (hasmissing(pl)) {
+        _dstat_sum_update_Y(D, G, pl) // update sample
+        pl = pl[G.pp]
+    }
+    return(pl)
+}
+
+`SS' __dstat_sum_get_pl(`SS' o, `RR' O, `RC' o1)
+{
+    `SR'  args
+    `Int' l
+
+    args = tokens(o)
+    l = length(args)
+    if (l==0) {
+        o1 = O[3]
+        return("")
+    }
+    o1 = strtoreal(args[1])
+    if (l==1) return("")
+    return(args[2])
 }
 
 `RC' _dstat_sum_ccdf(`RC' Y, `RC' w, `RS' W)
@@ -6384,14 +6781,13 @@ void _dstat_sum_q(`Data' D, `Grp' G, `Int' i, `RS' p)
     `RS' fx
     `RC' z
     
-    dstat_init_Ys(D, G)
-    if (p==0)      {; _dstat_sum_fixed(D, i, G.Ys[1]);   return; }
-    else if (p==1) {; _dstat_sum_fixed(D, i, G.Ys[G.N]); return; }
+    if (p==0)      {; _dstat_sum_fixed(D, i, G.Ys()[1]);   return; }
+    else if (p==1) {; _dstat_sum_fixed(D, i, G.Ys()[G.N]); return; }
     if (D.qdef==10) {
         _dstat_sum_hdquantile(D, G, i, i, p)
         return
     }
-    D.b[i] = _mm_quantile(G.Ys, G.ws, p, D.qdef, D.wtype==1)
+    D.b[i] = _mm_quantile(G.Ys(), G.ws(), p, D.qdef, D.wtype==1)
     if (D.noIF) return
     fx = _dstat_sum_d(D, G, D.b[i])
     z = (G.Y :<= D.b[i])
@@ -6401,14 +6797,12 @@ void _dstat_sum_q(`Data' D, `Grp' G, `Int' i, `RS' p)
 void dstat_sum_hdquantile(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     pragma unused O
-    
-    dstat_init_Ys(D, G)
     _dstat_sum_hdquantile(D, G, i, i, strtoreal(o)/100)
 }
 
 void _dstat_sum_hdquantile(`Data' D, `Grp' G, `Int' a, `Int' b, `RC' p)
 {
-    D.b[|a \ b|] = _mm_hdq(G.Ys, G.ws, p, D.wtype==1)
+    D.b[|a \ b|] = _mm_hdq(G.Ys(), G.ws(), p, D.wtype==1)
     if (D.noIF) return
     _dstat_sum_hdq_IF(0, D, G, a, b, p)
 }
@@ -6426,7 +6820,7 @@ void _dstat_sum_hdquantile(`Data' D, `Grp' G, `Int' a, `Int' b, `RC' p)
     else                   n = G.W^2 / quadsum(G.w:^2)
     if (G.w==1) F = 0 \ (1::n)/(n-1)
     else {
-        F  = _mm_ranks(G.Ys, G.ws, 0, 0, 1) * (n/(n-1))
+        F  = _mm_ranks(G.Ys(), G.ws(), 0, 0, 1) * (n/(n-1))
         F0 = F :- (1 / (n-1))
     }
     k = 0
@@ -6454,9 +6848,9 @@ void _dstat_sum_hdquantile(`Data' D, `Grp' G, `Int' a, `Int' b, `RC' p)
     b = (1 - p) * (n + 1)
     if (G.w==1) d = mm_diff(ibeta(a, b, F)) * (1-n)
     else        d = (ibeta(a, b, F)-ibeta(a, b, F0)) * (1-n)
-    h = quadrunningsum(d:*(G.Ys[|2\G.N|]\0))
-    h = (0\quadrunningsum(d:*G.Ys))[|1\G.N|] + (h[G.N] :- (0\h[|1\G.N-1|]))
-    return(dstat_invp(G.N, G.ps, h :- mean(h, G.ws)) / G.W)
+    h = quadrunningsum(d:*(G.Ys()[|2\G.N|]\0))
+    h = (0\quadrunningsum(d:*G.Ys()))[|1\G.N|] + (h[G.N] :- (0\h[|1\G.N-1|]))
+    return(dstat_invp(G.N, G.pY(), h :- mean(h, G.ws())) / G.W)
 }
 
 void dstat_sum_d(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
@@ -6471,10 +6865,9 @@ void dstat_sum_density(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     pragma unused O
     
     at = strtoreal(o)
-    dstat_init_Ys(D, G)
     D.b[i] = _dstat_sum_d(D, G, at)
     if (D.noIF) return
-    z = dstat_invp(G.N, G.ps, D.S.K(D.S.X(), at, D.S.h()*D.S.l()))
+    z = dstat_invp(G.N, G.pY(), D.S.K(D.S.X(), at, D.S.h()*D.S.l()))
     if (D.exact) dstat_set_IF(D, G, i, (z :- D.b[i])/G.W)
     else         dstat_set_IF(D, G, i, (z :- mean(z, G.w))/G.W)
 }
@@ -6698,14 +7091,13 @@ void dstat_sum_mean(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     pragma unused o
     pragma unused O
-    D.b[i] = _dstat_mean(G)
+    D.b[i] = G.mean()
     if (D.noIF) return
     dstat_set_IF(D, G, i, (G.Y :- D.b[i]) / G.W)
 }
 
 void dstat_sum_gmean(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    `RS' W
     `RC' z
     pragma unused o
     pragma unused O
@@ -6713,7 +7105,7 @@ void dstat_sum_gmean(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     z = ln(G.Y)
     if (hasmissing(z)) {
         _dstat_sum_invalid(D, G, "gmean", G.N-missing(z))
-        dstat_update_Y(D, G, z)
+        _dstat_sum_update_Y(D, G, z) // update sample
         z = ln(G.Y)
     }
     D.b[i] = exp(mean(z, G.w))
@@ -6731,7 +7123,7 @@ void dstat_sum_hmean(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     z = 1 :/ G.Y
     if (hasmissing(z)) {
         _dstat_sum_invalid(D, G, "hmean", G.N-missing(z))
-        dstat_update_Y(D, G, z)
+        _dstat_sum_update_Y(D, G, z) // update sample
         z = 1 :/ G.Y
     }
     D.b[i] = 1 / mean(z, G.w)
@@ -6752,8 +7144,7 @@ void dstat_sum_trim(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     p1 = args[1]/100
     if (length(args)==1) p2 = 1 - p1
     else                 p2 = 1 - args[2]/100
-    dstat_init_Ys(D, G)
-    q = _mm_quantile(G.Ys, G.ws, p1\p2, D.qdef, D.wtype==1)
+    q = _mm_quantile(G.Ys(), G.ws(), p1\p2, D.qdef, D.wtype==1)
     lo = (p1>0 ? G.Y:<=q[1] : J(G.N, 1, 0)) // tag obs <= lower quantile
     up = (p2<1 ? G.Y:>=q[2] : J(G.N, 1, 0)) // tag obs >= upper quantile
     mid = !lo :& !up  // tag obs in (lower quantile, upper quantile)
@@ -6784,8 +7175,7 @@ void dstat_sum_winsor(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     p1 = args[1]/100
     if (length(args)==1) p2 = 1 - p1
     else                 p2 = 1 - args[2]/100
-    dstat_init_Ys(D, G)
-    q = _mm_quantile(G.Ys, G.ws, p1\p2, D.qdef, D.wtype==1)
+    q = _mm_quantile(G.Ys(), G.ws(), p1\p2, D.qdef, D.wtype==1)
     lo = (p1>0 ? G.Y:<=q[1] : J(G.N, 1, 0)) // tag obs <= lower quantile
     up = (p2<1 ? G.Y:>=q[2] : J(G.N, 1, 0)) // tag obs >= upper quantile
     mid = !lo :& !up  // tag obs in (lower quantile, upper quantile)
@@ -6822,8 +7212,7 @@ void dstat_sum_huber(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     
     if (o!="") eff = strtoreal(o)
     else       eff = O[3]
-    dstat_init_Ys(D, G)
-    med = _mm_median(G.Ys, G.ws)
+    med = _mm_median(G.Ys(), G.ws())
     S = mm_mloc(G.Y, G.w, eff, "huber", med)
     D.b[i] = mm_mloc_b(S)
     if (D.noIF) return
@@ -6850,8 +7239,7 @@ void dstat_sum_biweight(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     
     if (o!="") eff = strtoreal(o)
     else       eff = O[3]
-    dstat_init_Ys(D, G)
-    med = _mm_median(G.Ys, G.ws)
+    med = _mm_median(G.Ys(), G.ws())
     S = mm_mloc(G.Y, G.w, eff, "biweight", med)
     D.b[i] = mm_mloc_b(S)
     if (D.noIF) return
@@ -6876,14 +7264,13 @@ void dstat_sum_hl(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     pragma unused o
     pragma unused O
     
-    dstat_init_Ys(D, G)
-    D.b[i] = mm_hl(G.Ys, G.ws, D.wtype==1)
+    D.b[i] = mm_hl(G.Ys(), G.ws(), D.wtype==1)
     if (D.noIF) return
-    z = 2*D.b[i] :- G.Ys
-    F = _mm_relrank(G.Ys, G.ws, z[G.N::1], 1)[G.N::1]
+    z = 2*D.b[i] :- G.Ys()
+    F = _mm_relrank(G.Ys(), G.ws(), z[G.N::1], 1)[G.N::1]
     d = _dstat_sum_d(D, G, z)
-    F[G.ps] = F
-    dstat_set_IF(D, G, i, (mean(F, G.w) :- F) / (mean(d, G.ws) * G.W))
+    F[G.pY()] = F
+    dstat_set_IF(D, G, i, (mean(F, G.w) :- F) / (mean(d, G.ws()) * G.W))
         // note: using mean(F, G.w) instead of 0.5 so that total of IF is
         // exactly zero
 }
@@ -7018,7 +7405,7 @@ void _dstat_sum_mad_mean_mean(`Data' D, `Grp' G, `Int' i)
     `RS' t
     `RC' z, z2
     
-    t  = _dstat_mean(G)
+    t  = G.mean()
     z  = G.Y :- t
     z2 = abs(z)
     D.b[i] = mean(z2, G.w)
@@ -7031,13 +7418,12 @@ void _dstat_sum_mad_med_mean(`Data' D, `Grp' G, `Int' i)
     `RS' t
     `RC' z, z2, q, d
     
-    t = _dstat_mean(G)
+    t = G.mean()
     z = G.Y :- t
     z2 = abs(z)
     D.b[i] = mm_median(z2, G.w) // z not sorted!
     if (D.noIF) return
     q = (t - D.b[i]) \ (t + D.b[i])
-    dstat_init_Ys(D, G)
     d = _dstat_sum_d(D, G, q)
     z2 = (z2 :<= D.b[i]) 
     dstat_set_IF(D, G, i, ((mean(z2, G.w) :- z2)/(d[1]+d[2])
@@ -7049,8 +7435,7 @@ void _dstat_sum_mad_mean_med(`Data' D, `Grp' G, `Int' i)
     `RS' q, d
     `RC' z, z2, z3
 
-    dstat_init_Ys(D, G)
-    q = _mm_median(G.Ys, G.ws)
+    q = _mm_median(G.Ys(), G.ws())
     z = G.Y :- q
     z2 = abs(z)
     D.b[i] = mean(z2, G.w)
@@ -7065,9 +7450,8 @@ void _dstat_sum_mad_med_med(`Data' D, `Grp' G, `Int' i)
 {
     `RC' z, z2, q, d
 
-    dstat_init_Ys(D, G)
     q    = J(3,1,.)
-    q[2] = _mm_median(G.Ys, G.ws)
+    q[2] = _mm_median(G.Ys(), G.ws())
     z = abs(G.Y :- q[2])
     D.b[i] = mm_median(z, G.w) // z not sorted!
     if (D.noIF) return
@@ -7134,7 +7518,6 @@ void _dstat_sum_mae_med(`Data' D, `Grp' G, `Int' i, `RS' t)
     D.b[i] = mm_median(z, G.w) // z not sorted!
     if (D.noIF) return
     q = (t - D.b[i]) \ (t + D.b[i])
-    dstat_init_Ys(D, G)
     d = _dstat_sum_d(D, G, q)
     z = (z :<= D.b[i]) 
     dstat_set_IF(D, G, i, (mean(z, G.w) :- z) / (G.W * (d[1]+d[2])))
@@ -7165,16 +7548,15 @@ void dstat_sum_md(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     pragma unused o
     pragma unused O
     
-    dstat_init_Ys(D, G)
-    m   = _dstat_mean(G)
-    F   = _mm_ranks(G.Ys, G.ws, 3, 1, 1)
-    cov = cross(G.Ys, G.ws, F) / G.W
+    m   = G.mean()
+    F   = _mm_ranks(G.Ys(), G.ws(), 3, 1, 1)
+    cov = cross(G.Ys(), G.ws(), F) / G.W
     D.b[i] = 4*cov - 2*m // note: MD = 2 * mean * Gini
     if (D.noIF) return
     // In analogy to the Gini coefficient the main moment condition of the MD
     // can be written as h = 2*(2*F - 1)*Y - MD
-    B = dstat_invp(G.N, G.ps, _dstat_sum_ccdf(G.Ys, G.Ys:*G.ws, G.W))
-    F[G.ps] = F
+    B = dstat_invp(G.N, G.pY(), _dstat_sum_ccdf(G.Ys(), G.Ys():*G.ws(), G.W))
+    F[G.pY()] = F
     dstat_set_IF(D, G, i, ((4*F :- 2):*G.Y :- D.b[i] :+ 4*(B :- cov)) / G.W)
 }
 
@@ -7197,8 +7579,7 @@ void dstat_sum_mscale(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     
     if (o!="") bp = strtoreal(o)
     else       bp = O[3]
-    dstat_init_Ys(D, G)
-    med = _mm_median(G.Ys, G.ws)
+    med = _mm_median(G.Ys(), G.ws())
     S = mm_mscale(G.Y, G.w, bp, ., med)
     D.b[i] = mm_mscale_b(S)
     if (D.noIF) return
@@ -7220,16 +7601,15 @@ void dstat_sum_qn(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     pragma unused o
     pragma unused O
     
-    dstat_init_Ys(D, G)
-    D.b[i] = mm_qn(G.Ys, G.ws, D.wtype==1)
+    D.b[i] = mm_qn(G.Ys(), G.ws(), D.wtype==1)
     if (D.noIF) return
     c  = sqrt(2) * invnormal(5/8)
-    z1 = G.Ys :+ D.b[i]*c
-    z2 = G.Ys :- D.b[i]*c
-    F  = _mm_relrank(G.Ys, G.ws, z1, 1) :- _mm_relrank(G.Ys, G.ws, z2, 1)
+    z1 = G.Ys() :+ D.b[i]*c
+    z2 = G.Ys() :- D.b[i]*c
+    F  = _mm_relrank(G.Ys(), G.ws(), z1, 1) :- _mm_relrank(G.Ys(), G.ws(), z2, 1)
     d  = _dstat_sum_d(D, G, z1)
-    F[G.ps] = F
-    dstat_set_IF(D, G, i, (mean(F, G.w) :- F) * (1 / (c * mean(d, G.ws) * G.W)))
+    F[G.pY()] = F
+    dstat_set_IF(D, G, i, (mean(F, G.w) :- F) * (1 / (c * mean(d, G.ws()) * G.W)))
 }
 
 void dstat_sum_skewness(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
@@ -7265,8 +7645,7 @@ void dstat_sum_qskew(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     
     if (o!="") p = strtoreal(o) / 100
     else       p = O[3] / 100
-    dstat_init_Ys(D, G)
-    q = _mm_quantile(G.Ys, G.ws, p \ 0.5 \ 1-p, D.qdef, D.wtype==1)
+    q = _mm_quantile(G.Ys(), G.ws(), p \ 0.5 \ 1-p, D.qdef, D.wtype==1)
     D.b[i] = (q[1] + q[3] - 2*q[2]) / (q[3] - q[1])
     if (_dstat_sum_omit(D, i)) return
     if (D.noIF) return
@@ -7286,12 +7665,11 @@ void dstat_sum_mc(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     pragma unused o
     pragma unused O
     
-    dstat_init_Ys(D, G)
-    D.b[i] = mm_mc(G.Ys, G.ws, D.wtype==1)
+    D.b[i] = mm_mc(G.Ys(), G.ws(), D.wtype==1)
     if (D.noIF) return
     mc = D.b[i]
     if (abs(mc)==1) {; D.IF[,i] = J(D.N, 1, 0); return; } // SEs not defined
-    q  = _mm_median(G.Ys, G.ws)
+    q  = _mm_median(G.Ys(), G.ws())
     dq = _dstat_sum_d(D, G, q)
     F1 = _dstat_sum_mc_F(G, z = (G.Y * (mc-1) :+ 2*q) / (mc+1))
     F2 = _dstat_sum_mc_F(G,     (G.Y * (mc+1) :- 2*q) / (mc-1))
@@ -7310,7 +7688,7 @@ void dstat_sum_mc(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     
     p = order(z, 1)
     F = J(rows(z), 1, .)
-    F[p] = _mm_relrank(G.Ys, G.ws, z[p], 1)
+    F[p] = _mm_relrank(G.Ys(), G.ws(), z[p], 1)
     return(F)
 }
 
@@ -7342,8 +7720,7 @@ void dstat_sum_qw(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     if (o!="") P = strtoreal(o) / 100
     else       P = O[3] / 100
     p = P/2 \ P \ .5 - P/2 \ .5 + P/2 \ 1 - P \ 1 - P/2
-    dstat_init_Ys(D, G)
-    q = _mm_quantile(G.Ys, G.ws, p, D.qdef, D.wtype==1)
+    q = _mm_quantile(G.Ys(), G.ws(), p, D.qdef, D.wtype==1)
     D.b[i] = (q[6] - q[4] + q[3] - q[1])/ (q[5] - q[2])
     if (_dstat_sum_omit(D, i)) return
     if (D.noIF) return
@@ -7366,8 +7743,7 @@ void dstat_sum_lqw(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     if (o!="") P = strtoreal(o) / 100
     else       P = O[3] / 100
     p = P/2 \ .25 \ .5 - P/2
-    dstat_init_Ys(D, G)
-    q = _mm_quantile(G.Ys, G.ws, p, D.qdef, D.wtype==1)
+    q = _mm_quantile(G.Ys(), G.ws(), p, D.qdef, D.wtype==1)
     D.b[i] = - (q[1] + q[3] - 2*q[2]) / (q[3] - q[1])
     if (_dstat_sum_omit(D, i)) return
     if (D.noIF) return
@@ -7389,8 +7765,7 @@ void dstat_sum_rqw(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     if (o!="") P = strtoreal(o) / 100
     else       P = O[3] / 100
     p = .5 + P/2 \ .75 \ 1 - P/2
-    dstat_init_Ys(D, G)
-    q = _mm_quantile(G.Ys, G.ws, p, D.qdef, D.wtype==1)
+    q = _mm_quantile(G.Ys(), G.ws(), p, D.qdef, D.wtype==1)
     D.b[i] = (q[1] + q[3] - 2*q[2]) / (q[3] - q[1])
     if (_dstat_sum_omit(D, i)) return
     if (D.noIF) return
@@ -7410,16 +7785,15 @@ void dstat_sum_lmc(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     pragma unused o
     pragma unused O
     
-    dstat_init_Ys(D, G)
-    med = _mm_median(G.Ys, G.ws)
-    p = selectindex(G.Ys:<med)
+    med = _mm_median(G.Ys(), G.ws())
+    p = selectindex(G.Ys():<med)
     if (rows(p)==0) D.b[i] = . // no obs
-    else D.b[i] = -mm_mc(G.Ys[p], (rows(G.ws)!=1 ? G.ws[p]: G.ws), D.wtype==1)
+    else D.b[i] = -mm_mc(G.Ys()[p], (rows(G.ws())!=1 ? G.ws()[p]: G.ws()), D.wtype==1)
     if (_dstat_sum_omit(D, i)) return
     if (D.noIF) return
     mc = -D.b[i]
     if (abs(mc)==1) {; D.IF[,i] = J(D.N, 1, 0); return; } // SEs not defined
-    q  = _mm_median(G.Ys[p], (rows(G.ws)!=1 ? G.ws[p]: G.ws))
+    q  = _mm_median(G.Ys()[p], (rows(G.ws())!=1 ? G.ws()[p]: G.ws()))
     dq = _dstat_sum_d(D, G, q)
     F1 = _dstat_sum_mc_F(G, z = (G.Y * (mc-1) :+ 2*q) / (mc+1))
     F2 = _dstat_sum_mc_F(G,     (G.Y * (mc+1) :- 2*q) / (mc-1))
@@ -7427,7 +7801,7 @@ void dstat_sum_lmc(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     dH = mean(32 * d :* ((q :- G.Y) / (mc+1)^2), G.w)
     if (dH==1) {; D.IF[,i] = J(D.N, 1, 0); return; } // SEs not defined
     gmed = (med*(mc-1) + 2*q) / (mc+1)
-    Fmed = _mm_relrank(G.Ys, G.ws, gmed, 1)
+    Fmed = _mm_relrank(G.Ys(), G.ws(), gmed, 1)
     IF = (1 :- 16*F1:*(G.Y:>q :& G.Y:<med) 
             :- 16*(F2:-.25):*(G.Y:<q :& G.Y:>gmed)
             :-  4*(G.Y:<gmed)
@@ -7444,16 +7818,15 @@ void dstat_sum_rmc(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     pragma unused o
     pragma unused O
     
-    dstat_init_Ys(D, G)
-    med = _mm_median(G.Ys, G.ws)
-    p = selectindex(G.Ys:>med)
+    med = _mm_median(G.Ys(), G.ws())
+    p = selectindex(G.Ys():>med)
     if (rows(p)==0) D.b[i] = . // no obs
-    else D.b[i] = mm_mc(G.Ys[p], (rows(G.ws)!=1 ? G.ws[p]: G.ws), D.wtype==1)
+    else D.b[i] = mm_mc(G.Ys()[p], (rows(G.ws())!=1 ? G.ws()[p]: G.ws()), D.wtype==1)
     if (_dstat_sum_omit(D, i)) return
     if (D.noIF) return
     mc = D.b[i]
     if (abs(mc)==1) {; D.IF[,i] = J(D.N, 1, 0); return; } // SEs not defined
-    q  = _mm_median(G.Ys[p], (rows(G.ws)!=1 ? G.ws[p]: G.ws))
+    q  = _mm_median(G.Ys()[p], (rows(G.ws())!=1 ? G.ws()[p]: G.ws()))
     dq = _dstat_sum_d(D, G, q)
     F1 = 1 :- _dstat_sum_mc_F(G, z = (G.Y * -(mc+1) :+ 2*q) /  (1-mc))
     F2 = 1 :- _dstat_sum_mc_F(G,     (G.Y *  (1-mc) :- 2*q) / -(mc+1))
@@ -7461,7 +7834,7 @@ void dstat_sum_rmc(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     dH = mean(32 * d :* ((G.Y :- q) / (1-mc)^2), G.w)
     if (dH==1) {; D.IF[,i] = J(D.N, 1, 0); return; } // SEs not defined
     gmed = (med*(mc+1) - 2*q) / (mc-1)
-    Fmed = 1 - _mm_relrank(G.Ys, G.ws, gmed, 1)
+    Fmed = 1 - _mm_relrank(G.Ys(), G.ws(), gmed, 1)
     IF = (1 :- 16*F1:*(G.Y:<q :& G.Y:>med) 
             :- 16*(F2:-.25):*(G.Y:>q :& G.Y:<gmed)
             :-  4*(G.Y:>gmed)
@@ -7478,7 +7851,7 @@ void dstat_sum_hoover(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     pragma unused o
     pragma unused O
     
-    t  = _dstat_mean(G)
+    t  = G.mean()
     z  = G.Y :- t
     z2 = abs(z)
     D.b[i] = mean(z2, G.w) / (2 * t)
@@ -7504,10 +7877,9 @@ void _dstat_sum_gini(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     
     if (o!="") df = strtoreal(o)
     else       df = O[3]
-    dstat_init_Ys(D, G)
-    m  = _dstat_mean(G)
-    F  = _mm_ranks(G.Ys, G.ws, 3, 1, 1)
-    cp = cross(G.Ys, G.ws, F) / G.W
+    m  = G.mean()
+    F  = _mm_ranks(G.Ys(), G.ws(), 3, 1, 1)
+    cp = cross(G.Ys(), G.ws(), F) / G.W
     if (df!=0) { // small-sample adjustment
         if (D.wtype==1) c = G.W / (G.W - df)
         else            c = G.N / (G.N - df)
@@ -7521,8 +7893,8 @@ void _dstat_sum_gini(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     // h = (2*F - 1)*Y - G*Y (see Binder & Kovacevic 1995)
     // (the IF of the Gini coefficient has the same structure as the IF of the
     // relative PDF; see -reldist-)
-    B = dstat_invp(G.N, G.ps, _dstat_sum_ccdf(G.Ys, G.Ys:*G.ws, G.W))
-    F[G.ps] = F
+    B = dstat_invp(G.N, G.pY(), _dstat_sum_ccdf(G.Ys(), G.Ys():*G.ws(), G.W))
+    F[G.pY()] = F
     if (abs) {
         dstat_set_IF(D, G, i, (((2*F :- 1):*G.Y + 2*(B :- cp))*c :- D.b[i]) / G.W)
     }
@@ -7542,10 +7914,10 @@ void dstat_sum_mld(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
     z = ln(G.Y)
     if (hasmissing(z)) {
         _dstat_sum_invalid(D, G, lbl!="" ? lbl : "mld", G.N-missing(z))
-        dstat_update_Y(D, G, z)
+        _dstat_sum_update_Y(D, G, z) // update sample
         z = ln(G.Y)
     }
-    m = _dstat_mean(G)
+    m = G.mean()
     D.b[i] = ln(m) - mean(z, G.w)
     if (_dstat_sum_omit(D, i)) return
     if (D.noIF) return
@@ -7562,10 +7934,10 @@ void dstat_sum_theil(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
     z = ln(G.Y)
     if (hasmissing(z)) {
         _dstat_sum_invalid(D, G, lbl!="" ? lbl : "theil", G.N-missing(z))
-        dstat_update_Y(D, G, z)
+        _dstat_sum_update_Y(D, G, z) // update sample
         z = ln(G.Y)
     }
-    m = _dstat_mean(G)
+    m = G.mean()
     z = G.Y :* z
     D.b[i] = mean(z, G.w)/m - ln(m)
     if (_dstat_sum_omit(D, i)) return
@@ -7615,10 +7987,10 @@ void dstat_sum_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     z = G.Y:^a
     if (hasmissing(z)) {
         _dstat_sum_invalid(D, G, "ge("+strofreal(a)+")", G.N-missing(z))
-        dstat_update_Y(D, G, z)
+        _dstat_sum_update_Y(D, G, z) // update sample
         z = G.Y:^a
     }
-    m = _dstat_mean(G)
+    m = G.mean()
     mz = mean(z, G.w)
     D.b[i] = c * (mz/m^a - 1)
     if (_dstat_sum_omit(D, i)) return
@@ -7646,10 +8018,10 @@ void _dstat_sum_atkinson1(`Data' D, `Grp' G, `Int' i)
     z = ln(G.Y)
     if (hasmissing(z)) {
         _dstat_sum_invalid(D, G, "atkinson(1)", G.N-missing(z))
-        dstat_update_Y(D, G, z)
+        _dstat_sum_update_Y(D, G, z) // update sample
         z = ln(G.Y)
     }
-    m = _dstat_mean(G)
+    m = G.mean()
     lm = mean(z, G.w)
     D.b[i] = 1 - exp(lm) / m
     if (_dstat_sum_omit(D, i)) return
@@ -7665,10 +8037,10 @@ void _dstat_sum_atkinson(`Data' D, `Grp' G, `Int' i, `RS' e)
     z = G.Y:^(1-e)
     if (hasmissing(z)) {
         _dstat_sum_invalid(D, G, "atkinson("+strofreal(e)+")", G.N-missing(z))
-        dstat_update_Y(D, G, z)
+        _dstat_sum_update_Y(D, G, z) // update sample
         z = G.Y:^(1-e)
     }
-    m = _dstat_mean(G)
+    m = G.mean()
     lm = mean(z, G.w)
     D.b[i] = 1 - lm^(1/(1-e)) / m
     if (_dstat_sum_omit(D, i)) return
@@ -7687,7 +8059,7 @@ void dstat_sum_lvar(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     z = ln(G.Y)
     if (hasmissing(z)) {
         _dstat_sum_invalid(D, G, "lvar", G.N-missing(z))
-        dstat_update_Y(D, G, z)
+        _dstat_sum_update_Y(D, G, z) // update sample
         z = ln(G.Y)
     }
     if (df!=0) {
@@ -7695,7 +8067,7 @@ void dstat_sum_lvar(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
         else            c = G.N / (G.N - df)
     }
     else c = 1
-    m = _dstat_mean(G)
+    m = G.mean()
     D.b[i] = mm_mse(z, G.w, ln(m)) * c
     if (_dstat_sum_omit(D, i)) return
     if (D.noIF) return
@@ -7715,7 +8087,7 @@ void dstat_sum_vlog(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     z = ln(G.Y)
     if (hasmissing(z)) {
         _dstat_sum_invalid(D, G, "vlog", G.N-missing(z))
-        dstat_update_Y(D, G, z)
+        _dstat_sum_update_Y(D, G, z) // update sample
         z = ln(G.Y)
     }
     D.b[i] = _dstat_variance(z, G.w, D.wtype==1 ? G.W : G.N, df, m)
@@ -7822,7 +8194,7 @@ void dstat_sum_lorenz(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 
 void _dstat_sum_lorenz(`Data' D, `Grp' G, `Int' i, `RC' at, `Int' t)
 {
-    D.b[i] = _dstat_lorenz(D, G, at, t)
+    D.b[i] = _dstat_lorenz(G, at, t)
     if (D.noIF) return
     if (t==2) D.IFtot[i] = D.b[i] // total
     D.IF[,i] = _dstat_lorenz_IF(D, G, at, t, D.b[i])
@@ -7866,7 +8238,7 @@ void _dstat_sum_share(`Data' D, `Grp' G, `Int' i, `RC' at, | `Int' t, `Bool' d)
     if (args()<6) d = 0
     if (at[1]>at[2]) D.b[i] = .
     else {
-        L = _dstat_lorenz(D, G, at, t)
+        L = _dstat_lorenz(G, at, t)
         D.b[i] = mm_diff(L)
         if (d) D.b[i] = D.b[i] * editmissing(1/(at[2]-at[1]), 0)
     }
@@ -7912,36 +8284,13 @@ void dstat_sum_aci(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 
 void _dstat_sum_gci(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    `Int' l, z
-    `SR'  args
     `RS'  df, m, mF, cov, c
     `RM'  mv
     `RC'  F, B
 
-    // settings
-    args = tokens(o)
-    l = length(args)
-    if (l==0) {
-        z  = selectindex(D.zvars:==D.zvar)
-        df = O[3]
-    }
-    else if (l==1) {
-        df = strtoreal(args[1])
-        if (df<.) z = selectindex(D.zvars:==D.zvar)
-        else {
-            z  = selectindex(D.zvars:==dstat_unab(args[1]))
-            df = O[3]
-        }
-    }
-    else {
-        z  = selectindex(D.zvars:==dstat_unab(args[1]))
-        df = strtoreal(args[2])
-    }
-    if (D.nocw) _dstat_sum_update_Y(D, G, D.Z[G.p, z])
-    // compute concentration index
-    dstat_init_Ys(D, G, z)
-    F   = _mm_ranks(G.Zs, G.ws, 3, 1, 1)
-    mv  = mm_meanvariance0((G.Ys, F), G.ws)
+    _dstat_sum_set_z(D, G, o, O, df=.)
+    F   = _mm_ranks(G.Zs(), G.wsZ(), 3, 1, 1)
+    mv  = mm_meanvariance0((G.YsZ(), F), G.wsZ())
     m   = mv[1,1]; mF  = mv[1,2]
     cov = mv[3,1]
     if (df!=0) { // small-sample adjustment
@@ -7954,8 +8303,8 @@ void _dstat_sum_gci(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     if (_dstat_sum_omit(D, i)) return
     // compute IF
     if (D.noIF) return
-    B = dstat_invp(G.N, G.ps, _dstat_sum_ccdf(G.Zs, (G.Ys:-m):*G.ws, G.W))
-    F[G.ps] = F
+    B = dstat_invp(G.N, G.pZ(), _dstat_sum_ccdf(G.Zs(), (G.YsZ():-m):*G.wsZ(), G.W))
+    F[G.pZ()] = F
     if (abs) {
         dstat_set_IF(D, G, i, ((F:-mF):*(G.Y:-m) :+ B :- 2*cov) * ((2*c)/G.W))
         // = (2*c*F:*z :- D.b[i] :+ 2*c*(B :- cov) :- 2*c*mF:*z) / G.W)
@@ -7971,110 +8320,94 @@ void _dstat_sum_gci(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 
 void dstat_sum_ccurve(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    pragma unused O
-    _dstat_sum_ccurve(D, G, i, 0, o)
+    _dstat_sum_ccurve(D, G, i, 0, o, O)
 }
 
-void _dstat_sum_ccurve(`Data' D, `Grp' G, `Int' i, `Int' t, `SS' o)
+void _dstat_sum_ccurve(`Data' D, `Grp' G, `Int' i, `Int' t, `SS' o, `RR' O)
 {
     `SR'  args
     `RS'  at
-    `Int' z
     
     args = tokens(o)
     at   = strtoreal(args[1]) / 100
-    if (length(args)>1) z = selectindex(D.zvars:==dstat_unab(args[2]))
-    else                z = selectindex(D.zvars:==D.zvar)
-    if (D.nocw) _dstat_sum_update_Y(D, G, D.Z[G.p, z])
-    D.b[i] = _dstat_lorenz(D, G, at, t, z)
+    _dstat_sum_set_z(D, G, length(args)>1 ? args[2] : "", O)
+    D.b[i] = _dstat_lorenz(G, at, t, G.z())
     if (D.noIF) return
     if (t==2) D.IFtot[i] = D.b[i] // total
-    D.IF[,i] = _dstat_lorenz_IF(D, G, at, t, D.b[i])
+    D.IF[,i] = _dstat_lorenz_IF(D, G, at, t, D.b[i], G.z())
 }
 
 void dstat_sum_tccurve(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    pragma unused O
-    _dstat_sum_ccurve(D, G, i, 2, o)
+    _dstat_sum_ccurve(D, G, i, 2, o, O)
 }
 
 void dstat_sum_gccurve(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    pragma unused O
-    _dstat_sum_ccurve(D, G, i, 3, o)
+    _dstat_sum_ccurve(D, G, i, 3, o, O)
 }
 
 void dstat_sum_accurve(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    pragma unused O
-    _dstat_sum_ccurve(D, G, i, 4, o)
+    _dstat_sum_ccurve(D, G, i, 4, o, O)
 }
 
 void dstat_sum_eccurve(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    pragma unused O
-    _dstat_sum_ccurve(D, G, i, 5, o)
+    _dstat_sum_ccurve(D, G, i, 5, o, O)
 }
 
 void dstat_sum_cshare(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    pragma unused O
-    _dstat_sum_cshare(D, G, i, 0, 0, o)
+    _dstat_sum_cshare(D, G, i, 0, 0, o, O)
 }
 
-void _dstat_sum_cshare(`Data' D, `Grp' G, `Int' i, `Int' t, `Bool' d, `SS' o)
+void _dstat_sum_cshare(`Data' D, `Grp' G, `Int' i, `Int' t, `Bool' d,
+    `SS' o, `RR' O)
 {
     `SR'  args
     `RC'  L, at
-    `Int' z
     
     args = tokens(o)
     at   = strtoreal(args[|1\2|]') / 100
-    if (length(args)>2) z = selectindex(D.zvars:==dstat_unab(args[3]))
-    else                z = selectindex(D.zvars:==D.zvar)
-    if (D.nocw) _dstat_sum_update_Y(D, G, D.Z[G.p, z])
+    _dstat_sum_set_z(D, G, length(args)>2 ? args[3] : "", O)
     if (at[1]>at[2]) D.b[i] = .
     else {
-        L = _dstat_lorenz(D, G, at, t, z)
+        L = _dstat_lorenz(G, at, t, G.z())
         D.b[i] = mm_diff(L)
         if (d) D.b[i] = D.b[i] * editmissing(1/(at[2]-at[1]), 0)
     }
     if (_dstat_sum_omit(D, i)) return
     if (D.noIF) return
     if (t==2) D.IFtot[i] = D.b[i] // total
-    D.IF[,i] = _dstat_share_IF(D, G, at, t, d, L)
+    D.IF[,i] = _dstat_share_IF(D, G, at, t, d, L, G.z())
 }
 
 void dstat_sum_dcshare(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    pragma unused O
-    _dstat_sum_cshare(D, G, i, 0, 1, o)
+    _dstat_sum_cshare(D, G, i, 0, 1, o, O)
 }
 
 void dstat_sum_tcshare(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    pragma unused O
-    _dstat_sum_cshare(D, G, i, 2, 0, o)
+    _dstat_sum_cshare(D, G, i, 2, 0, o, O)
 }
 
 void dstat_sum_gcshare(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    pragma unused O
-    _dstat_sum_cshare(D, G, i, 3, 0, o)
+    _dstat_sum_cshare(D, G, i, 3, 0, o, O)
 }
 
 void dstat_sum_acshare(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    pragma unused O
-    _dstat_sum_cshare(D, G, i, 3, 1, o)
+    _dstat_sum_cshare(D, G, i, 3, 1, o, O)
 }
 
 void dstat_sum_hcr(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    `RC'   z, pl
-    pragma unused O
+    `RC' z, pl
     
-    pl = _dstat_sum_get_pline(D, G, o)
+    pl = _dstat_sum_get_pl(D, G, o, O)
     z = (D.pstrong ? G.Y:<=pl : G.Y:<pl)
     D.b[i] = mean(z, G.w)
     if (D.noIF) return
@@ -8096,9 +8429,8 @@ void _dstat_sum_pgap(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     `RS'   N
     `RC'   z, h, w, pl
     `IntC' p
-    pragma unused O
     
-    pl = _dstat_sum_get_pline(D, G, o)
+    pl = _dstat_sum_get_pl(D, G, o, O)
     p = selectindex(D.pstrong ? G.Y:<=pl : G.Y:<pl)
     N = length(p)
     if (N==0) { // no poor
@@ -8130,9 +8462,8 @@ void dstat_sum_apgi(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 void _dstat_sum_pgi(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     `RC'   z, pl
-    pragma unused O
     
-    pl = _dstat_sum_get_pline(D, G, o)
+    pl = _dstat_sum_get_pl(D, G, o, O)
     z = (pl :- G.Y) :* (D.pstrong ? G.Y:<=pl : G.Y:<pl)
     if (abs==0) z = z :/ pl
     D.b[i] = mean(z, G.w)
@@ -8142,25 +8473,10 @@ void _dstat_sum_pgi(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 
 void dstat_sum_fgt(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    `SR'  args
-    `Int' l
     `RS'  a
     `RC'  z, pl
-
-    args = tokens(o)
-    l = length(args)
-    if (l==0) {
-        a  = O[3]
-        pl = _dstat_sum_get_pline(D, G, "")
-    }
-    else if (l==1) {
-        a  = strtoreal(o)
-        pl = _dstat_sum_get_pline(D, G, "")
-    }
-    else {
-        a  = strtoreal(args[1])
-        pl = _dstat_sum_get_pline(D, G, args[2])
-    }
+    
+    pl = _dstat_sum_get_pl(D, G, o, O, a=.)
     z = (D.pstrong ? G.Y:<=pl : G.Y:<pl)
     z = ((pl :- G.Y) :* z :/ pl):^a :* z
     if (hasmissing(z)) D.b[i] = .
@@ -8172,31 +8488,17 @@ void dstat_sum_fgt(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 
 void dstat_sum_chu(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    `SR'   args
-    `Int'  l
     `RS'   a, m
     `RC'   z, pl, h
     
-    args = tokens(o)
-    l = length(args)
-    if (l==0) {
-        a  = O[3]/100
-        pl = _dstat_sum_get_pline(D, G, "")
-    }
-    else if (l==1) {
-        a  = strtoreal(o)/100
-        pl = _dstat_sum_get_pline(D, G, "")
-    }
-    else {
-        a  = strtoreal(args[1])/100
-        pl = _dstat_sum_get_pline(D, G, args[2])
-    }
+    pl = _dstat_sum_get_pl(D, G, o, O, a=.)
+    a  = a/100
     z = (D.pstrong ? G.Y:<=pl : G.Y:<pl)
     if (a==0) z = (ln(G.Y) :- ln(pl)) :* z
     else      z = (1 :- (G.Y:/pl):^a) :* z
     if (hasmissing(z)) {
         _dstat_sum_invalid(D, G, "chu("+strofreal(a*100)+")", G.N-missing(z))
-        dstat_update_Y(D, G, z)
+        _dstat_sum_update_Y(D, G, z) // update sample
         if (rows(pl)==rows(z)) pl = select(pl, z:<.)
         z = select(z, z:<.)
     }
@@ -8213,19 +8515,18 @@ void dstat_sum_chu(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
         if (D.noIF) return
         h = z / a :- D.b[i]
     }
-    dstat_set_IF(D, G, i,h / G.W)
+    dstat_set_IF(D, G, i, h / G.W)
 }
 
 void dstat_sum_watts(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     `RC'   z, pl
-    pragma unused O
     
-    pl = _dstat_sum_get_pline(D, G, o)
+    pl = _dstat_sum_get_pl(D, G, o, O)
     z = (ln(pl) :-  ln(G.Y)) :* (G.Y :< pl)
     if (hasmissing(z)) {
         _dstat_sum_invalid(D, G, "watts", G.N-missing(z))
-        dstat_update_Y(D, G, z)
+        _dstat_sum_update_Y(D, G, z) // update sample
         if (rows(pl)==rows(z)) pl = select(pl, z:<.)
         z = select(z, z:<.)
     }
@@ -8242,9 +8543,8 @@ void dstat_sum_sen(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     `RS'   m, cp, N, W
     `RC'   Ys, ws, F, B
     `IntC' p
-    pragma unused O
     
-    pl = _dstat_sum_get_pline(D, G, o)
+    pl = _dstat_sum_get_pl(D, G, o, O)
     // head count ratio
     z_hcr  = (D.pstrong ? G.Y:<=pl : G.Y:<pl)
     hcr    = mean(z_hcr, G.w)
@@ -8285,9 +8585,8 @@ void dstat_sum_sst(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     `RS'   pgi, Gp, m, cp
     `RC'   pg, pl, Ys, ws, F, B, h
     `IntC' p
-    pragma unused O
     
-    pl = _dstat_sum_get_pline(D, G, o)
+    pl = _dstat_sum_get_pl(D, G, o, O)
     // poverty gap index
     pg  = ((pl :- G.Y) :/ pl) :* (D.pstrong ? G.Y:<=pl : G.Y:<pl)
     pgi = mean(pg, G.w)
@@ -8315,9 +8614,8 @@ void dstat_sum_takayama(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     `RS'   m, cp
     `RC'   pl, Ys, ws, F, B, h
     `IntC' p
-    pragma unused O
     
-    pl = _dstat_sum_get_pline(D, G, o)
+    pl = _dstat_sum_get_pl(D, G, o, O)
     // generate censored outcomes
     Ys = (D.pstrong ? G.Y:<=pl : G.Y:<pl)
     Ys = (G.Y :* Ys) + (pl :* (1:-Ys))
@@ -8338,56 +8636,38 @@ void dstat_sum_takayama(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 
 void dstat_sum_tip(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    pragma unused O
-    _dstat_sum_tip(D, G, i, 0, o)
+    _dstat_sum_tip(D, G, i, 0, o, O)
 }
 
 void dstat_sum_atip(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    pragma unused O
-    _dstat_sum_tip(D, G, i, 1, o)
+    _dstat_sum_tip(D, G, i, 1, o, O)
 }
 
-void _dstat_sum_tip(`Data' D, `Grp' G, `Int' i, `Int' t, `SS' o)
+void _dstat_sum_tip(`Data' D, `Grp' G, `Int' i, `Int' t, `SS' o, `RR' O)
 {
-    `SR'  args
     `RS'  at
-    `Int' l
     `RC'  pl
     
-    args = tokens(o)
-    l = length(args)
-    if (l==1) {
-        at  = strtoreal(o) / 100
-        pl = _dstat_sum_get_pline(D, G, "")
-    }
-    else {
-        at = strtoreal(args[1]) / 100
-        pl = _dstat_sum_get_pline(D, G, args[2])
-    }
-    D.b[i] = _dstat_tip(D, G, at, t, i, i, pl) // also computes IF
+    pl = _dstat_sum_get_pl(D, G, o, O, at=.)
+    D.b[i] = _dstat_tip(D, G, at/100, t, i, i, pl) // also computes IF
 }
 
 void dstat_sum_corr(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     `RS'  mY, sdY, mZ, sdZ, cov
     `RM'  mv
-    `RC'  Z, zY, zZ
-    pragma unused O
-
-    // settings
-    if (o=="") Z = D.Z[G.p, selectindex(D.zvars:==D.zvar)]
-    else       Z = D.Z[G.p, selectindex(D.zvars:==dstat_unab(o))]
-    _dstat_sum_update_Y(D, G, Z)
-    // compute correlation
-    mv  = mm_meanvariance0((G.Y, Z), G.w)
+    `RC'  zY, zZ
+    
+    _dstat_sum_set_z(D, G, o, O)
+    mv  = mm_meanvariance0((G.Y, G.Z()), G.w)
     sdY = sqrt(mv[2,1]); sdZ = sqrt(mv[3,2]); cov = mv[3,1]
     D.b[i] = cov / (sdY * sdZ)
     if (_dstat_sum_omit(D, i)) return // can happen if N=1
     // compute IF
     if (D.noIF) return
     mY = mv[1,1];   mZ = mv[1,2]
-    zY = (G.Y:-mY); zZ = (Z:-mZ)
+    zY = (G.Y:-mY); zZ = (G.Z():-mZ)
     dstat_set_IF(D, G, i, ((zY:*zZ :- cov) - cov*((zY:^2:-sdY^2)/(2*sdY^2) 
         + (zZ:^2:-sdZ^2)/(2*sdZ^2))) / (sdY*sdZ*G.W))
 }
@@ -8396,11 +8676,9 @@ void dstat_sum_cov(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     `RS'  df, c, mY, mZ
     `RM'  mv
-    `RC'  Z
     
-    Z = _dstat_sum_get_z1(D, G, o, O, df=1)
-    // compute correlation
-    mv  = mm_meanvariance0((G.Y, Z), G.w)
+    _dstat_sum_set_z(D, G, o, O, df=.)
+    mv  = mm_meanvariance0((G.Y, G.Z()), G.w)
     if (df!=0) { // small-sample adjustment
         if (D.wtype==1) c = G.W / (G.W - df)
         else            c = G.N / (G.N - df)
@@ -8411,25 +8689,18 @@ void dstat_sum_cov(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     // compute IF
     if (D.noIF) return
     mY = mv[1,1]; mZ = mv[1,2]
-    dstat_set_IF(D, G, i, (c*((G.Y:-mY) :* (Z:-mZ)) :- D.b[i]) / G.W)
+    dstat_set_IF(D, G, i, (c*((G.Y:-mY) :* (G.Z():-mZ)) :- D.b[i]) / G.W)
 }
 
 void dstat_sum_spearman(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     `RM' mv, cov, vy, vz
-    `RC' pY, pZ, Z, FY, FZ, hY, hZ, hYZ
-    pragma unused O
-
-    // settings
-    if (o=="") Z = D.Z[G.p, selectindex(D.zvars:==D.zvar)]
-    else       Z = D.Z[G.p, selectindex(D.zvars:==dstat_unab(o))]
-    _dstat_sum_update_Y(D, G, Z)
-    // compute correlation
-    pY = mm_order(G.Y, 1, 1)
-    pZ = mm_order(  Z, 1, 1)
+    `RC' FY, FZ, hY, hZ, hYZ
+    
+    _dstat_sum_set_z(D, G, o, O)
     FY = FZ = J(G.N, 1, .)
-    FY[pY] = _mm_ranks(G.Y[pY], rows(G.w)==1 ? G.w : G.w[pY], 3, 1, 1)
-    FZ[pZ] = _mm_ranks(  Z[pZ], rows(G.w)==1 ? G.w : G.w[pZ], 3, 1, 1)
+    FY[G.pY()] = _mm_ranks(G.Ys(), G.ws(), 3, 1, 1)
+    FZ[G.pZ()] = _mm_ranks(G.Zs(), G.wsZ(), 3, 1, 1)
     mv = mm_variance0((FY, FZ), G.w)
     cov = mv[2,1]; vy = mv[1,1]; vz = mv[2,2]
     D.b[i] = cov / (sqrt(vy) * sqrt(vz))
@@ -8437,13 +8708,13 @@ void dstat_sum_spearman(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     // compute IF
     if (D.noIF) return
     hY = hZ = J(G.N, 1, .)
-    hY[pY] = _dstat_sum_ccdf(FY[pY], (FZ:*G.w)[pY], G.W)
-    hZ[pZ] = _dstat_sum_ccdf(FZ[pZ], (FY:*G.w)[pZ], G.W)
-    hYZ    = (FY:*FZ + hY + hZ) :- 3*(cov + 0.25)
-    hY[pY] = _dstat_sum_ccdf(FY[pY], (2*FY:*G.w)[pY], G.W)
-    hY     = (FY:^2 + hY) :- 3*(vy + 0.25)
-    hZ[pZ] = _dstat_sum_ccdf(FZ[pZ], (2*FZ:*G.w)[pZ], G.W)
-    hZ     = (FZ:^2 + hZ) :- 3*(vz + 0.25)
+    hY[G.pY()] = _dstat_sum_ccdf(FY[G.pY()], (FZ:*G.w)[G.pY()], G.W)
+    hZ[G.pZ()] = _dstat_sum_ccdf(FZ[G.pZ()], (FY:*G.w)[G.pZ()], G.W)
+    hYZ        = (FY:*FZ + hY + hZ) :- 3*(cov + 0.25)
+    hY[G.pY()] = _dstat_sum_ccdf(FY[G.pY()], (2*FY:*G.w)[G.pY()], G.W)
+    hY         = (FY:^2 + hY) :- 3*(vy + 0.25)
+    hZ[G.pZ()] = _dstat_sum_ccdf(FZ[G.pZ()], (2*FZ:*G.w)[G.pZ()], G.W)
+    hZ         = (FZ:^2 + hZ) :- 3*(vz + 0.25)
     dstat_set_IF(D, G, i, (hYZ - cov * (hY/(2*vy) + hZ/(2*vz))) /
                           (sqrt(vy)*sqrt(vz) * G.W))
 }
@@ -8452,26 +8723,17 @@ void dstat_sum_taua(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     `Bool' naive
     `RS'   K, S
-    `RC'   Z, s, k, h
+    `RC'   h
     
-    Z = _dstat_sum_get_z1(D, G, o, O, naive=0)
-    // compute tau-a
-    s = _dstat_sum_tidot(G.Y, Z, G.w, naive)
-    if (rows(G.w)==1) {
-        K = G.N - 1
-        S = sum(s) / G.N
-    }
-    else {
-        k = G.W :- G.w
-        K = quadsum(G.w :* k) / G.W
-        S = quadsum(G.w :* s) / G.W
-    }
+    _dstat_sum_set_z(D, G, o, O, naive=.)
+    G.cd_fast(naive)
+    S = G.cd_S()
+    K = G.cd_K()
     D.b[i] = S / K
     if (_dstat_sum_omit(D, i)) return
     // compute IF
     if (D.noIF) return
-    if (rows(G.w)==1) k = J(G.N, 1, G.N-1)
-    h = (1/K)*(s :- S) - (S/K^2)*(k :- K)
+    h = (1/K)*(G.cd_s() :- S) - (S/K^2)*(G.cd_k() :- K)
     dstat_set_IF(D, G, i, h * (2/G.W))
 }
 
@@ -8479,32 +8741,21 @@ void dstat_sum_taub(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     `Bool' naive
     `RS'   K, S, T, U, Q
-    `RC'   Z, s, k, t, u, h
+    `RC'   h
     
-    Z = _dstat_sum_get_z1(D, G, o, O, naive=0)
-    // compute tau-b
-    s = _dstat_sum_tidot(G.Y, Z, G.w, naive, t=., u=.)
-    if (rows(G.w)==1) {
-        K = G.N - 1
-        S = sum(s) / G.N
-        T = sum(t) / G.N
-        U = sum(u) / G.N
-    }
-    else {
-        k = G.W :- G.w
-        K = quadsum(G.w :* k) / G.W
-        S = quadsum(G.w :* s) / G.W
-        T = quadsum(G.w :* t) / G.W
-        U = quadsum(G.w :* u) / G.W
-    }
+    _dstat_sum_set_z(D, G, o, O, naive=.)
+    G.cd_fast(naive)
+    S = G.cd_S()
+    K = G.cd_K()
+    T = G.cd_T()
+    U = G.cd_U()
     Q = sqrt((K - T) * (K - U))
     D.b[i] = S / Q
     if (_dstat_sum_omit(D, i)) return
     // compute IF
     if (D.noIF) return
-    if (rows(G.w)==1) k = J(G.N, 1, G.N-1)
-    h = (1/Q)*(s :- S) - (S/(2*Q^3))*(
-        (2*K-T-U)*(k :- K) + (U-K)*(t :- T) + (T-K)*(u :- U) )
+    h = (2*K-T-U)*(G.cd_k():-K) + (U-K)*(G.cd_t():-T) + (T-K)*(G.cd_u():-U)
+    h = (1/Q)*(G.cd_s() :- S) - (S/(2*Q^3))*h 
     dstat_set_IF(D, G, i, h * (2/G.W))
 }
 
@@ -8512,29 +8763,19 @@ void dstat_sum_somersd(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     `Bool' naive
     `RS'   K, S, T, Q
-    `RC'   Z, s, k, t, h
+    `RC'   h
     
-    Z = _dstat_sum_get_z1(D, G, o, O, naive=0)
-    // compute Somers' D
-    s = _dstat_sum_tidot(G.Y, Z, G.w, naive, t=.)
-    if (rows(G.w)==1) {
-        K = G.N - 1
-        S = sum(s) / G.N
-        T = sum(t) / G.N
-    }
-    else {
-        k = G.W :- G.w
-        K = quadsum(G.w :* k) / G.W
-        S = quadsum(G.w :* s) / G.W
-        T = quadsum(G.w :* t) / G.W
-    }
+    _dstat_sum_set_z(D, G, o, O, naive=.)
+    G.cd_fast(naive)
+    S = G.cd_S()
+    K = G.cd_K()
+    T = G.cd_T()
     Q = K - T
     D.b[i] = S / Q
     if (_dstat_sum_omit(D, i)) return
     // compute IF
     if (D.noIF) return
-    if (rows(G.w)==1) k = J(G.N, 1, G.N-1)
-    h = (1/Q)*(s :- S) - (S/Q^2)*((k - t) :- Q)
+    h = (1/Q)*(G.cd_s() :- S) - (S/Q^2)*((G.cd_k() - G.cd_t()) :- Q)
     dstat_set_IF(D, G, i, h * (2/G.W))
 }
 
@@ -8542,214 +8783,23 @@ void dstat_sum_gamma(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     `Bool' naive
     `RS'   K, S, T, U, V, Q
-    `RC'   Z, s, k, t, u, v, h
+    `RC'   h
     
-    Z = _dstat_sum_get_z1(D, G, o, O, naive=0)
-    // compute Goodman and Kruskal's gamma
-    s = _dstat_sum_tidot(G.Y, Z, G.w, naive, t=., u=., v=.)
-    if (rows(G.w)==1) {
-        K = G.N - 1
-        S = sum(s) / G.N
-        T = sum(t) / G.N
-        U = sum(u) / G.N
-        V = sum(v) / G.N
-    }
-    else {
-        k = G.W :- G.w
-        K = quadsum(G.w :* k) / G.W
-        S = quadsum(G.w :* s) / G.W
-        T = quadsum(G.w :* t) / G.W
-        U = quadsum(G.w :* u) / G.W
-        V = quadsum(G.w :* v) / G.W
-    }
+    _dstat_sum_set_z(D, G, o, O, naive=.)
+    G.cd_fast(naive)
+    S = G.cd_S()
+    K = G.cd_K()
+    T = G.cd_T()
+    U = G.cd_U()
+    V = G.cd_V()
     Q = K - (T + U - V)
     D.b[i] = S / Q
     if (_dstat_sum_omit(D, i)) return
     // compute IF
     if (D.noIF) return
-    if (rows(G.w)==1) k = J(G.N, 1, G.N-1)
-    h = (1/Q)*(s :- S) - (S/Q^2)*((k - t - u + v) :- Q)
+    h = G.cd_k() - G.cd_t() - G.cd_u() + G.cd_v()
+    h = (1/Q)*(G.cd_s() :- S) - (S/Q^2)*(h :- Q)
     dstat_set_IF(D, G, i, 2*h / G.W)
-}
-
-`RC' _dstat_sum_tidot(`RC' X, `RC' Y, `RC' w, `Bool' naive, 
-    | `RC' t, `RC' u, `RC' v)
-{   // function to compute number of concordant minus discordant pairs
-    `Int'  n
-    `IntC' p 
-    `RC'   s
-    
-    p = mm_order(X,1,1) // stable sort
-    n = rows(X)
-    s = J(n,1,.)
-    if (args()>4) t = s
-    if (args()>5) u = s
-    if (args()>6) v = s
-    if (rows(w)==1) {
-        if (naive)    s[p] = _dstat_tidot_naive(X[p], Y[p], n)
-        else          s[p] = _dstat_tidot(X[p], Y[p]) 
-        if (args()>4) t[p] = __dstat_ifreq(X[p], 1, n)  :- 1
-        if (args()>5) u    = _dstat_ifreq(Y, 1, n)      :- 1
-        if (args()>6) v    = _dstat_ifreq((X,Y), 1, n)  :- 1
-    }
-    else {
-        if (naive)    s[p] = _dstat_tidot_naive_w(X[p], Y[p], w[p], n)
-        else          s[p] = _dstat_tidot(X[p], Y[p], w[p])
-        if (args()>4) t[p] = __dstat_ifreq(X[p], w[p], n) :- w[p]
-        if (args()>5) u    = _dstat_ifreq(Y, w, n)        :- w[p]
-        if (args()>6) v    = _dstat_ifreq((X,Y), w, n)    :- w[p]
-    }
-    return(s)
-}
-
-`IntC' _dstat_tidot_naive(`RC' X, `RC' Y, `Int' n)
-{
-    `Int'  i
-    `IntC' s
-    
-    s = J(n,1,0)
-    for (i=n;i;i--) s[i] = sum(sign((X:-X[i]) :* (Y:-Y[i])))
-    return(s)
-}
-
-`IntC' _dstat_tidot_naive_w(`RC' X, `RC' Y, `RC' w, `Int' n)
-{
-    `Int' i
-    `RC'  s
-    
-    s = J(n,1,0)
-    for (i=n;i;i--) s[i] = quadsum(w :* sign((X:-X[i]) :* (Y:-Y[i])))
-    return(s)
-}
-
-`RC' _dstat_tidot(`RC' x, `RC' y, | `RC' w)
-{   // adaption of tidottree() by Roger Newson, 15 September 2018
-    // data assumed sorted by x
-    `Int'  n, nx, ny, i, ii, a, b, root
-    `RC'   t, yval, wlt, weq, wgt
-    `IntC' xpanel 
-    `IntM' tree
-
-    // setup
-    n = rows(x)
-    if (n<1) return(J(0,1,0))
-    if (args()<3) w = J(n,1,1)
-    xpanel = _mm_panels(x)
-    nx     = rows(xpanel)
-    yval   = mm_unique(y)
-    ny     = rows(yval)
-    tree   = _dstat_tidot_btree(ny)
-    root   = trunc((1 + ny) / 2)
-    t      = J(n,1,0)
-    
-    // 1 -> nx
-    wlt = weq = wgt = J(ny,1,0)
-    b = 0
-    for (i=1; i<=nx; i++) {
-        a = b + 1
-        b = b + xpanel[i]
-        for (ii=a; ii<=b; ii++) t[ii] = quadsum((t[ii],
-            _dstat_tidot_l1(tree, root, y[ii], yval, wlt, weq, wgt)))
-        for (ii=a; ii<=b; ii++)
-            _dstat_tidot_l2(tree, root, y[ii], yval, w[ii], wlt, weq, wgt)
-    }
-    
-    // nx -> 1
-    wlt = weq = wgt = J(ny,1,0)
-    a = b + 1
-    for (i=nx; i; i--) {
-        b = a - 1
-        a = a - xpanel[i]
-        for (ii=b; ii>=a; ii--) t[ii] = quadsum((t[ii],
-            -_dstat_tidot_l1(tree, root, y[ii], yval, wlt, weq, wgt)))
-        for (ii=b; ii>=a; ii--) 
-            _dstat_tidot_l2(tree, root, y[ii], yval, w[ii], wlt, weq, wgt)
-    }
-    return(t)
-}
-
-`RS' _dstat_tidot_l1(`IntM' tree, `Int' root, `RS' yi, `RC' yval,
-    `RC' wlt, `RC' weq, `RC' wgt)
-{
-    `Int' node
-    `RS'  yj, l, g
-    
-    l = g = 0
-    node = root
-    while (node>0) {
-        yj = yval[node]
-        if (yi<yj) {
-            g = quadsum((g, wgt[node], weq[node]))
-            node = tree[node,1]
-        }
-        else if (yi>yj) {
-            l = quadsum((l, wlt[node], weq[node]))
-            node = tree[node,2]
-        }
-        else {
-            g = quadsum((g, wgt[node]))
-            l = quadsum((l, wlt[node]))
-            node = 0
-        }
-    }
-    return(l-g)
-}
-
-void _dstat_tidot_l2(`IntM' tree, `Int' root, `RS' yi, `RC' yval, `RC' wi,
-    `RC' wlt, `RC' weq, `RC' wgt)
-{
-    `Int' node
-    `RS'  yj
-    
-    node = root
-    while (node>0) {
-        yj = yval[node]
-        if (yi<yj) {
-            wlt[node] = quadsum((wlt[node], wi))
-            node = tree[node,1]
-        }
-        else if (yi>yj) {
-            wgt[node] = quadsum((wgt[node], wi))
-            node = tree[node,2]
-        }
-        else {
-            weq[node] = quadsum((weq[node], wi))
-            node = 0
-        }
-    }
-}
-
-`IntM' _dstat_tidot_btree(`Int' n)
-{   // adaption of blncdtree() by Roger Newson, 11 August 2005
-    `IntM' tree
-    
-    tree = J(n, 2, 0)
-    if (n<1) return(tree)
-    __dstat_tidot_btree(tree, 1, n)
-    return(tree)
-}
-
-void __dstat_tidot_btree(`IntM' tree, `Int' imin, `Int' imax)
-{   // adaption of _blncdtree() by Roger Newson, 11 August 2005
-    `Int' imid, inext
-
-    imid = trunc((imin + imax) / 2)
-    if (imid<=imin) { // left
-         tree[imid,1] = 0
-    }
-    else {
-      inext = imid - 1
-      tree[imid,1] = trunc((imin + inext) / 2)
-      __dstat_tidot_btree(tree, imin, inext)
-    }
-    if (imid>=imax) {
-      tree[imid, 1] = 0
-    }
-    else {
-      inext = imid + 1
-      tree[imid,2] = trunc((inext + imax) / 2)
-      __dstat_tidot_btree(tree, inext, imax)
-    }
 }
 
 void dstat_sum_hhi(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
@@ -8782,7 +8832,7 @@ void dstat_sum_hhin(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     `RM' H
     `RC' h
     
-    H = dstat_freq(D, G)
+    H = dstat_freq(G)
     H[,2] = (H[,2]/G.W)
     K = rows(H)
     D.b[i] = quadsum(H[,2]:^2)
@@ -8815,7 +8865,7 @@ void dstat_sum_entropy(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     
     if (o!="") base = strtoreal(o)
     else       base = O[3] // base=0 => ln()
-    H = dstat_freq(D, G)
+    H = dstat_freq(G)
     H[,2] = (H[,2]/G.W)
     if (base==0) D.b[i] = -quadsum(H[,2] :* ln(H[,2]))
     else         D.b[i] = -quadsum(H[,2] :* (ln(H[,2])/ln(base)))
@@ -8839,7 +8889,7 @@ void dstat_sum_hill(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     
     if (o!="") q = strtoreal(o)
     else       q = O[3]
-    H = dstat_freq(D, G)
+    H = dstat_freq(G)
     H[,2] = (H[,2]/G.W)
     if (q==1) {
         b0 = -quadsum(H[,2] :* ln(H[,2]))
@@ -8914,11 +8964,10 @@ void _dstat_sum_minfo(`Int' stat, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     `Int' base, j
     `RS'  b, bY, bZ, c
     `RM'  H, HY, HZ
-    `RC'  Z, h, hY, hZ
+    `RC'  h, hY, hZ
     
-    Z = _dstat_sum_get_z1(D, G, o, O, base=0)
-    // compute statistic
-    _dstat_freq2(H = (G.Y, Z), G.w, G.N)
+    _dstat_sum_set_z(D, G, o, O, base=.)
+    _dstat_freq2(H = (G.Y, G.Z()), G.w, G.N)
     H[,3]  = (H[,3]/G.W)
     if (base==0) b = -quadsum(H[,3] :* ln(H[,3]))
     else         b = -quadsum(H[,3] :* (ln(H[,3])/ln(base)))
@@ -8942,7 +8991,7 @@ void _dstat_sum_minfo(`Int' stat, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     for (j=rows(H);j;j--) {
         c = ln(H[j,3]) + 1
         if (base!=0) c = c / ln(base)
-        h = h + c*((G.Y:==H[j,1]:&Z:==H[j,2]) :- H[j,3])
+        h = h + c*((G.Y:==H[j,1]:&G.Z():==H[j,2]) :- H[j,3])
     }
     if (stat) {
         hY = J(G.N, 1, 0)
@@ -8955,7 +9004,7 @@ void _dstat_sum_minfo(`Int' stat, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
         for (j=rows(HZ);j;j--) {
             c = ln(HZ[j,2]) + 1
             if (base!=0) c = c / ln(base)
-            hZ = hZ + c*((Z:==HZ[j,1]) :- HZ[j,2])
+            hZ = hZ + c*((G.Z():==HZ[j,1]) :- HZ[j,2])
         }
     }
     if      (stat==1)  h = hY + hZ - h                           // M index
@@ -8972,13 +9021,12 @@ void dstat_sum_cramer(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     `RS'  b, pij, pi, pj, d
     `T'   A
     `RM'  H, HY, HZ
-    `RC'  Z, h
+    `RC'  h
     pragma unset bc     // bias correction not implemented yet
     pragma unused bc
     
-    Z = _dstat_sum_get_z1(D, G, o, O, bc=0)
-    // compute statistic
-    _dstat_freq2(H = (G.Y, Z), G.w, G.N)
+    _dstat_sum_set_z(D, G, o, O, bc=.)
+    _dstat_freq2(H = (G.Y, G.Z()), G.w, G.N)
     H[,3]  = (H[,3]/G.W)
     _dstat_freq2(HY = H[,1], H[,3], rows(H))
     _dstat_freq2(HZ = H[,2], H[,3], rows(H))
@@ -9009,7 +9057,7 @@ void dstat_sum_cramer(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
             pj  = HZ[c,2]
             pij = asarray(A, (HY[r,1], HZ[c,1]))
             d = 2 * (pij/(pi*pj) - 1)
-            h = h + d * ((G.Y:==HY[r,1]:&Z:== HZ[c,1]) :- pij)
+            h = h + d * ((G.Y:==HY[r,1]:&G.Z():== HZ[c,1]) :- pij)
         }
     }
     // - contributions of rows
@@ -9032,7 +9080,7 @@ void dstat_sum_cramer(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
             pij = asarray(A, (HY[r,1], HZ[c,1]))
             d = d + (pij - pi*pj)*(pij + pi*pj) / (pi*pj^2)
         }
-        h = h - d * ((Z:==HZ[c,1]) :- pj)
+        h = h - d * ((G.Z():==HZ[c,1]) :- pj)
     }
     h = h / (2 * sqrt(b * min((R-1, C-1))))
     dstat_set_IF(D, G, i, h/G.W)
