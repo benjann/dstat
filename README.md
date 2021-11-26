@@ -39,7 +39,12 @@ Installation from GitHub:
 
 Main changes:
 
-    25nov2021 (version 1.2.1 )
+    26nov2021 (version 1.2.2)
+    - new system to manage temporary results to improve efficiency of -dstat sum-
+    - due to a type the values for gamma and tau_b could be somewhat off if weight
+      were specified; this is fixed
+
+    25nov2021 (version 1.2.1)
     - added association statistics: taua, taub, somersd, gamma; using a fast
       algorithm by R. Newson (2006. Efficient Calculation of Jackknife Confidence 
       Intervals for Rank Statistics. Journal of Statistical Software 15/1) to
