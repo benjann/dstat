@@ -39,6 +39,9 @@ Installation from GitHub:
 
 Main changes:
 
+    27nov2021 (version 1.2.3)
+    - -nocasewise- had a bug that could crash -dstat- in some cases; this is fixed
+
     26nov2021 (version 1.2.2)
     - new system to manage temporary results to improve efficiency of -dstat sum-
     - due to a type the values for gamma and tau_b could be somewhat off if weight

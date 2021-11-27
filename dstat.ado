@@ -1,4 +1,4 @@
-*! version 1.2.2  27nov2021  Ben Jann
+*! version 1.2.3  27nov2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -6166,6 +6166,13 @@ void dstat_prop(`Data' D)
     
     // obtain frequency table
     H = dstat_freq(G)
+    W = (D.uncond ? dstat_Wj(D, G) : G.W)
+    // return if evaluation points are equal to observed levels
+    if (AT==H[,1]) {
+        if (D.pct)  return(H[,2] * (100/W))
+        if (D.freq) return(H[,2])
+                    return(H[,2] / W)
+    }
     // post H as hash table
     A = asarray_create("real")
     asarray_notfound(A, 0)
@@ -6673,7 +6680,7 @@ void _dstat_sum_set_z(`Data' D, `Grp' G, `SS' o, `RR' O, | `RC' o1)
     if (D.nocw) {
         if (hasmissing(Z)) {
             _dstat_sum_update_Y(D, G, Z) // update sample
-            G.Zset(z, Z[G.pp])
+            G.Zset(z, select(Z, Z:<.))
             return
         }
     }
@@ -6734,7 +6741,7 @@ void _dstat_sum_set_z(`Data' D, `Grp' G, `SS' o, `RR' O, | `RC' o1)
     if (D.nocw==0) return(pl)
     if (hasmissing(pl)) {
         _dstat_sum_update_Y(D, G, pl) // update sample
-        pl = pl[G.pp]
+        pl = select(pl, pl:<.)
     }
     return(pl)
 }
