@@ -1,5 +1,5 @@
 {smcl}
-{* 27nov2021}{...}
+{* 03dec2021}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -129,7 +129,7 @@ help for {hi:dstat}{...}
 {syntab:{help dstat##sum:Subcommand {bf:summarize}}}
 {synopt:{opt relax}}compute a statistic even if observations are out of support
     {p_end}
-{synopt:{opth z:var(varname)}}default secondary variable (for association and concentration measures)
+{synopt:{opth by(varname)}}default secondary variable (for association and concentration measures)
     {p_end}
 {synopt:{opt pl:ine(#|varname)}}default poverty line
     {p_end}
@@ -228,7 +228,7 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt abs:olute}}estimate absolute Lorenz curve
     {p_end}
-{synopt:{opth z:var(varname)}}estimate concentration curve with respect to specified variable
+{synopt:{opth by(varname)}}estimate concentration curve with respect to specified variable
     {p_end}
 {synopt:{opt n(#)}}size of evaluation grid; default is {cmd:n(101)}
     {p_end}
@@ -249,7 +249,7 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt ave:rage}}estimate averages instead of densities
     {p_end}
-{synopt:{opth z:var(varname)}}estimate concentration shares with respect to specified variable
+{synopt:{opth by(varname)}}estimate concentration shares with respect to specified variable
     {p_end}
 {synopt:{opt n(#)}}number of bins; default is {cmd:n(20)}
     {p_end}
@@ -383,7 +383,7 @@ help for {hi:dstat}{...}
     5.5% trimmed mean; in this case, however, parentheses will be added in the
     output).
 
-{synoptset 25 tabbed}{...}
+{synoptset 27 tabbed}{...}
 {marker stats}{col 5}{it:stats}{col 33}Description
 {synoptline}
 {syntab:Points in the distribution}
@@ -508,23 +508,21 @@ help for {hi:dstat}{...}
 {syntab:Inequality measures}
 {synopt:{opt hoover}}Hoover index (Robin Hood index, Ricci-Schutz, Pietra index)
     {p_end}
-{synopt:{opt gini}[{cmd:(}{it:df}{cmd:)}]}Gini coefficient; {it:df} applies
-    small-sample adjustment; default is {it:df}=0
+{synopt:[{cmd:a}]{opt gini}[{cmd:(}{it:df}{cmd:)}]}Gini coefficient; {it:df} applies
+    small-sample adjustment; default is {it:df}=0; specify {cmd:agini} for the absolute Gini coefficient
     {p_end}
-{synopt:{opt agini}[{cmd:(}{it:df}{cmd:)}]}absolute Gini coefficient
-    {p_end}
-{synopt:{opt mld}}mean log deviation; equal to {cmd:ge(0)}
+{synopt:{opt mld}}mean log deviation (MLD); equal to {cmd:ge(0)}
     {p_end}
 {synopt:{opt theil}}Theil index; equal to {cmd:ge(1)}
     {p_end}
-{synopt:{opt cv}[{cmd:(}{it:df}{cmd:)}]}coefficient of variation; default is {it:df}=1;
-    {cmd:cv(0)}=sqrt(2*{cmd:ge(1)})
-    {p_end}
 {synopt:{opt ge}[{cmd:(}{it:alpha}{cmd:)}]}generalized entropy (Shorrocks 1980)
-    with parameter {it:alpha}
+    with parameter {it:alpha}; default is {it:alpha}=1
     {p_end}
 {synopt:{opt atkinson}[{cmd:(}{it:epsilon}{cmd:)}]}Atkinson index with parameter
     {it:epsilon}>=0; default is {it:epsilon}=1
+    {p_end}
+{synopt:{opt cv}[{cmd:(}{it:df}{cmd:)}]}coefficient of variation; default is {it:df}=1;
+    {cmd:cv(0)}=sqrt(2*{cmd:ge(2)})
     {p_end}
 {synopt:{opt lvar}[{cmd:(}{it:df}{cmd:)}]}logarithmic variance; default is {it:df}=1
     {p_end}
@@ -557,24 +555,38 @@ help for {hi:dstat}{...}
     {cmd:d} for density, {cmd:g} for generalized, {cmd:t} for total, {cmd:a} for average
     {p_end}
 
+{syntab:Inequality decomposition}
+{synopt:{opt mldwithin}[{cmd:(}{it:{help varname:by}}{cmd:)}]}within-group MLD;
+    {it:by} specifies the group variable; default is as set by option {cmd:by()}
+    {p_end}
+{synopt:{opt mldbetween}[{cmd:(}{it:{help varname:by}}{cmd:)}]}between-group MLD;
+    {it:by} by as for {cmd:mldw}
+    {p_end}
+{synopt:{opt theilwithin}[{cmd:(}{it:{help varname:by}}{cmd:)}]}within-group Theil index;
+    {it:by} by as for {cmd:mldw}
+    {p_end}
+{synopt:{opt theilbetween}[{cmd:(}{it:{help varname:by}}{cmd:)}]}between-group Theil index;
+    {it:by} by as for {cmd:mldw}
+    {p_end}
+
 {syntab:Concentration measures}
-{synopt:{opt gci}[{cmd:(}{it:{help varname:zvar}}[{cmd:,}{it:df}]{cmd:)}]}Gini concentration index;
-    {it:zvar} specifies the sort variable; default is as set by option {cmd:zvar()};
+{synopt:{opt gci}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}Gini concentration index;
+    {it:by} specifies the sort variable; default is as set by option {cmd:by()};
     {it:df} applies small-sample adjustment; default is {it:df}=0; can also
     specify {opt gci(df)}
     {p_end}
-{synopt:{opt aci}[{cmd:(}{it:{help varname:zvar}}[{cmd:,}{it:df}]{cmd:)}]}absolute Gini concentration index; syntax
+{synopt:{opt aci}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}absolute Gini concentration index; syntax
     as for {cmd:gci}
     {p_end}
-{synopt:[*]{cmd:ccurve}{cmd:(}{it:p}[{cmd:,}{it:{help varname:zvar}}]{cmd:)}}concentration curve ordinate,
+{synopt:[*]{cmd:ccurve}{cmd:(}{it:p}[{cmd:,}{it:{help varname:by}}]{cmd:)}}concentration curve ordinate,
     {it:p} in [0,100]; prefix {it:*} is empty for default, {cmd:g} for generalized, {cmd:t} for total,
     {cmd:a} for absolute, {cmd:e} for equality gap;
-    {it:zvar} as for {cmd:gci}
+    {it:by} as for {cmd:gci}
     {p_end}
-{synopt:[*]{cmd:cshare}{cmd:(}{it:p1}{cmd:,}{it:p2}[{cmd:,}{it:{help varname:zvar}}]{cmd:)}}concentration share,
+{synopt:[*]{cmd:cshare}{cmd:(}{it:p1}{cmd:,}{it:p2}[{cmd:,}{it:{help varname:by}}]{cmd:)}}concentration share,
     {it:p1} and {it:p2} in [0,100]; prefix {it:*} is empty for default, {cmd:d} for density,
     {cmd:g} for generalized, {cmd:t} for total, {cmd:a} for average;
-    {it:zvar} as for {cmd:gci}
+    {it:by} as for {cmd:gci}
     {p_end}
 
 {syntab:Poverty measures}
@@ -620,37 +632,36 @@ help for {hi:dstat}{...}
     {p_end}
 
 {syntab:Association}
-{synopt:{opt corr}[{cmd:(}{it:{help varname:zvar}}{cmd:)}]}correlation coefficient;
-    {it:zvar} specifies the secondary variable; default is as set by option {cmd:zvar()}
+{synopt:{opt corr}[{cmd:(}{it:{help varname:by}}{cmd:)}]}correlation coefficient;
+    {it:by} specifies the secondary variable; default is as set by option {cmd:by()}
     {p_end}
-{synopt:{opt cov}[{cmd:(}{it:{help varname:zvar}}[{cmd:,}{it:df}]{cmd:)}]}covariance; {it:df} applies small-sample
+{synopt:{opt cov}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}covariance; {it:df} applies small-sample
     adjustment; default is {it:df}=1; can also specify {opt cov(df)};
-    {it:zvar} as for {cmd:corr}
+    {it:by} as for {cmd:corr}
     {p_end}
-{synopt:{opt spearman}[{cmd:(}{it:{help varname:zvar}}{cmd:)}]}Spearman's rank correlation;
-    {it:zvar} as for {cmd:corr}
+{synopt:{opt spearman}[{cmd:(}{it:{help varname:by}}{cmd:)}]}Spearman's rank correlation;
+    {it:by} as for {cmd:corr}
     {p_end}
-{synopt:{opt taua}[{cmd:(}{it:{help varname:zvar}}{cmd:)}]}Kendall's tau-a (using fast algorithm by Newson 2006);
-    {it:zvar} as for {cmd:corr}
+{synopt:{opt taua}[{cmd:(}{it:{help varname:by}}{cmd:)}]}Kendall's tau-a (using fast algorithm by Newson 2006);
+    {it:by} as for {cmd:corr}
     {p_end}
-{synopt:{opt taub}[{cmd:(}{it:{help varname:zvar}}{cmd:)}]}Kendall's tau-b (using fast algorithm by Newson 2006);
-    {it:zvar} as for {cmd:corr}
+{synopt:{opt taub}[{cmd:(}{it:{help varname:by}}{cmd:)}]}Kendall's tau-b (using fast algorithm by Newson 2006);
+    {it:by} as for {cmd:corr}
     {p_end}
-{synopt:{opt somersd}[{cmd:(}{it:{help varname:zvar}}{cmd:)}]}Somers' D (using fast algorithm by Newson 2006);
-    {it:zvar} as for {cmd:corr}
+{synopt:{opt somersd}[{cmd:(}{it:{help varname:by}}{cmd:)}]}Somers' D (using fast algorithm by Newson 2006);
+    {it:by} as for {cmd:corr}
     {p_end}
-{synopt:{opt gamma}[{cmd:(}{it:{help varname:zvar}}{cmd:)}]}Goodman and Kruskal's gamma (using fast algorithm by Newson 2006);
-    {it:zvar} as for {cmd:corr}
+{synopt:{opt gamma}[{cmd:(}{it:{help varname:by}}{cmd:)}]}Goodman and Kruskal's gamma (using fast algorithm by Newson 2006);
+    {it:by} as for {cmd:corr}
     {p_end}
 
 {syntab:Categorical data (univariate)}
-{synopt:{opt hhi}}Herfindahl–Hirschman index (Herfindahl index, Simpson index)
-    {p_end}
-{synopt:{opt hhin}}normalized Herfindahl index; qual to ({cmd:hhi}-1/K)/(1-1/K), where
+{synopt:{opt hhi}[{cmd:n}]}Herfindahl–Hirschman index (Herfindahl index, Simpson index);
+    specify {cmd:hhin} for normalization  ({cmd:hhi}-1/K)/(1-1/K), where
     K is the number of categories
     {p_end}
-{synopt:{opt gimp}}Gini impurity (Gini–Simpson index, Blau index, Gibbs–Martin index);
-    equal to 1-{cmd:hhi}
+{synopt:{opt gimp}[{cmd:n}]}Gini impurity (Gini–Simpson index, Simpson's interaction index, 
+    Blau index, Gibbs–Martin index); {cmd:gimp} = 1-{cmd:hhi}; {cmd:gimpn} = 1-{cmd:hhin}
     {p_end}
 {synopt:{opt entropy}[{cmd:(}{it:base}{cmd:)}]}Shannon entropy; {it:base} specifies
     the base of the logarithm (default is natural logarithm)
@@ -665,19 +676,24 @@ help for {hi:dstat}{...}
     {p_end}
 
 {syntab:Categorical data (bivariate)}
-{synopt:{opt mindex}[{cmd:(}{it:{help varname:zvar}}[{cmd:,}{it:base}]{cmd:)}]}mutual information index;
-    {it:zvar} specifies the secondary variable; default is as set by option {cmd:zvar()};
+{synopt:{opt mindex}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:base}]{cmd:)}]}mutual information index (M index);
+    {it:by} specifies the secondary variable; default is as set by option {cmd:by()};
     {it:base} specifies the base of the logarithm (default is natural logarithm);
     can also specify {opt mindex(base)}
     {p_end}
-{synopt:{opt uc}[{cmd:l}|{cmd:r}][{cmd:(}{it:{help varname:zvar}}{cmd:)}]}uncertainty coefficient;
-    {cmd:ucl} returns the asymmetric coefficient with respect to the left-hand side variable (the main variable),
-    {cmd:ucr} is with respect to the right-hand side variable (the secondary variable), {cmd:uc} returns the
-    symmetric uncertainty coefficient (weighted average of {cmd:ucl} and {cmd:ucr});
-    {it:zvar} as for {cmd:mindex}
+{synopt:{opt uc}[{cmd:l}|{cmd:r}][{cmd:(}{it:{help varname:by}}{cmd:)}]}uncertainty coefficient (H index);
+    {cmd:ucl} returns the asymmetric coefficient with respect to the left-hand
+    side variable (i.e. division by the entropy of the main variable),
+    {cmd:ucr} is with respect to the right-hand side variable (i.e. division by
+    the entropy of the secondary variable), {cmd:uc} returns the symmetric
+    uncertainty coefficient (weighted average of {cmd:ucl} and {cmd:ucr});
+    {it:by} as for {cmd:mindex}
     {p_end}
-{synopt:{opt cramer}[{cmd:(}{it:{help varname:zvar}}{cmd:)}]}Cramér's V;
-    {it:zvar} as for {cmd:mindex}
+{synopt:{opt cramersv}[{cmd:(}{it:{help varname:by}}{cmd:)}]}Cramér's V;
+    {it:by} as for {cmd:mindex}
+    {p_end}
+{synopt:{opt dissim}[{cmd:(}{it:{help varname:by}}{cmd:)}]}(generalized) dissimilarity index (Duncan's D);
+    {it:by} as for {cmd:mindex}
     {p_end}
 {synoptline}
 
@@ -706,7 +722,7 @@ help for {hi:dstat}{...}
     overall estimation sample is still restricted by the {cmd:if} and {cmd:in}
     qualifiers, the weights, and the variables specified in {cmd:over()} and
     {cmd:balance()}, but not by missing values in the main {it:varlist} (or in
-    {cmd:zvar()}, {it:zvar}, {cmd:pline()}, or {it:pline}). For each variable
+    {cmd:by()}, {it:by}, {cmd:pline()}, or {it:pline}). For each variable
     the subsample of all nonmissing values within the overall estimation sample
     will then be used in the relevant computations.
 
@@ -1106,7 +1122,7 @@ help for {hi:dstat}{...}
     will not be dropped from the overall estimation sample.
 
 {phang}
-    {opth zvar(varname)} specifies a default secondary variable for
+    {opth by(varname)} specifies a default secondary variable for
     association measures and concentration measures.
 
 {phang}
@@ -1354,7 +1370,7 @@ help for {hi:dstat}{...}
     {opt absolute} estimates the absolute Lorenz curve.
 
 {phang}
-    {opth zvar(varname)} estimates the concentration curve with respect to
+    {opth by(varname)} estimates the concentration curve with respect to
     {it:varname} instead of the Lorenz curve.
 
 {phang}
@@ -1392,7 +1408,7 @@ help for {hi:dstat}{...}
     {opt average} estimates averages instead of densities.
 
 {phang}
-    {opth zvar(varname)} estimates the concentration shares with respect to
+    {opth by(varname)} estimates the concentration shares with respect to
     {it:varname}.
 
 {phang}
@@ -1694,18 +1710,19 @@ help for {hi:dstat}{...}
 {p 8 12 2}
         . {stata tabstat grade hours ttl_exp tenure [aw=wbal], by(union)} (balanced)
         {p_end}
+        . {stata drop wbal}
 
 {pstd}
     The balancing has only been partially successful. Perfect balancing
     (with respect to the means) can be achieved by entropy balancing:
 
-        . {stata drop wbal}
 {p 8 12 2}
         . {stata "dstat (mean) wage, over(union) balance(eb: grade hours ttl_exp tenure, generate(wbal))"}
         {p_end}
 {p 8 12 2}
         . {stata tabstat grade hours ttl_exp tenure [aw=wbal], by(union)}
         {p_end}
+        . {stata drop wbal}
 
 {pstd}
     Note that, instead of using {helpb lincom} after estimation, you can also obtain group
@@ -1826,7 +1843,7 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(absolute)}}{cmd:absolute} or empty{p_end}
 {synopt:{cmd:e(average)}}{cmd:average} or empty{p_end}
 {synopt:{cmd:e(relax)}}{cmd:relax} or empty{p_end}
-{synopt:{cmd:e(zvar)}}name of sort variable specified in {cmd:zvar()}{p_end}
+{synopt:{cmd:e(byvar)}}name of variable specified in {cmd:by()}{p_end}
 {synopt:{cmd:e(pline)}}poverty line variable specified in {cmd:pline()}{p_end}
 {synopt:{cmd:e(pstrong)}}{cmd:pstrong} or empty{p_end}
 {synopt:{cmd:e(generate)}}name(s) of generated variable(s){p_end}

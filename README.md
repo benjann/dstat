@@ -39,6 +39,12 @@ Installation from GitHub:
 
 Main changes:
 
+    03dec2021 (version 1.2.4)
+    - dstat sum: mldwithin, mldbetween, teilwithin, teilbetween, dissim added
+    - dstat sum: now using more efficient approach to compute IFs of categorical
+      measures (hhi, entropy, mindex, etc)
+    - option zvar() is now called by(); zvar() still supported but no longer documented
+
     27nov2021 (version 1.2.3)
     - -nocasewise- had a bug that could crash -dstat- in some cases; this is fixed
 
