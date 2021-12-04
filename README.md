@@ -39,6 +39,10 @@ Installation from GitHub:
 
 Main changes:
 
+    04dec2021 (version 1.2.5)
+    - dstat sum: gewithin and gebetween added
+    - dstat sum: IF of dissim made more efficient
+
     03dec2021 (version 1.2.4)
     - dstat sum: mldwithin, mldbetween, teilwithin, teilbetween, dissim added
     - dstat sum: now using more efficient approach to compute IFs of categorical

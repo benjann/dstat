@@ -1,5 +1,5 @@
 {smcl}
-{* 03dec2021}{...}
+{* 04dec2021}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -516,7 +516,8 @@ help for {hi:dstat}{...}
 {synopt:{opt theil}}Theil index; equal to {cmd:ge(1)}
     {p_end}
 {synopt:{opt ge}[{cmd:(}{it:alpha}{cmd:)}]}generalized entropy (Shorrocks 1980)
-    with parameter {it:alpha}; default is {it:alpha}=1
+    with parameter {it:alpha}; default is {it:alpha}=1 (in which case
+    {cmd:ge}={cmd:theil})
     {p_end}
 {synopt:{opt atkinson}[{cmd:(}{it:epsilon}{cmd:)}]}Atkinson index with parameter
     {it:epsilon}>=0; default is {it:epsilon}=1
@@ -560,13 +561,19 @@ help for {hi:dstat}{...}
     {it:by} specifies the group variable; default is as set by option {cmd:by()}
     {p_end}
 {synopt:{opt mldbetween}[{cmd:(}{it:{help varname:by}}{cmd:)}]}between-group MLD;
-    {it:by} by as for {cmd:mldw}
+    {it:by} as for {cmd:mldw}
     {p_end}
 {synopt:{opt theilwithin}[{cmd:(}{it:{help varname:by}}{cmd:)}]}within-group Theil index;
-    {it:by} by as for {cmd:mldw}
+    {it:by} as for {cmd:mldw}
     {p_end}
 {synopt:{opt theilbetween}[{cmd:(}{it:{help varname:by}}{cmd:)}]}between-group Theil index;
-    {it:by} by as for {cmd:mldw}
+    {it:by} as for {cmd:mldw}
+    {p_end}
+{synopt:{opt gewithin}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:alpha}]{cmd:)}]}within-group generalized entropy;
+    {it:by} as for {cmd:mldw}; can also specify {opt gewithin(alpha)}
+    {p_end}
+{synopt:{opt gebetween}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:alpha}]{cmd:)}]}between-group generalized entropy;
+    {it:by} as for {cmd:mldw}; can also specify {opt gebetween(alpha)}
     {p_end}
 
 {syntab:Concentration measures}
@@ -660,7 +667,7 @@ help for {hi:dstat}{...}
     specify {cmd:hhin} for normalization  ({cmd:hhi}-1/K)/(1-1/K), where
     K is the number of categories
     {p_end}
-{synopt:{opt gimp}[{cmd:n}]}Gini impurity (Gini–Simpson index, Simpson's interaction index, 
+{synopt:{opt gimp}[{cmd:n}]}Gini impurity (Gini–Simpson index, Simpson's interaction index,
     Blau index, Gibbs–Martin index); {cmd:gimp} = 1-{cmd:hhi}; {cmd:gimpn} = 1-{cmd:hhin}
     {p_end}
 {synopt:{opt entropy}[{cmd:(}{it:base}{cmd:)}]}Shannon entropy; {it:base} specifies

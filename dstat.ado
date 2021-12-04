@@ -1,4 +1,4 @@
-*! version 1.2.4  03dec2021  Ben Jann
+*! version 1.2.5  04dec2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -2902,10 +2902,13 @@ void dstat_parse_stats_hasdens(`Int' n)
     asarray(A, "tshare"    , (`f'tshare(),    `p'2(),    &(0, 100, ., .)))      // percentile share (total/sum)
     asarray(A, "gshare"    , (`f'gshare(),    `p'2(),    &(0, 100, ., .)))      // percentile share (generalized)
     asarray(A, "ashare"    , (`f'ashare(),    `p'2(),    &(0, 100, ., .)))      // percentile share (average)
-    asarray(A, "mldwithin" , (`f'mldwithin(), `p'0(),    &.))                   // within MLD
-    asarray(A, "mldbetween", (`f'mldbetween(),`p'0(),    &.))                   // between MLD
+    // inequality decomposition
+    asarray(A, "mldwithin" , (`f'mldwithin(), `p'y(),    &.))                   // within MLD
+    asarray(A, "mldbetween", (`f'mldbetween(),`p'y(),    &.))                   // between MLD
     asarray(A, "theilwithin" , (`f'theilwithin(), `p'y(),&.))                   // within Theil index
     asarray(A, "theilbetween", (`f'theilbetween(),`p'y(),&.))                   // between Theil index
+    asarray(A, "gewithin"  , (`f'gewithin(),  `p'y1(),   &(., ., 1)))           // within generalized entropy
+    asarray(A, "gebetween" , (`f'gebetween(), `p'y1(),   &(., ., 1)))           // between generalized entropy
     // concentration
     asarray(A, "gci"       , (`f'gci(),       `p'y1(),   &(., ., 0)))           // Gini concentration index
     asarray(A, "aci"       , (`f'aci(),       `p'y1(),   &(., ., 0)))           // absolute Gini concentration index
@@ -7969,10 +7972,7 @@ void dstat_sum_mld(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
 
 void dstat_sum_mldwithin(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
 {
-    `RS'   m
     `RC'   mg, z, h
-    pragma unused o
-    pragma unused O
     
     _dstat_sum_set_y(D, G, o, O)
     z = ln(G.X)
@@ -7982,13 +7982,13 @@ void dstat_sum_mldwithin(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
         _dstat_sum_set_y(D, G, o, O)
         z = ln(G.X)
     }
-    m = G.mean()
     mg = J(G.N, 1, .)
     mg[G.pY()] = _mm_collapse2(G.XsY(), G.wsY(), G.Ys())
-    D.b[i] = mean(ln(mg) - z, G.w)
+    z = ln(mg) - z
+    D.b[i] = mean(z, G.w)
     if (_dstat_sum_omit(D, i)) return
     if (D.noIF) return
-    h = ((ln(mg) - z) :- D.b[i]) + (G.X - mg):/mg
+    h = (z :- D.b[i]) + (G.X - mg):/mg
     dstat_set_IF(D, G, i, h / G.W)
 }
 
@@ -7997,8 +7997,6 @@ void dstat_sum_mldbetween(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O,
 {
     `RS'   m
     `RC'   mg, z, h
-    pragma unused o
-    pragma unused O
     
     _dstat_sum_set_y(D, G, o, O)
     z = ln(G.X)
@@ -8006,7 +8004,7 @@ void dstat_sum_mldbetween(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O,
         _dstat_sum_invalid(D, G, lbl!="" ? lbl : "mldbetween", G.N-missing(z))
         _dstat_sum_update_X(D, G, z) // update sample
         _dstat_sum_set_y(D, G, o, O)
-        z = ln(G.X)
+        z = ln(G.X) // not really needed; not used below
     }
     m = G.mean()
     mg = J(G.N, 1, .)
@@ -8070,7 +8068,7 @@ void dstat_sum_theilwithin(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O,
 void dstat_sum_theilbetween(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, 
     | `SS' lbl)
 {
-    `RS'   m
+    `RS'   m, mz
     `RC'   mg, z, h
     
     _dstat_sum_set_y(D, G, o, O)
@@ -8079,16 +8077,17 @@ void dstat_sum_theilbetween(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O,
         _dstat_sum_invalid(D, G, lbl!="" ? lbl : "theilbetween", G.N-missing(z))
         _dstat_sum_update_X(D, G, z) // update sample
         _dstat_sum_set_y(D, G, o, O)
-        z = ln(G.X)
+        z = ln(G.X) // not really needed; not used below
     }
     m = G.mean()
     mg = J(G.N, 1, .)
     mg[G.pY()] = _mm_collapse2(G.XsY(), G.wsY(), G.Ys())
     z = mg:*ln(mg)
-    D.b[i] = mean(z, G.w)/m - ln(m)
+    mz = mean(z, G.w)
+    D.b[i] = mz/m - ln(m)
     if (_dstat_sum_omit(D, i)) return
     if (D.noIF) return
-    h = (z/m :- ln(m) :- D.b[i]) - (mean(z/m :+ 1, G.w) / m) :* (G.X :- m) +
+    h = (z/m :- (ln(m) + D.b[i])) - ((mz/m + 1)/m) :* (G.X :- m) +
         (ln(mg):+1)/m :* (G.X - mg)
     dstat_set_IF(D, G, i, h / G.W)
 }
@@ -8096,7 +8095,7 @@ void dstat_sum_theilbetween(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O,
 void dstat_sum_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     `RS'   a, c, m, mz, delta
-    `RC'   z
+    `RC'   z, h
     
     if (o!="") a = strtoreal(o)
     else       a = O[3]
@@ -8108,7 +8107,6 @@ void dstat_sum_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
         dstat_sum_theil(D, G, i, o, O, "ge(1)")
         return
     }
-    c = 1 / (a * (a - 1))
     z = G.X:^a
     if (hasmissing(z)) {
         _dstat_sum_invalid(D, G, "ge("+strofreal(a)+")", G.N-missing(z))
@@ -8117,11 +8115,87 @@ void dstat_sum_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     }
     m = G.mean()
     mz = mean(z, G.w)
+    c = 1 / (a * (a - 1))
     D.b[i] = c * (mz/m^a - 1)
     if (_dstat_sum_omit(D, i)) return
     if (D.noIF) return
     delta = 1 / ((a - 1) * m^(a + 1)) * mz
-    dstat_set_IF(D, G, i, ((c*(z/m^a:-1) :- D.b[i]) - delta*(G.X :- m)) / G.W)
+    h = (c*(z/m^a:-1) :- D.b[i]) - delta * (G.X :- m)
+    dstat_set_IF(D, G, i, h / G.W)
+}
+
+void dstat_sum_gewithin(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `Int'  y
+    `RS'   a, m
+    `RC'   z, mg, delta, h
+    
+    y = __dstat_sum_set_y(D, o, O, a=.)
+    if (a==0) {
+        dstat_sum_mldwithin(D, G, i, D.yvars[y], O, "gewithin(0)")
+        return
+    }
+    if (a==1) {
+        dstat_sum_theilwithin(D, G, i, D.yvars[y], O, "gewithin(1)")
+        return
+    }
+    _dstat_sum_set_y(D, G, o, O, a=.)
+    z = G.X:^a
+    if (hasmissing(z)) {
+        _dstat_sum_invalid(D, G, "ge("+strofreal(a)+")", G.N-missing(z))
+        _dstat_sum_update_X(D, G, z) // update sample
+        _dstat_sum_set_y(D, G, o, O, a=.)
+        z = G.X:^a
+    }
+    m = G.mean()
+    mg = J(G.N, 1, .)
+    mg[G.pY()] = _mm_collapse2(G.XsY(), G.wsY(), G.Ys())
+    h = (1/(a*(a-1)*m^a)) * (z :- mg:^a)
+    D.b[i] = mean(h, G.w)
+    if (_dstat_sum_omit(D, i)) return
+    if (D.noIF) return
+    h = h :- D.b[i]
+    h = h - mg:^(a-1)/((a-1)*m^a) :* (G.X - mg)
+    delta = mean((1/((a-1)*m^(a+1))) * (z :- mg:^a), G.w)
+    h = h - delta * (G.X :- m)
+    dstat_set_IF(D, G, i, h / G.W)
+}
+
+void dstat_sum_gebetween(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `Int'  y
+    `RS'   a, c, m
+    `RC'   z, mg, delta, h
+    
+    y = __dstat_sum_set_y(D, o, O, a=.)
+    if (a==0) {
+        dstat_sum_mldbetween(D, G, i, D.yvars[y], O, "gebetween(0)")
+        return
+    }
+    if (a==1) {
+        dstat_sum_theilbetween(D, G, i, D.yvars[y], O, "gebetween(1)")
+        return
+    }
+    _dstat_sum_set_y(D, G, o, O, a=.)
+    z = G.X:^a
+    if (hasmissing(z)) {
+        _dstat_sum_invalid(D, G, "ge("+strofreal(a)+")", G.N-missing(z))
+        _dstat_sum_update_X(D, G, z) // update sample
+        _dstat_sum_set_y(D, G, o, O, a=.)
+        z = G.X:^a  // not really needed; not used below
+    }
+    c = 1 / (a * (a - 1))
+    m = G.mean()
+    mg = J(G.N, 1, .)
+    mg[G.pY()] = _mm_collapse2(G.XsY(), G.wsY(), G.Ys())
+    D.b[i] = c * (mean(mg:^a,G.w)/m^a - 1)
+    if (_dstat_sum_omit(D, i)) return
+    if (D.noIF) return
+    h = (c * (mg:^a/m^a :- 1) :- D.b[i]) + 
+        (mg:^(a-1)/((a-1)*m^a)) :* (G.X - mg)
+    delta = mean((1/((a-1)*m^(a+1))) * mg:^a, G.w)
+    h = h - delta * (G.X :- m)
+    dstat_set_IF(D, G, i, h / G.W)
 }
 
 void dstat_sum_atkinson(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
@@ -9184,9 +9258,9 @@ void dstat_sum_cramersv(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 void dstat_sum_dissim(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     `Int' C, R, RC
-    `RS'  b, pr0
+    `RS'  b, d, pr0, q
     `RM'  prXY
-    `RC'  prY
+    `RC'  prY, h, z, u, Z
     
     _dstat_sum_set_y(D, G, o, O)
     // obtain probability table (long format): x, y, pxy, px, py
@@ -9201,82 +9275,33 @@ void dstat_sum_dissim(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     else        pr0 = 0
     // compute D
     b = quadsum(prXY[,4] :* abs(prXY[,3]:/prXY[,4] :- prXY[,5])) + pr0
-    b = b / (2 * (prY'*(1:-prY)))
-    D.b[i] = b
+    d = prY' * (1 :- prY)
+    D.b[i] = b / (2 * d)
     // compute IF
     if (D.noIF) return
-    dstat_set_IF(D, G, i, _dstat_sum_dissim_IF(G, prXY)/G.W)
-}
-
-`RC' _dstat_sum_dissim_IF(`Grp' G, `RM' prXY)
-{
-    `Int' j, c, r, R, C
-    `RS'  b, pij, pi, pj, d
-    `RM'  H, HX, HY
-    `T'   A
-    `RC'  h
-
-    // setup input (fillin empty cells)
-    H  = sort(prXY[,(1,2,3)],(1,2))
-    HX = mm_uniqrows(prXY[,(1,4)]); R = rows(HX)
-    HY = mm_uniqrows(prXY[,(2,5)]); C = rows(HY)
-    A = asarray_create("real",2) // post in asarray() to fill empty cells 
-    asarray_notfound(A, 0)
-    for (j=rows(H); j; j--) asarray(A, H[j,(1,2)], H[j,3])
-    // b
-    b = 0
-    for (r=R;r;r--) {
-        for (c=C;c;c--) {
-            pi  = HX[r,2]
-            pj  = HY[c,2]
-            pij = asarray(A, (HX[r,1], HY[c,1]))
-            b   = b + pi * abs(pij/pi - pj)
-        }
-    }
-    // IF
-    h = J(G.N, 1, 0)
-    // - contributions of cells
-    h = J(G.N, 1, 0)
-    for (r=R;r;r--) {
-        for (c=C;c;c--) {
-            pi  = HX[r,2]
-            pj  = HY[c,2]
-            pij = asarray(A, (HX[r,1], HY[c,1]))
-            d   = sign(pij/pi - pj)
-            h   = h + d * ((G.X:==HX[r,1]:&G.Y():== HY[c,1]) :- pij)
-        }
-    }
-    // - contributions of rows
-    for (r=R;r;r--) {
-        d = 0
-        pi = HX[r,2]
-        for (c=C;c;c--) {
-            pj  = HY[c,2]
-            pij = asarray(A, (HX[r,1], HY[c,1]))
-            d   = d + abs(pij/pi - pj) - pij/pi * sign(pij/pi - pj)
-        }
-        h = h + d * ((G.X:==HX[r,1]) :- pi)
-    }
-    // - contributions of columns
-    for (c=C;c;c--) {
-        d = 0
-        pj = HY[c,2]
-        for (r=R;r;r--) {
-            pi  = HX[r,2]
-            pij = asarray(A, (HX[r,1], HY[c,1]))
-            d   = d - pi * sign(pij/pi - pj)
-        }
-        h = h + d * ((G.Y():==HY[c,1]) :- pj)
-    }
-    // - numerator
-    d = HY[,2]' * (1 :- HY[,2])
+    // IF: see v1.2.4 (03dec2021) for an easier to understand approach (slow)
+    // - contribution of cells
+    Z = prXY[,3]:/prXY[,4] :- prXY[,5]
+    z = G.prXY():/G.prX() - G.prY()
+    h = sign(z) :- quadsum(prXY[,3]:*sign(Z))
+    // - contributions of X margins
+    q = quadsum(prXY[,4]:*(abs(Z) - prXY[,3]:/prXY[,4]:*sign(Z)))
+    u = abs(z) - G.prXY():/G.prX():*sign(z)
+    if (pr0) h = (h :- (q + pr0 - 1)) +
+                 _dstat_ifreq(G.X, G.tagXY():*(u - G.prY()), G.N, G.pX())
+    else     h = (h :- q) + _dstat_ifreq(G.X, G.tagXY():*u, G.N, G.pX())
+    // - contributions of Y margins
+    q = quadsum(prXY[,5]:*prXY[,4]:*sign(Z))
+    u = G.prX():*sign(z)
+    if (pr0) h = (h :+ (q + 1 - pr0)) -
+                 _dstat_ifreq(G.Y(), G.tagXY():*(u + G.prX()), G.N, G.pY())
+    else h = (h :+ q) - _dstat_ifreq(G.Y(), G.tagXY():*u, G.N, G.pY())
+    // - denominator
     h = h / (2 * d)
-    d = - b / (2 * d^2)
-    for (c=C;c;c--) {
-        pj = HY[c,2]
-        h  = h + (d * (1-2*pj)) * ((G.Y():==HY[c,1]) :- pj)
-    }
-    return(h)
+    q = quadsum((-b / (2 * d^2)) :* prY :* (1 :- 2*prY))
+    u = (-b / (2 * d^2)) * (1 :- 2*G.prY())
+    h = (h :- q) + u
+    dstat_set_IF(D, G, i, h/G.W)
 }
 
 end
