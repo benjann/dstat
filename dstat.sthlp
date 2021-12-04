@@ -561,19 +561,19 @@ help for {hi:dstat}{...}
     {it:by} specifies the group variable; default is as set by option {cmd:by()}
     {p_end}
 {synopt:{opt mldbetween}[{cmd:(}{it:{help varname:by}}{cmd:)}]}between-group MLD;
-    {it:by} as for {cmd:mldw}
+    {it:by} as for {cmd:mldwithin}
     {p_end}
 {synopt:{opt theilwithin}[{cmd:(}{it:{help varname:by}}{cmd:)}]}within-group Theil index;
-    {it:by} as for {cmd:mldw}
+    {it:by} as for {cmd:mldwithin}
     {p_end}
 {synopt:{opt theilbetween}[{cmd:(}{it:{help varname:by}}{cmd:)}]}between-group Theil index;
-    {it:by} as for {cmd:mldw}
+    {it:by} as for {cmd:mldwithin}
     {p_end}
 {synopt:{opt gewithin}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:alpha}]{cmd:)}]}within-group generalized entropy;
-    {it:by} as for {cmd:mldw}; can also specify {opt gewithin(alpha)}
+    {it:by} as for {cmd:mldwithin}; can also specify {opt gewithin(alpha)}
     {p_end}
 {synopt:{opt gebetween}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:alpha}]{cmd:)}]}between-group generalized entropy;
-    {it:by} as for {cmd:mldw}; can also specify {opt gebetween(alpha)}
+    {it:by} as for {cmd:mldwithin}; can also specify {opt gebetween(alpha)}
     {p_end}
 
 {syntab:Concentration measures}
