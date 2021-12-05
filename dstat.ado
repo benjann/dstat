@@ -1,4 +1,4 @@
-*! version 1.2.5  04dec2021  Ben Jann
+*! version 1.2.6  05dec2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -2815,7 +2815,6 @@ void dstat_parse_stats_hasdens(`Int' n)
     `T' A
     
     A = asarray_create()
-    // experimental
     // general
     asarray(A, "q"         , (`f'q(),         `p'1(),    &(0, 100, .)))         // quantile at #
     asarray(A, "p"         , (`f'p(),         `p'1(),    &(0, 100, .)))         // quantile at #
@@ -2903,12 +2902,17 @@ void dstat_parse_stats_hasdens(`Int' n)
     asarray(A, "gshare"    , (`f'gshare(),    `p'2(),    &(0, 100, ., .)))      // percentile share (generalized)
     asarray(A, "ashare"    , (`f'ashare(),    `p'2(),    &(0, 100, ., .)))      // percentile share (average)
     // inequality decomposition
-    asarray(A, "mldwithin" , (`f'mldwithin(), `p'y(),    &.))                   // within MLD
-    asarray(A, "mldbetween", (`f'mldbetween(),`p'y(),    &.))                   // between MLD
-    asarray(A, "theilwithin" , (`f'theilwithin(), `p'y(),&.))                   // within Theil index
-    asarray(A, "theilbetween", (`f'theilbetween(),`p'y(),&.))                   // between Theil index
-    asarray(A, "gewithin"  , (`f'gewithin(),  `p'y1(),   &(., ., 1)))           // within generalized entropy
-    asarray(A, "gebetween" , (`f'gebetween(), `p'y1(),   &(., ., 1)))           // between generalized entropy
+    asarray(A, "gw_gini"   , (`f'gw_gini(),   `p'y1(),   &(., ., 0)))           // weighted avg of within-group Gini
+    asarray(A, "b_gini"    , (`f'b_gini(),    `p'y1(),   &(., ., 0)))           // between Gini coefficient
+    asarray(A, "gw_mld"    , (`f'gw_mld(),    `p'y(),    &.))                   // weighted avg of within-group MLD
+    asarray(A, "w_mld"     , (`f'w_mld(),     `p'y(),    &.))                   // within MLD
+    asarray(A, "b_mld"     , (`f'b_mld(),     `p'y(),    &.))                   // between MLD
+    asarray(A, "gw_theil"  , (`f'gw_theil(),  `p'y(),    &.))                   // weighted avg of within-group Theil
+    asarray(A, "w_theil"   , (`f'w_theil(),   `p'y(),    &.))                   // within Theil index
+    asarray(A, "b_theil"   , (`f'b_theil(),   `p'y(),    &.))                   // between Theil index
+    asarray(A, "gw_ge"     , (`f'gw_ge(),     `p'y1(),   &(., ., 1)))           // weighted avg of within-group GE
+    asarray(A, "w_ge"      , (`f'w_ge(),      `p'y1(),   &(., ., 1)))           // within generalized entropy
+    asarray(A, "b_ge"      , (`f'b_ge(),      `p'y1(),   &(., ., 1)))           // between generalized entropy
     // concentration
     asarray(A, "gci"       , (`f'gci(),       `p'y1(),   &(., ., 0)))           // Gini concentration index
     asarray(A, "aci"       , (`f'aci(),       `p'y1(),   &(., ., 0)))           // absolute Gini concentration index
@@ -3764,6 +3768,7 @@ struct `XYTMP' {
     `RC'    EX, EXat   // E(X|Y=q) for ccurve IFs
     `IntC'  tag        // tag unique levels in (X,Y)
     `RC'    pr         // probabilities of levels in (X,Y)
+    `T'     GW         // asarray() containing Y-group indices (sorted by X)
     `Bool'  cd_fast    // concordant/discordant pairs: type of algorithm
     `RS'    cd_S, cd_V // concordant/discordant pairs
     `RC'    cd_s, cd_v // concordant/discordant pairs
@@ -3807,14 +3812,19 @@ class `GRP' {
     `RC'    XsY(), YsX()        // X sorted by Y, Y sorted by X
     `RS'    mean()              // mean of X
     `RC'    Xc(), Wc(), XcY(), WcY() // running sums for Lorenz ordinates
-    `RC'    EX(), EXat()        // E(X|Y=q) for ccurve IFs
-    `IntC'  tagX(), tagY(), tagXY() // tag unique levels in X, Y, (X,Y)
-    `RC'    prX(), prY(), prXY()    // probabilities of levels in X, Y, (X,Y)
-    void    cd_fast()    // set type of CD algorithm and reset results if needed
+    `RC'    EX(), EXat()             // E(X|Y=q) for ccurve IFs
+    `IntC'  tagX(), tagY(), tagXY()  // tag unique levels in X, Y, (X,Y)
+    `RC'    prX(), prY(), prXY()     // probabilities of levels in X, Y, (X,Y)
+    `RS'    gw_K()          // number of groups in Y
+    `IntC'  gw_p()          // (sorted) indices of group k
+    `RC'    gw_X(), gw_w()  // X and w of group k
+    `RS'    gw_W()          // size of group k
+    void    cd_fast()       // set type of CD algorithm and reset results if needed
     `RS'    cd_K(), cd_S(), cd_T(), cd_U(), cd_V()
     `RC'    cd_k(), cd_s(), cd_t(), cd_u(), cd_v()
     
     private:
+    void    gw_build() // build index of Y-groups
     `Xtmp'  xtmp       // struct holding temporary results related to X
     `Ytmp'  ytmp       // struct holding temporary results related to Y
     `XYtmp' xytmp      // struct holding temporary results related to X x Y
@@ -4074,6 +4084,47 @@ void `GRP'::Yset(`Int' y0, `RC' Y0)
     if (rows(xytmp.pr)) return(xytmp.pr)
     xytmp.pr = _dstat_ifreq((X,Y()), w, N, pXY())/W
     return(xytmp.pr)
+}
+
+`RS' `GRP'::gw_K()
+{
+    if (length(xytmp.GW)==0) gw_build()
+    return(asarray_elements(xytmp.GW))
+}
+
+`IntC' `GRP'::gw_p(`Int' key)
+{
+    return(asarray(xytmp.GW, key))
+}
+
+`RC' `GRP'::gw_X(`Int' key)
+{
+    return(X[asarray(xytmp.GW, key)])
+}
+
+`RC' `GRP'::gw_w(`Int' key)
+{
+    if (rows(w)==1) return(w)
+    return(w[asarray(xytmp.GW, key)])
+}
+
+`RS' `GRP'::gw_W(`Int' key)
+{
+    if (rows(w)==1) return(w*rows(asarray(xytmp.GW, key)))
+                    return(quadsum(w[asarray(xytmp.GW, key)]))
+}
+
+void `GRP'::gw_build()
+{
+    `Int'  i
+    `RC'   p
+    `IntM' ginfo
+    
+    xytmp.GW = asarray_create("real", 1)
+    p = mm_order((Y(), X), (1,2), 1) // stable sort
+    ginfo = selectindex(_mm_uniqrows_tag(Y()[p], 0)),
+            selectindex(_mm_uniqrows_tag(Y()[p], 1))
+    for (i = rows(ginfo); i; i--) asarray(xytmp.GW, i, p[|ginfo[i,]'|])
 }
 
 void `GRP'::cd_fast(`RC' naive)
@@ -6801,8 +6852,35 @@ void _dstat_sum_set_y(`Data' D, `Grp' G, `SS' o, `RR' O, | `RC' o1)
 }
 
 `RC' _dstat_sum_ccdf(`RC' X, `RC' w, `RS' W)
-{   // X assumed sorted
+{   // helper function to accumulate from above; X assumed sorted
     return((quadsum(w) :- _mm_ranks(X, w, 3, 1)) / W)
+}
+
+void _dstat_sum_gw(`Data' D, `Grp' G, `Int' i, `PS' f, | `PR' o)
+{   // helper function to take (weighted) average across Y-groups
+    // p_k: relative size of group k
+    // b_k: value of statistic in group k
+    // b     = sum_k (p_k * b_k)
+    // IF(b) = sum_k (p_k * IF(b_k) + b_k * IF(p_k))
+    `Int'  k
+    `RS'   b, bk, Wk
+    `RC'   h, hk
+    
+    b = 0
+    if (D.noIF==0) h = J(G.N, 1, 0)
+    k = G.gw_K() // build group index and get number of groups
+    for (;k;k--) {
+        Wk = G.gw_W(k) // size of group
+        bk = (*f)(G.gw_X(k), G.gw_w(k), Wk, D.noIF, hk=., o)
+        b  = b + Wk/G.W * bk
+        if (D.noIF) continue
+        h[G.gw_p(k)] = h[G.gw_p(k)] :+ hk :+ bk
+        h = h :- bk * Wk/G.W
+    }
+    D.b[i] = b
+    if (_dstat_sum_omit(D, i)) return
+    if (D.noIF) return
+    dstat_set_IF(D, G, i, h / G.W)
 }
 
 void dstat_sum_q(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
@@ -7907,77 +7985,144 @@ void dstat_sum_hoover(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 
 void dstat_sum_gini(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    _dstat_sum_gini(0, D, G, i, o, O)
+    __dstat_sum_gini(0, D, G, i, o, O)
 }
 
 void dstat_sum_agini(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    _dstat_sum_gini(1, D, G, i, o, O)
+    __dstat_sum_gini(1, D, G, i, o, O)
 }
 
-void _dstat_sum_gini(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void __dstat_sum_gini(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    `RS' df, m, cp, c
-    `RC' F, B
+    `RC' h
+    
+    D.b[i] = _dstat_sum_gini(G.Xs(), G.ws(), G.W, D.noIF, h=.,
+            (&abs, &(o!="" ? strtoreal(o) : O[3]), &D.wtype))
+    if (_dstat_sum_omit(D, i)) return
+    if (D.noIF) return
+    dstat_set_IF(D, G, i, dstat_invp(G.N, G.pX(), h) / G.W)
+}
+
+void dstat_sum_gw_gini(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `RS' df
+    
+    _dstat_sum_set_y(D, G, o, O, df=.)
+    _dstat_sum_gw(D, G, i, &_dstat_sum_gini(), (&0, &df, &D.wtype))
+}
+
+`RS' _dstat_sum_gini(`RC' X, `RC' w, `RS' W, `Bool' noIF, `RC' h, `PR' o)
+{   // input assumed sorted
+    `Bool' abs
+    `Int'  wtype
+    `RS'   df, b, m, cp, c
+    `RC'   F, B
+    
+    abs = *o[1]; df = *o[2]; wtype = *o[3]
+    m   = mean(X, w)
+    F   = _mm_ranks(X, w, 3, 1, 1)
+    cp  = cross(X, w, F) / W
+    if (df!=0) { // small-sample adjustment
+        if (wtype==1) c = W / (W - df)
+        else          c = rows(X) / (rows(X) - df)
+    }
+    else c = 1
+    if (abs) b = c * (cp * 2 - m)     // = c * (2 * cov)  with cov = cp - m/2
+    else     b = c * (cp * 2 / m - 1) // = c * (2 * cov / m)
+    if (noIF) return(b)
+    // The main moment condition of the Gini coefficient can be written as
+    // h = (2*F - 1)*X - G*X (see Binder & Kovacevic 1995)
+    // (the IF of the Gini coefficient has the same structure as the IF of the
+    // relative PDF; see -reldist-)
+    B = _dstat_sum_ccdf(X, X:*w, W)
+    if (abs) h = ((2*F :- 1):*X :+ 2*(B :- cp))*c :- b
+    else     h = ((F :- cp/m):*X :+ B :- cp) * ((2*c) / m)
+            // = 1/m * (c*(2*F :- 1):*G.X :- b:*G.X :+ c*2*(B :- cp))
+    return(b)
+}
+
+void dstat_sum_b_gini(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `RS'   df, m, cp, c
+    `IntC' p
+    `RC'   w, mg, F, B, h
     
     if (o!="") df = strtoreal(o)
     else       df = O[3]
+    _dstat_sum_set_y(D, G, o, O)
     m  = G.mean()
-    F  = _mm_ranks(G.Xs(), G.ws(), 3, 1, 1)
-    cp = cross(G.Xs(), G.ws(), F) / G.W
+    mg = dstat_invp(G.N, G.pY(), _mm_collapse2(G.XsY(), G.wsY(), G.Ys()))
+    p  = mm_order(mg, 1, 1) // stable sort
+    _collate(mg, p)
+    w  = rows(G.w)==1 ? G.w : G.w[p] 
+    F  = _mm_ranks(mg, w, 3, 1, 1)
+    cp = cross(mg, w, F) / G.W
     if (df!=0) { // small-sample adjustment
         if (D.wtype==1) c = G.W / (G.W - df)
         else            c = G.N / (G.N - df)
     }
     else c = 1
-    if (abs) D.b[i] = c * (cp * 2 - m) // = c * (2 * cov)  with cov = cp - m/2
-    else     D.b[i] = c * (cp * 2 / m - 1) // = c * (2 * cov / m)
+    D.b[i] = c * (cp * 2 / m - 1)
     if (_dstat_sum_omit(D, i)) return
     if (D.noIF) return
-    // The main moment condition of the Gini coefficient can be written as
-    // h = (2*F - 1)*X - G*X (see Binder & Kovacevic 1995)
-    // (the IF of the Gini coefficient has the same structure as the IF of the
-    // relative PDF; see -reldist-)
-    B = dstat_invp(G.N, G.pX(), _dstat_sum_ccdf(G.Xs(), G.Xs():*G.ws(), G.W))
-    F[G.pX()] = F
-    if (abs) {
-        dstat_set_IF(D, G, i, (((2*F :- 1):*G.X + 2*(B :- cp))*c :- D.b[i]) / G.W)
-    }
-    else {
-        dstat_set_IF(D, G, i, ((F :- cp/m):*G.X :+ B :- cp) * ((2*c) / (m*G.W)))
-        // = 1/m * (c*(2*F :- 1):*G.X :- D.b[i]:*G.X :+ c*2*(B :- cp)) / G.W
-    }
+    B  = dstat_invp(G.N, p, _dstat_sum_ccdf(mg, mg:*w, G.W))
+    F  = dstat_invp(G.N, p, F)
+    mg = dstat_invp(G.N, p, mg)
+    h  = ((2*c) / m) * ((F :- cp/m):*G.X :+ B :- cp)
+        // not fully correct; ignores the channel trough ranks
+    dstat_set_IF(D, G, i, h / G.W)
 }
 
 void dstat_sum_mld(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
 {
-    `RS'   m
-    `RC'   z, h
+    `RC' h
     pragma unused o
     pragma unused O
     
-    z = ln(G.X)
-    if (hasmissing(z)) {
-        _dstat_sum_invalid(D, G, lbl!="" ? lbl : "mld", G.N-missing(z))
-        _dstat_sum_update_X(D, G, z) // update sample
-        z = ln(G.X)
+    if (hasmissing(ln(G.X))) {
+        _dstat_sum_invalid(D, G, lbl!="" ? lbl : "mld", G.N-missing(ln(G.X)))
+        _dstat_sum_update_X(D, G, ln(G.X)) // update sample
     }
-    m = G.mean()
-    D.b[i] = ln(m) - mean(z, G.w)
+    D.b[i] = _dstat_sum_mld(G.X, G.w, G.W, D.noIF, h=.)
     if (_dstat_sum_omit(D, i)) return
     if (D.noIF) return
-    h = ((ln(m):-z) :- D.b[i]) + (G.X :- m)/m
     dstat_set_IF(D, G, i, h / G.W)
 }
 
-void dstat_sum_mldwithin(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
+void dstat_sum_gw_mld(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
+{
+    _dstat_sum_set_y(D, G, o, O)
+    if (hasmissing(ln(G.X))) {
+        _dstat_sum_invalid(D, G, lbl!="" ? lbl : "gw_mld", G.N-missing(ln(G.X)))
+        _dstat_sum_update_X(D, G, ln(G.X)) // update sample
+        _dstat_sum_set_y(D, G, o, O)
+    }
+    _dstat_sum_gw(D, G, i, &_dstat_sum_mld())
+}
+
+`RS' _dstat_sum_mld(`RC' X, `RC' w, `RS' W, `Bool' noIF, `RC' h, | `PR' o)
+{
+    `RS'   b, m
+    `RC'   z
+    pragma unused W
+    pragma unused o
+    
+    m = mean(X, w)
+    z = ln(X)
+    b = ln(m) - mean(z, w)
+    if (noIF==0) h = ((ln(m):-z) :- b) + (X :- m)/m
+    return(b)
+}
+
+void dstat_sum_w_mld(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
 {
     `RC'   mg, z, h
     
     _dstat_sum_set_y(D, G, o, O)
     z = ln(G.X)
     if (hasmissing(z)) {
-        _dstat_sum_invalid(D, G, lbl!="" ? lbl : "mldwithin", G.N-missing(z))
+        _dstat_sum_invalid(D, G, lbl!="" ? lbl : "w_mld", G.N-missing(z))
         _dstat_sum_update_X(D, G, z) // update sample
         _dstat_sum_set_y(D, G, o, O)
         z = ln(G.X)
@@ -7992,7 +8137,7 @@ void dstat_sum_mldwithin(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
     dstat_set_IF(D, G, i, h / G.W)
 }
 
-void dstat_sum_mldbetween(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, 
+void dstat_sum_b_mld(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, 
     | `SS' lbl)
 {
     `RS'   m
@@ -8001,7 +8146,7 @@ void dstat_sum_mldbetween(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O,
     _dstat_sum_set_y(D, G, o, O)
     z = ln(G.X)
     if (hasmissing(z)) {
-        _dstat_sum_invalid(D, G, lbl!="" ? lbl : "mldbetween", G.N-missing(z))
+        _dstat_sum_invalid(D, G, lbl!="" ? lbl : "b_mld", G.N-missing(z))
         _dstat_sum_update_X(D, G, z) // update sample
         _dstat_sum_set_y(D, G, o, O)
         z = ln(G.X) // not really needed; not used below
@@ -8018,28 +8163,48 @@ void dstat_sum_mldbetween(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O,
 
 void dstat_sum_theil(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
 {
-    `RS'   m, delta
-    `RC'   z, h
+    `RC' h
     pragma unused o
     pragma unused O
     
-    z = ln(G.X)
-    if (hasmissing(z)) {
-        _dstat_sum_invalid(D, G, lbl!="" ? lbl : "theil", G.N-missing(z))
-        _dstat_sum_update_X(D, G, z) // update sample
-        z = ln(G.X)
+    if (hasmissing(ln(G.X))) {
+        _dstat_sum_invalid(D, G, lbl!="" ? lbl : "theil", G.N-missing(ln(G.X)))
+        _dstat_sum_update_X(D, G, ln(G.X)) // update sample
     }
-    m = G.mean()
-    z = G.X :* z
-    D.b[i] = mean(z, G.w)/m - ln(m)
+    D.b[i] = _dstat_sum_theil(G.X, G.w, G.W, D.noIF, h=.)
     if (_dstat_sum_omit(D, i)) return
     if (D.noIF) return
-    delta = mean(z, G.w)/m^2 + 1/m
-    h = ((z/m:-ln(m)) :- D.b[i]) - delta*(G.X :- m)
     dstat_set_IF(D, G, i, h / G.W)
 }
 
-void dstat_sum_theilwithin(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O,
+void dstat_sum_gw_theil(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
+{
+    _dstat_sum_set_y(D, G, o, O)
+    if (hasmissing(ln(G.X))) {
+        _dstat_sum_invalid(D, G, lbl!="" ? lbl : "gw_theil", G.N-missing(ln(G.X)))
+        _dstat_sum_update_X(D, G, ln(G.X)) // update sample
+        _dstat_sum_set_y(D, G, o, O)
+    }
+    _dstat_sum_gw(D, G, i, &_dstat_sum_theil())
+}
+
+`RS' _dstat_sum_theil(`RC' X, `RC' w, `RS' W, `Bool' noIF, `RC' h, | `PR' o)
+{
+    `RS'   b, m, delta
+    `RC'   z
+    pragma unused W
+    pragma unused o
+    
+    m = mean(X, w)
+    z = X :* ln(X)
+    b = mean(z, w)/m - ln(m)
+    if (noIF) return(b)
+    delta = mean(z, w)/m^2 + 1/m
+    h = ((z/m:-ln(m)) :- b) - delta*(X :- m)
+    return(b)
+}
+
+void dstat_sum_w_theil(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O,
     | `SS' lbl)
 {
     `RS'   m
@@ -8048,7 +8213,7 @@ void dstat_sum_theilwithin(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O,
     _dstat_sum_set_y(D, G, o, O)
     z = ln(G.X)
     if (hasmissing(z)) {
-        _dstat_sum_invalid(D, G, lbl!="" ? lbl : "theilwithin", G.N-missing(z))
+        _dstat_sum_invalid(D, G, lbl!="" ? lbl : "w_theil", G.N-missing(z))
         _dstat_sum_update_X(D, G, z) // update sample
         _dstat_sum_set_y(D, G, o, O)
         z = ln(G.X)
@@ -8065,7 +8230,7 @@ void dstat_sum_theilwithin(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O,
     dstat_set_IF(D, G, i, h / G.W)
 }
 
-void dstat_sum_theilbetween(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, 
+void dstat_sum_b_theil(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, 
     | `SS' lbl)
 {
     `RS'   m, mz
@@ -8074,7 +8239,7 @@ void dstat_sum_theilbetween(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O,
     _dstat_sum_set_y(D, G, o, O)
     z = ln(G.X)
     if (hasmissing(z)) {
-        _dstat_sum_invalid(D, G, lbl!="" ? lbl : "theilbetween", G.N-missing(z))
+        _dstat_sum_invalid(D, G, lbl!="" ? lbl : "b_theil", G.N-missing(z))
         _dstat_sum_update_X(D, G, z) // update sample
         _dstat_sum_set_y(D, G, o, O)
         z = ln(G.X) // not really needed; not used below
@@ -8094,8 +8259,8 @@ void dstat_sum_theilbetween(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O,
 
 void dstat_sum_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
-    `RS'   a, c, m, mz, delta
-    `RC'   z, h
+    `RS'   a
+    `RC'   h
     
     if (o!="") a = strtoreal(o)
     else       a = O[3]
@@ -8107,24 +8272,58 @@ void dstat_sum_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
         dstat_sum_theil(D, G, i, o, O, "ge(1)")
         return
     }
-    z = G.X:^a
-    if (hasmissing(z)) {
-        _dstat_sum_invalid(D, G, "ge("+strofreal(a)+")", G.N-missing(z))
-        _dstat_sum_update_X(D, G, z) // update sample
-        z = G.X:^a
+    if (hasmissing(G.X:^a)) {
+        _dstat_sum_invalid(D, G, "ge("+strofreal(a)+")", G.N-missing(G.X:^a))
+        _dstat_sum_update_X(D, G, G.X:^a) // update sample
     }
-    m = G.mean()
-    mz = mean(z, G.w)
-    c = 1 / (a * (a - 1))
-    D.b[i] = c * (mz/m^a - 1)
+    D.b[i] = _dstat_sum_ge(G.X, G.w, G.W, D.noIF, h=., &a)
     if (_dstat_sum_omit(D, i)) return
     if (D.noIF) return
-    delta = 1 / ((a - 1) * m^(a + 1)) * mz
-    h = (c*(z/m^a:-1) :- D.b[i]) - delta * (G.X :- m)
     dstat_set_IF(D, G, i, h / G.W)
 }
 
-void dstat_sum_gewithin(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void dstat_sum_gw_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+{
+    `Int'  y
+    `RS'   a
+    
+    y = __dstat_sum_set_y(D, o, O, a=.)
+    if (a==0) {
+        dstat_sum_gw_mld(D, G, i, D.yvars[y], O, "gw_ge(0)")
+        return
+    }
+    if (a==1) {
+        dstat_sum_gw_theil(D, G, i, D.yvars[y], O, "gw_ge(1)")
+        return
+    }
+    _dstat_sum_set_y(D, G, o, O, a=.)
+    if (hasmissing(G.X:^a)) {
+        _dstat_sum_invalid(D, G, "gw_ge("+strofreal(a)+")", G.N-missing(G.X:^a))
+        _dstat_sum_update_X(D, G, G.X:^a) // update sample
+        _dstat_sum_set_y(D, G, o, O, a=.)
+    }
+    _dstat_sum_gw(D, G, i, &_dstat_sum_ge(), &a)
+}
+
+`RS' _dstat_sum_ge(`RC' X, `RC' w, `RS' W, `Bool' noIF, `RC' h, `PR' o)
+{
+    `RS'   a, b, c, m, mz, delta
+    `RC'   z
+    pragma unused W
+    
+    a  = *o
+    m  = mean(X, w)
+    z  = X:^a
+    mz = mean(z, w)
+    c  = 1 / (a * (a - 1))
+    b  = c * (mz/m^a - 1)
+    if (noIF) return(b)
+    delta = 1 / ((a - 1) * m^(a + 1)) * mz
+    h = (c*(z/m^a:-1) :- b) - delta * (X :- m)
+    return(b)
+}
+
+void dstat_sum_w_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     `Int'  y
     `RS'   a, m
@@ -8132,17 +8331,17 @@ void dstat_sum_gewithin(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     
     y = __dstat_sum_set_y(D, o, O, a=.)
     if (a==0) {
-        dstat_sum_mldwithin(D, G, i, D.yvars[y], O, "gewithin(0)")
+        dstat_sum_w_mld(D, G, i, D.yvars[y], O, "w_ge(0)")
         return
     }
     if (a==1) {
-        dstat_sum_theilwithin(D, G, i, D.yvars[y], O, "gewithin(1)")
+        dstat_sum_w_theil(D, G, i, D.yvars[y], O, "w_ge(1)")
         return
     }
     _dstat_sum_set_y(D, G, o, O, a=.)
     z = G.X:^a
     if (hasmissing(z)) {
-        _dstat_sum_invalid(D, G, "ge("+strofreal(a)+")", G.N-missing(z))
+        _dstat_sum_invalid(D, G, "w_ge("+strofreal(a)+")", G.N-missing(z))
         _dstat_sum_update_X(D, G, z) // update sample
         _dstat_sum_set_y(D, G, o, O, a=.)
         z = G.X:^a
@@ -8161,7 +8360,7 @@ void dstat_sum_gewithin(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     dstat_set_IF(D, G, i, h / G.W)
 }
 
-void dstat_sum_gebetween(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void dstat_sum_b_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 {
     `Int'  y
     `RS'   a, c, m
@@ -8169,17 +8368,17 @@ void dstat_sum_gebetween(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     
     y = __dstat_sum_set_y(D, o, O, a=.)
     if (a==0) {
-        dstat_sum_mldbetween(D, G, i, D.yvars[y], O, "gebetween(0)")
+        dstat_sum_b_mld(D, G, i, D.yvars[y], O, "b_ge(0)")
         return
     }
     if (a==1) {
-        dstat_sum_theilbetween(D, G, i, D.yvars[y], O, "gebetween(1)")
+        dstat_sum_b_theil(D, G, i, D.yvars[y], O, "w_ge(1)")
         return
     }
     _dstat_sum_set_y(D, G, o, O, a=.)
     z = G.X:^a
     if (hasmissing(z)) {
-        _dstat_sum_invalid(D, G, "ge("+strofreal(a)+")", G.N-missing(z))
+        _dstat_sum_invalid(D, G, "w_ge("+strofreal(a)+")", G.N-missing(z))
         _dstat_sum_update_X(D, G, z) // update sample
         _dstat_sum_set_y(D, G, o, O, a=.)
         z = G.X:^a  // not really needed; not used below

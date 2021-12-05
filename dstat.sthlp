@@ -1,5 +1,5 @@
 {smcl}
-{* 04dec2021}{...}
+{* 05dec2021}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -557,23 +557,44 @@ help for {hi:dstat}{...}
     {p_end}
 
 {syntab:Inequality decomposition}
-{synopt:{opt mldwithin}[{cmd:(}{it:{help varname:by}}{cmd:)}]}within-group MLD;
-    {it:by} specifies the group variable; default is as set by option {cmd:by()}
+{synopt:{opt gw_gini}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}weighted
+    average of group-specific Gini coefficients; {it:by} specifies the group
+    variable; default is as set by option {cmd:by()}; {it:df} applies
+    small-sample adjustment; default is {it:df}=0;
+    can also specify {opt gw_gini(df)}
     {p_end}
-{synopt:{opt mldbetween}[{cmd:(}{it:{help varname:by}}{cmd:)}]}between-group MLD;
-    {it:by} as for {cmd:mldwithin}
+{synopt:{opt gw_mld}[{cmd:(}{it:{help varname:by}}{cmd:)}]}weighted
+    average of group-specific MLDs; {it:by} as for {cmd:gw_gini}
     {p_end}
-{synopt:{opt theilwithin}[{cmd:(}{it:{help varname:by}}{cmd:)}]}within-group Theil index;
-    {it:by} as for {cmd:mldwithin}
+{synopt:{opt gw_theil}[{cmd:(}{it:{help varname:by}}{cmd:)}]}weighted
+    average of group-specific Theil indices; {it:by} as for {cmd:gw_gini}
     {p_end}
-{synopt:{opt theilbetween}[{cmd:(}{it:{help varname:by}}{cmd:)}]}between-group Theil index;
-    {it:by} as for {cmd:mldwithin}
+{synopt:{opt gw_ge}[{cmd:(}{it:{help varname:by}}{cmd:)}]}weighted
+    average of group-specific generalized entropy; {it:by} as for {cmd:gw_gini};
+    can also specify {opt gw_ge(alpha)}
     {p_end}
-{synopt:{opt gewithin}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:alpha}]{cmd:)}]}within-group generalized entropy;
-    {it:by} as for {cmd:mldwithin}; can also specify {opt gewithin(alpha)}
+{synopt:{opt w_mld}[{cmd:(}{it:{help varname:by}}{cmd:)}]}within-group MLD (equivalent to {cmd:gw_mld});
+    {it:by} as for {cmd:gw_gini}
     {p_end}
-{synopt:{opt gebetween}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:alpha}]{cmd:)}]}between-group generalized entropy;
-    {it:by} as for {cmd:mldwithin}; can also specify {opt gebetween(alpha)}
+{synopt:{opt w_theil}[{cmd:(}{it:{help varname:by}}{cmd:)}]}within-group Theil index;
+    {it:by} as for {cmd:gw_gini}
+    {p_end}
+{synopt:{opt w_ge}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:alpha}]{cmd:)}]}within-group generalized entropy;
+    {it:by} as for {cmd:gw_gini}; can also specify {opt w_ge(alpha)}
+    {p_end}
+{synopt:{opt b_gini}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}between-group Gini;
+    {it:by} and {it:df} as for {cmd:gw_gini} ({it}warning: a simplified influence function is used
+    for {cmd:b_gini}; standard errors may be invalid and should only be considered as
+    a rough approximation{sf})
+    {p_end}
+{synopt:{opt b_mld}[{cmd:(}{it:{help varname:by}}{cmd:)}]}between-group MLD;
+    {it:by} as for {cmd:gw_gini}
+    {p_end}
+{synopt:{opt b_theil}[{cmd:(}{it:{help varname:by}}{cmd:)}]}between-group Theil index;
+    {it:by} as for {cmd:gw_gini}
+    {p_end}
+{synopt:{opt b_ge}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:alpha}]{cmd:)}]}between-group generalized entropy;
+    {it:by} as for {cmd:gw_gini}; can also specify {opt b_ge(alpha)}
     {p_end}
 
 {syntab:Concentration measures}

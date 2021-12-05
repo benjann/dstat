@@ -39,6 +39,14 @@ Installation from GitHub:
 
 Main changes:
 
+    05dec2021 (version 1.2.6)
+    - dstat_sum: b_gini added (IF not fully correct yet; may only serve as a rough
+      approximation)
+    - dstat sum: gw_gini, gw_mld, gw_theil, gw_ge added
+    - datat sum: mldwithin renamed to w_mld; mldbetween renamed to b_mld
+    - datat sum: theilwithin renamed to w_theil; theilbetween renamed to b_theil
+    - datat sum: gewithin renamed to w_ge; gebetween renamed to b_ge
+
     04dec2021 (version 1.2.5)
     - dstat sum: gewithin and gebetween added
     - dstat sum: IF of dissim made more efficient
