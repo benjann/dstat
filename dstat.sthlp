@@ -583,9 +583,7 @@ help for {hi:dstat}{...}
     {it:by} as for {cmd:gw_gini}; can also specify {opt w_ge(alpha)}
     {p_end}
 {synopt:{opt b_gini}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}between-group Gini;
-    {it:by} and {it:df} as for {cmd:gw_gini} ({it}warning: a simplified influence function is used
-    for {cmd:b_gini}; standard errors may be invalid and should only be considered as
-    a rough approximation{sf})
+    {it:by} and {it:df} as for {cmd:gw_gini}
     {p_end}
 {synopt:{opt b_mld}[{cmd:(}{it:{help varname:by}}{cmd:)}]}between-group MLD;
     {it:by} as for {cmd:gw_gini}
