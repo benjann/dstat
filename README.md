@@ -40,6 +40,12 @@ Installation from GitHub:
 Main changes:
 
     05dec2021 (version 1.2.6)
+    - IF of b_gini assumes that the order of group means is stable; this is an
+      assumption that is typically not very critical; comparison to the jackknife
+      illustrates that the IF is quite accurate even in small samples; removed
+      the corresponding disclaimer in the help file
+
+    05dec2021 (version 1.2.6)
     - dstat_sum: b_gini added (IF not fully correct yet; may only serve as a rough
       approximation)
     - dstat sum: gw_gini, gw_mld, gw_theil, gw_ge added
