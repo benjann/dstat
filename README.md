@@ -39,6 +39,21 @@ Installation from GitHub:
 
 Main changes:
 
+    22dec2021 (version 1.2.7)
+    - support for qdef(11) added (mid-quantile); option -mquantile- is a synonym
+      for qdef(11)
+    - dstat sum: mquantile, gw_vlog, w_vlog, b_vlog, ekurtosis, rsquared added
+    - dstat sum: now using quad precision when taking cross products in variance,
+      sd, cv, md, gini, vlog, sen, sst, takayama, lvar, mse, spearman, skewness,
+      kurtosis, gci, corr, cov 
+    - default for napprox() increased from 512 to 1024
+    - dstat histogram: in case of pweights or iweights, the effective sample size 
+      (sum(w)^2/sum(w^2)) is now used instead of the physical number number of
+      observations in the rules for selecting the number of bins
+    - default bandwidth selector for density estimation is now -dpi(2)-; -sjpi-
+      can be erratic on data that contains heaping
+    - improved error messages and some code cleaning
+    
     05dec2021 (version 1.2.6)
     - IF of b_gini assumes that the order of group means is stable; this is an
       assumption that is typically not very critical; comparison to the jackknife
