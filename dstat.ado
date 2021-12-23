@@ -1,4 +1,4 @@
-*! version 1.2.7  22dec2021  Ben Jann
+*! version 1.2.8  23dec2021  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -31,7 +31,7 @@ program dstat, eclass properties(svyb svyj)
         capt Parse_subcmd `subcmd' // expands subcmd
         if _rc==1 exit _rc
         if _rc { // try summarize
-            local 00 `"`subcmd' `00'"'
+            local 00 `"`subcmd'`00'"'
             local subcmd summarize
         }
         else if "`subcmd'"=="histogram" {
@@ -1725,8 +1725,8 @@ program _Estimate, eclass
     }
     else if "`subcmd'"=="summarize" {
         Parse_pline, `pline' // returns pline, plvar
-        Parse_sum "`byvar'" "`pline'" "`plvar'" /*
-            */ `anything' // returns varlist, vlist, slist, yvars, plvars
+        Parse_sum "`byvar'" "`pline'" "`plvar'" `anything'
+            // returns varlist, vlist, slist, slist2, yvars, plvars
     }
     Parse_vce "`subcmd'" `vce'
     if `"`balance'"'!="" {
@@ -1812,7 +1812,8 @@ program _Estimate, eclass
     
     // expand factor variables (and process slist)
     if "`subcmd'"=="summarize" {
-        Parse_slist `touse' `slist' // returns slist and varlist
+        mata: ds_slist_expand() // returns varlist, slist, slist2
+        local varlist: list uniq varlist
     }
     else {
         fvexpand `varlist' if `touse'
@@ -2351,21 +2352,25 @@ program Parse_sum
     gettoken yvar  0 : 0
     gettoken pline 0 : 0
     gettoken plvar 0 : 0
-    Parse_sum_tokenize `0'  // returns stats_#, vars_#, n
-    mata: ds_parse_stats(`n')
+    Parse_sum_tokenize `0'    // returns stats_#, vars_#, n
+    mata: ds_parse_stats(`n') // returns slist, slist2, yvars, plvars
     // check/collect variables
     local vlist
+    local vrlist
+    local space
     forv j=1/`n' {
         local 0 `"`vars_`j''"'
         syntax varlist(numeric fv)
-        local vars_`j' `varlist'
-        local vlist `vlist' `varlist'
+        local vlist `"`vlist'`space'`"`varlist'"'"'
+        local space " "
+        local vrlist `vrlist' `varlist'
     }
     // returns
-    mata: ds_slist_collect(`n')
-    c_local slist `"`slist'"'
-    c_local varlist: list uniq vlist
-    c_local yvars: list yvars | plvars  // [sic!]
+    c_local varlist: list uniq vrlist // unique list of variables
+    c_local vlist  `"`vlist'"'        // grouped variables
+    c_local slist  `"`slist'"'        // grouped stats (as specified)
+    c_local slist2 `"`slist2'"'       // grouped stats (expanded)
+    c_local yvars  `yvars'            // (also includes plvars)
     c_local plvars `plvars'
 end
 
@@ -2412,13 +2417,6 @@ program Parse_sum_tokenize
     }
     c_local vars_`j' `"`vars'"'
     c_local n `j'
-end
-
-program Parse_slist
-    gettoken touse slist : 0
-    mata: ds_slist_expand() // return vlist, slist
-    c_local slist `"`slist'"'
-    c_local varlist: list uniq vlist
 end
 
 program Parse_vce
@@ -2663,8 +2661,8 @@ local MQOPT  ds_mqopt
 local MQopt  struct `MQOPT' scalar
 local BAL    ds_bal
 local Bal    struct `BAL' scalar
-local YVAR   ds_parse_stats_yvars
-local Yvar   struct `YVAR' scalar
+local STATS  ds_stats
+local Stats  struct `STATS' scalar
 // string
 local SS     string scalar
 local SR     string rowvector
@@ -2705,98 +2703,205 @@ mata set matastrict on
 // parsing for -dstat summarize-
 // --------------------------------------------------------------------------
 
-struct `YVAR' {
-    `SS' yvar, plvar, pline
-    `SR' yvars, plvars
+struct `STATS' {
+    `SM' stats              // row1: as specified; row2: fully expanded
+    `SS' yvar, plvar, pline // defaults
+    `SR' yvars, plvars      // yvars: all aux variables (including plvars)
 }
 
 void ds_parse_stats(`Int' n)
 {
-    `Int'  i
-    `SS'   nm
-    `T'    A
-    `SC'   list
-    `Yvar' Y
+    `Int'   i
+    `SS'    nm
+    `T'     A
+    `SC'    list
+    `Stats' S
+    `SM'    stats
     
-    A = ds_stats_lib()
+    A = _ds_parse_stats_lib()
     list = sort(asarray_keys(A), 1)
-    Y.yvar = st_local("yvar")
-    if (Y.yvar!="") Y.yvars = Y.yvar
-    Y.pline = st_local("pline")
-    Y.plvar = st_local("plvar")
-    if (Y.plvar!="") Y.plvars = Y.plvar
+    S.yvar = st_local("yvar")
+    if (S.yvar!="") S.yvars = S.yvar
+    S.pline = st_local("pline")
+    S.plvar = st_local("plvar")
+    if (S.plvar!="") {
+        S.yvars = (S.yvars, S.plvar)
+        S.plvars = S.plvar
+    }
+    stats = J(2, n, "")
     for (i=1;i<=n;i++) {
         nm = "stats_" + strofreal(i)
-        st_local(nm, _ds_parse_stats(A, list, Y,
-            _ds_parse_stats_tok(st_local(nm))))
+        _ds_parse_stats(A, list, S, _ds_parse_stats_tok(st_local(nm)))
+        stats[1,i] = invtokens(S.stats[1,])
+        stats[2,i] = invtokens(S.stats[2,])
     }
-    st_local("yvars", invtokens(Y.yvars))
-    st_local("plvars", invtokens(Y.plvars))
+    stats = ("`" + `"""') :+ stats :+  (`"""' + "'")
+    st_local("slist",  invtokens(stats[1,]))
+    st_local("slist2", invtokens(stats[2,]))
+    st_local("yvars",  invtokens(S.yvars))
+    st_local("plvars", invtokens(S.plvars))
 }
 
-void ds_parse_stats_hasdens(`Int' n)
-{
-    `Int' i
-    `T'   A
-    `SC'  list
+`T' _ds_parse_stats_lib()
+{   // library of statistics and argument masks
+    // see _ds_parse_stats_mask() for mask syntax
+    `T' A
     
-    A = ds_stats_lib()
-    list = sort(asarray_keys(A), 1)
-    for (i=1;i<=n;i++) {
-        if (_ds_parse_stats_hasdens(list, 
-            _ds_parse_stats_tok(st_local("stats_" + strofreal(i))))) {
-            st_local("hasdens", "1")
-            return
-        }
-    }
-}
-
-`SS' _ds_parse_stats(`T' A, `SC' list, `Yvar' Y, `SR' stats)
-{
-    `Int' i, n
-    `SS'  s0, s, o
-    `PR'  P
-    
-    n = length(stats)
-    for (i=1; i<=n; i++) {
-        s0 = s = stats[i]
-        o = _ds_parse_stats_split(s) // replaces s
-        P = asarray(A, _ds_parse_stats_match(s, list, s0))
-        stats[i] = (*P[2])(Y, s0, s, o, *P[3])
-    }
-    return(invtokens(stats))
-}
-
-`Bool' _ds_parse_stats_hasdens(`SC' list, `SR' stats)
-{
-    `Int' i, n
-    `SR'  dens
-    `SS'  s0, s
-    
-    dens = ("d", "density")
-    n = length(stats)
-    for (i=1; i<=n; i++) {
-        s0 = s = stats[i]
-        (void) _ds_parse_stats_split(s) // replaces s
-        s = _ds_parse_stats_match(s, list, s0)
-        if (anyof(dens, s)) return(1)
-    }
-    return(0)
-}
-
-`SS' _ds_parse_stats_match(`SS' s, `SC' list, `SS' s0)
-{
-    `Int' rc
-    `SS'  s1
-    pragma unset s1
-    
-    if (strtrim(s)=="") rc = 1
-    else                rc = _mm_strexpand(s1, strlower(s), list)
-    if (rc) {
-        ds_errtxt(sprintf("invalid statistic: %s", s0))
-        exit(198)
-    }
-    return(s1)
+    A = asarray_create()
+    // general
+    asarray(A, "q"         , ".,0,100") // quantile at #
+    asarray(A, "p"         , ".,0,100") // quantile at #
+    asarray(A, "quantile"  , ".,0,100") // quantile at #
+    asarray(A, "hdquantile", ".,0,100") // Harrell&Davis (1982) quantile at #
+    asarray(A, "mquantile" , ".,0,100") // mid-quantile at #
+    asarray(A, "d"         , ".")       // kernel density at #
+    asarray(A, "density"   , ".")       // kernel density at #
+    asarray(A, "hist"      , ".:.")     // histogram density within [#,#]
+    asarray(A, "cdf"       , ".")       // cdf at #
+    asarray(A, "mcdf"      , ".")       // mid cdf at #
+    asarray(A, "fcdf"      , ".")       // floor cdf at #
+    asarray(A, "ccdf"      , ".")       // complementary cdf at #
+    asarray(A, "mccdf"     , ".")       // mid ccdf at #
+    asarray(A, "fccdf"     , ".")       // floor ccdf at #
+    asarray(A, "prop"      , ".;.z")    // proportion equal to # or within [#,#]
+    asarray(A, "pct"       , ".;.z")    // percent equal to # or within [#,#]
+    asarray(A, "f"         , ".;.z")    // frequency equal to # or within [#,#]
+    asarray(A, "freq"      , ".;.z")    // frequency equal to # or within [#,#]
+    asarray(A, "total"     , ".z;.z")   // overall total or total equal to # or within [#,#]
+    asarray(A, "min"       , "")        //
+    asarray(A, "max"       , "")        //
+    asarray(A, "range"     , "")        //
+    asarray(A, "midrange"  , "")        // (max+min)/2
+    // location
+    asarray(A, "mean"      , "")        // arithmetic mean
+    asarray(A, "gmean"     , "")        // geometric mean
+    asarray(A, "hmean"     , "")        // harmonic mean
+    asarray(A, "trim"      , "25,0,50;.z,0,50") // trimmed mean
+    asarray(A, "winsor"    , "25,0,50;.z,0,50") // winsorized mean
+    asarray(A, "median"    , "")        // median
+    asarray(A, "huber"     , "95,63.7,99.9") // huber m-estimate of location
+    asarray(A, "biweight"  , "95,0.1,99.9")  // biweight m-estimate of location
+    asarray(A, "hl"        , "")        // Hodges-Lehmann estimator
+    // scale
+    asarray(A, "sd"        , "1")       // standard deviation
+    asarray(A, "variance"  , "1")       // variance
+    asarray(A, "mse"       , "0;0")     // mean squared error
+    asarray(A, "smse"      , "0;0")     // square-root of MSE
+    asarray(A, "iqr"       , "25,0,100:75,0,100") // inter quantile range
+    asarray(A, "iqrn"      , "25,0,100:75,0,100") // normalized inter quantile range
+    asarray(A, "mad"       , "0;0")     // median (or mean) absolute deviation
+    asarray(A, "madn"      , "0;0")     // normalized MAD
+    asarray(A, "mae"       , "0;0")     // median (or mean) absolute error
+    asarray(A, "maen"      , "0;0")     // normalized MAE
+    asarray(A, "md"        , "")        // mean absolute pairwise difference
+    asarray(A, "mdn"       , "")        // normalized mean absolute pairwise difference
+    asarray(A, "mscale"    , "50,1,50") // m-estimate of scale
+    asarray(A, "qn"        , "")        // Qn coefficient
+    // skewness
+    asarray(A, "skewness"  , "")        // classical skewness
+    asarray(A, "qskew"     , "25,0,50") // quantile skewness measure
+    asarray(A, "mc"        , "")        // medcouple
+    // kurtosis
+    asarray(A, "kurtosis"  , "")        // classical kurtosis
+    asarray(A, "ekurtosis" , "")        // excess kurtosis (kurtosis - 3)
+    asarray(A, "qw"        , "25,0,50") // quantile tail weight
+    asarray(A, "lqw"       , "25,0,50") // left quantile tail weight
+    asarray(A, "rqw"       , "25,0,50") // right quantile tail weight
+    asarray(A, "lmc"       , "")        // left medcouple tail weight
+    asarray(A, "rmc"       , "")        // right medcouple tail weight
+    // inequality
+    asarray(A, "hoover"    , "")        // Hoover index
+    asarray(A, "gini"      , "0")       // Gini coefficient
+    asarray(A, "agini"     , "0")       // absolute Gini coefficient
+    asarray(A, "mld"       , "")        // mean log deviation (MLD)
+    asarray(A, "theil"     , "")        // Theil index
+    asarray(A, "ge"        , "1")       // generalized entropy
+    asarray(A, "atkinson"  , "1,0,.")   // Atkinson inequality measure
+    asarray(A, "cv"        , "1")       // coefficient of variation
+    asarray(A, "lvar"      , "1")       // logarithmic variance
+    asarray(A, "vlog"      , "1")       // variance of logarithm
+    asarray(A, "top"       , "10,0,100") // top share
+    asarray(A, "bottom"    , "40,0,100") // bottom share
+    asarray(A, "mid"       , "40,0,100:90,0,100") // mid share
+    asarray(A, "palma"     , "")        // palma ratio
+    asarray(A, "qratio"    , "10,0,100:90,0,100") // quantile ratio
+    asarray(A, "sratio"    , ".z,0,100:.z,0,100;.z,0,100:.z,0,100") // percentile share ratio
+    asarray(A, "lorenz"    , ".,0,100") // lorenz ordinate
+    asarray(A, "tlorenz"   , ".,0,100") // total (sum) lorenz ordinate
+    asarray(A, "glorenz"   , ".,0,100") // generalized lorenz ordinate
+    asarray(A, "alorenz"   , ".,0,100") // absolute lorenz ordinate
+    asarray(A, "elorenz"   , ".,0,100") // equality gap lorenz ordinate
+    asarray(A, "share"     , ".,0,100;.,0,100") // percentile share (proportion)
+    asarray(A, "dshare"    , ".,0,100;.,0,100") // percentile share (density)
+    asarray(A, "tshare"    , ".,0,100;.,0,100") // percentile share (total/sum)
+    asarray(A, "gshare"    , ".,0,100;.,0,100") // percentile share (generalized)
+    asarray(A, "ashare"    , ".,0,100;.,0,100") // percentile share (average)
+    // inequality decomposition
+    asarray(A, "gw_gini"   , "by;0")    // weighted avg of within-group Gini
+    asarray(A, "b_gini"    , "by;0")    // between Gini coefficient
+    asarray(A, "gw_mld"    , "by")      // weighted avg of within-group MLD
+    asarray(A, "w_mld"     , "by")      // within MLD
+    asarray(A, "b_mld"     , "by")      // between MLD
+    asarray(A, "gw_theil"  , "by")      // weighted avg of within-group Theil
+    asarray(A, "w_theil"   , "by")      // within Theil index
+    asarray(A, "b_theil"   , "by")      // between Theil index
+    asarray(A, "gw_ge"     , "by;1")    // weighted avg of within-group GE
+    asarray(A, "w_ge"      , "by;1")    // within generalized entropy
+    asarray(A, "b_ge"      , "by;1")    // between generalized entropy
+    asarray(A, "gw_vlog"   , "by;1")    // weighted avg of within-group vlog
+    asarray(A, "w_vlog"    , "by;1")    // within vlog
+    asarray(A, "b_vlog"    , "by;1")    // between vlog
+    // concentration
+    asarray(A, "gci"       , "by;0")    // Gini concentration index
+    asarray(A, "aci"       , "by;0")    // absolute Gini concentration index
+    asarray(A, "ccurve"    , ".,0,100;by") // lorenz concentration ordinate
+    asarray(A, "tccurve"   , ".,0,100;by") // total concentration ordinate
+    asarray(A, "gccurve"   , ".,0,100;by") // generalized concentration ordinate
+    asarray(A, "accurve"   , ".,0,100;by") // absolute concentration ordinate
+    asarray(A, "eccurve"   , ".,0,100;by") // equality gap concentration ordinate
+    asarray(A, "cshare"    , ".,0,100;.,0,100;by") // concentration share
+    asarray(A, "dcshare"   , ".,0,100;.,0,100;by") // concentration share as density
+    asarray(A, "gcshare"   , ".,0,100;.,0,100;by") // generalized concentration share
+    asarray(A, "tcshare"   , ".,0,100;.,0,100;by") // concentration share as total
+    asarray(A, "acshare"   , ".,0,100;.,0,100;by") // concentration share as average
+    // poverty
+    asarray(A, "hcr"       , "pl")      // Head count ratio
+    asarray(A, "pgap"      , "pl")      // poverty gap
+    asarray(A, "apgap"     , "pl")      // absolute poverty gap
+    asarray(A, "pgi"       , "pl")      // poverty gap index
+    asarray(A, "apgi"      , "pl")      // absolute poverty gap index
+    asarray(A, "fgt"       , "0,0,.;pl")    // FGT poverty measure
+    asarray(A, "chu"       , "50,0,100;pl") // Clark-Hemming-Ulph poverty measure
+    asarray(A, "watts"     , "pl")      // Watts index
+    asarray(A, "sen"       , "pl")      // Sen poverty index
+    asarray(A, "sst"       , "pl")      // Sen-Shorrocks-Thon poverty index
+    asarray(A, "takayama"  , "pl")      // Takayama poverty index
+    asarray(A, "tip"       , ".,0,100;pl") // TIP ordinate
+    asarray(A, "atip"      , ".,0,100;pl") // absolute TIP ordinate
+    // association
+    asarray(A, "corr"      , "by")      // correlation
+    asarray(A, "rsquared"  , "by")      // R squared
+    asarray(A, "covar"     , "by;1")    // covariance
+    asarray(A, "spearman"  , "by")      // spearman rank correlation
+    asarray(A, "taua"      , "by;0")    // Kendall's tau-a
+    asarray(A, "taub"      , "by;0")    // Kendall's tau-b
+    asarray(A, "somersd"   , "by;0")    // Somers' D
+    asarray(A, "gamma"     , "by;0")    // Goodman and Kruskal's gamma
+    // categorical
+    asarray(A, "hhi"       , "")        // Herfindahl–Hirschman index
+    asarray(A, "hhin"      , "")        // normalized hhi
+    asarray(A, "gimp"      , "")        // Gini impurity
+    asarray(A, "gimpn"     , "")        // normalized  Gini impurity
+    asarray(A, "entropy"   , "0,0,.")   // Shannon entropy
+    asarray(A, "hill"      , "1,0,.")   // Hill number
+    asarray(A, "renyi"     , "1,0,.")   // Rényi entropy
+    asarray(A, "mindex"    , "by;0,0,.") // mutual information
+    asarray(A, "uc"        , "by")      // uncertainty coefficient (symmetric)
+    asarray(A, "ucl"       , "by")      // uncertainty coefficient (left)
+    asarray(A, "ucr"       , "by")      // uncertainty coefficient (right)
+    asarray(A, "cramersv"  , "by;0,0,.") // Cramér's V
+    asarray(A, "dissim"    , "by")      // (generalized) dissimilarity index
+    return(A)
 }
 
 `SR' _ds_parse_stats_tok(`SS' s)
@@ -2823,6 +2928,21 @@ void ds_parse_stats_hasdens(`Int' n)
     return(S)
 }
 
+void _ds_parse_stats(`T' A, `SC' list, `Stats' S, `SR' stats)
+{
+    `Int' k, n
+    `SS'  s0, s, o
+    
+    n = length(stats)
+    S.stats = J(2,n,"")
+    for (k=1; k<=n; k++) {
+        s0 = stats[k]
+        o  = _ds_parse_stats_split(s0) // replaces s0
+        s  = _ds_parse_stats_match(list, s0, o)
+        _ds_parse_stats_k(S, k, s0, s, o, asarray(A, s))
+    }
+}
+
 `SS' _ds_parse_stats_split(`SS' s)
 {
     `Int' p
@@ -2846,626 +2966,262 @@ void ds_parse_stats_hasdens(`Int' n)
     return(o)
 }
 
-`T' ds_stats_lib()
+`SS' _ds_parse_stats_match(`SC' list, `SS' s0, `SS' o)
 {
-    `T' A
+    `SS'  s
+    pragma unset s
     
-    A = asarray_create()
-    // general
-    asarray(A, "q"         , (`f'q(),         `p'1(),    &(0, 100, .)))         // quantile at #
-    asarray(A, "p"         , (`f'p(),         `p'1(),    &(0, 100, .)))         // quantile at #
-    asarray(A, "quantile"  , (`f'quantile(),  `p'1(),    &(0, 100, .)))         // quantile at #
-    asarray(A, "hdquantile", (`f'hdquantile(),`p'1(),    &(0, 100, .)))         // Harrell&Davis (1982) quantile at #
-    asarray(A, "mquantile" , (`f'mquantile(), `p'1(),    &(0, 100, .)))         // mid-quantile at #
-    asarray(A, "d"         , (`f'd(),         `p'1(),    &(., ., .)))           // kernel density at #
-    asarray(A, "density"   , (`f'density(),   `p'1(),    &(., ., .)))           // kernel density at #
-    asarray(A, "hist"      , (`f'hist(),      `p'2(),    &(., ., .)))           // histogram density within [#,#]
-    asarray(A, "cdf"       , (`f'cdf(),       `p'1(),    &(., ., .)))           // cdf at #
-    asarray(A, "cdfm"      , (`f'cdfm(),      `p'1(),    &(., ., .)))           // mid cdf at #
-    asarray(A, "cdff"      , (`f'cdff(),      `p'1(),    &(., ., .)))           // floor cdf at #
-    asarray(A, "ccdf"      , (`f'ccdf(),      `p'1(),    &(., ., .)))           // complementary cdf at #
-    asarray(A, "ccdfm"     , (`f'ccdfm(),     `p'1(),    &(., ., .)))           // mid ccdf at #
-    asarray(A, "ccdff"     , (`f'ccdff(),     `p'1(),    &(., ., .)))           // floor ccdf at #
-    asarray(A, "prop"      , (`f'prop(),      `p'1or2(), &(., ., .)))           // proportion equal to # or within [#,#]
-    asarray(A, "pct"       , (`f'pct(),       `p'1or2(), &(., ., .)))           // percent equal to # or within [#,#]
-    asarray(A, "f"         , (`f'f(),         `p'1or2(), &(., ., .)))           // frequency equal to # or within [#,#]
-    asarray(A, "freq"      , (`f'freq(),      `p'1or2(), &(., ., .)))           // frequency equal to # or within [#,#]
-    asarray(A, "total"     , (`f'total(),     `p'1or2(), &(., ., 0)))           // overall total or total equal to # or within [#,#]
-    asarray(A, "min"       , (`f'min(),       `p'0(),    &.))                   //
-    asarray(A, "max"       , (`f'max(),       `p'0(),    &.))                   //
-    asarray(A, "range"     , (`f'range(),     `p'0(),    &.))                   //
-    asarray(A, "midrange"  , (`f'midrange(),  `p'0(),    &.))                   // (max+min)/2
-    // location
-    asarray(A, "mean"      , (`f'mean(),      `p'0(),    &.))                   // arithmetic mean
-    asarray(A, "gmean"     , (`f'gmean(),     `p'0(),    &.))                   // geometric mean
-    asarray(A, "hmean"     , (`f'hmean(),     `p'0(),    &.))                   // harmonic mean
-    asarray(A, "trim"      , (`f'trim(),      `p'1or2(), &(  0,  50, 25)))      // trimmed mean
-    asarray(A, "winsor"    , (`f'winsor(),    `p'1or2(), &(  0,  50, 25)))      // winsorized mean
-    asarray(A, "median"    , (`f'median(),    `p'0(),    &.))                   // median
-    asarray(A, "huber"     , (`f'huber(),     `p'1(),    &(63.7, 99.9, 95)))    // huber m-estimate of location
-    asarray(A, "biweight"  , (`f'biweight(),  `p'1(),    &(0.1, 99.9, 95)))     // biweight m-estimate of location
-    asarray(A, "hl"        , (`f'hl(),        `p'0(),    &.))                   // Hodges-Lehmann estimator
-    // scale
-    asarray(A, "sd"        , (`f'sd(),        `p'1(),    &(., ., 1)))           // standard deviation
-    asarray(A, "variance"  , (`f'variance(),  `p'1(),    &(., ., 1)))           // variance
-    asarray(A, "mse"       , (`f'mse(),       `p'1or2(), &(., ., 0, 0)))        // mean squared error
-    asarray(A, "smse"      , (`f'smse(),      `p'1or2(), &(., ., 0, 0)))        // square-root of MSE
-    asarray(A, "iqr"       , (`f'iqr(),       `p'2(),    &(0, 100, 25, 75)))    // inter quantile range
-    asarray(A, "iqrn"      , (`f'iqrn(),      `p'2(),    &(0, 100, 25, 75)))    // normalized inter quantile range
-    asarray(A, "mad"       , (`f'mad(),       `p'1or2(), &(., ., 0, 0)))        // median (or mean) absolute deviation
-    asarray(A, "madn"      , (`f'madn(),      `p'1or2(), &(., ., 0, 0)))        // normalized MAD
-    asarray(A, "mae"       , (`f'mae(),       `p'1or2(), &(., ., 0, 0)))        // median (or mean) absolute error
-    asarray(A, "maen"      , (`f'maen(),      `p'1or2(), &(., ., 0, 0)))        // normalized MAE
-    asarray(A, "md"        , (`f'md(),        `p'0(),    &.))                   // mean absolute pairwise difference
-    asarray(A, "mdn"       , (`f'mdn(),       `p'0(),    &.))                   // normalized mean absolute pairwise difference
-    asarray(A, "mscale"    , (`f'mscale(),    `p'1(),    &(1, 50, 50)))         // m-estimate of scale
-    asarray(A, "qn"        , (`f'qn(),        `p'0(),    &.))                   // Qn coefficient
-    // skewness
-    asarray(A, "skewness"  , (`f'skewness(),  `p'0(),    &.))                   // classical skewness
-    asarray(A, "qskew"     , (`f'qskew(),     `p'1(),    &(0, 50, 25)))         // quantile skewness measure
-    asarray(A, "mc"        , (`f'mc(),        `p'0(),    &.))                   // medcouple
-    // kurtosis
-    asarray(A, "kurtosis"  , (`f'kurtosis(),  `p'0(),    &.))                   // classical kurtosis
-    asarray(A, "ekurtosis" , (`f'ekurtosis(), `p'0(),    &.))                   // excess kurtosis (kurtosis - 3)
-    asarray(A, "qw"        , (`f'qw(),        `p'1(),    &(0, 50, 25)))         // quantile tail weight
-    asarray(A, "lqw"       , (`f'lqw(),       `p'1(),    &(0, 50, 25)))         // left quantile tail weight
-    asarray(A, "rqw"       , (`f'rqw(),       `p'1(),    &(0, 50, 25)))         // right quantile tail weight
-    asarray(A, "lmc"       , (`f'lmc(),       `p'0(),    &.))                   // left medcouple tail weight
-    asarray(A, "rmc"       , (`f'rmc(),       `p'0(),    &.))                   // right medcouple tail weight
-    // inequality
-    asarray(A, "hoover"    , (`f'hoover(),    `p'0(),    &.))                   // Hoover index
-    asarray(A, "gini"      , (`f'gini(),      `p'1(),    &(., ., 0)))           // Gini coefficient
-    asarray(A, "agini"     , (`f'agini(),     `p'1(),    &(., ., 0)))           // absolute Gini coefficient
-    asarray(A, "mld"       , (`f'mld(),       `p'0(),    &.))                   // mean log deviation (MLD)
-    asarray(A, "theil"     , (`f'theil(),     `p'0(),    &.))                   // Theil index
-    asarray(A, "ge"        , (`f'ge(),        `p'1(),    &(., ., 1)))           // generalized entropy
-    asarray(A, "atkinson"  , (`f'atkinson(),  `p'1(),    &(0, ., 1)))           // Atkinson inequality measure
-    asarray(A, "cv"        , (`f'cv(),        `p'1(),    &(., ., 1)))           // coefficient of variation
-    asarray(A, "lvar"      , (`f'lvar(),      `p'1(),    &(., ., 1)))           // logarithmic variance
-    asarray(A, "vlog"      , (`f'vlog(),      `p'1(),    &(., ., 1)))           // variance of logarithm
-    asarray(A, "top"       , (`f'top(),       `p'1(),    &(0, 100, 10)))        // top share
-    asarray(A, "bottom"    , (`f'bottom(),    `p'1(),    &(0, 100, 40)))        // bottom share
-    asarray(A, "mid"       , (`f'mid(),       `p'2(),    &(0, 100, 40, 90)))    // mid share
-    asarray(A, "palma"     , (`f'palma(),     `p'0(),    &.))                   // palma ratio
-    asarray(A, "qratio"    , (`f'qratio(),    `p'2(),    &(0, 100, 10, 90)))    // quantile ratio
-    asarray(A, "sratio"    , (`f'sratio(),    `p'2or4(), &(0, 100, 0, 10, 90, 100))) // percentile share ratio
-    asarray(A, "lorenz"    , (`f'lorenz(),    `p'1(),    &(0, 100, .)))         // lorenz ordinate
-    asarray(A, "tlorenz"   , (`f'tlorenz(),   `p'1(),    &(0, 100, .)))         // total (sum) lorenz ordinate
-    asarray(A, "glorenz"   , (`f'glorenz(),   `p'1(),    &(0, 100, .)))         // generalized lorenz ordinate
-    asarray(A, "alorenz"   , (`f'alorenz(),   `p'1(),    &(0, 100, .)))         // absolute lorenz ordinate
-    asarray(A, "elorenz"   , (`f'elorenz(),   `p'1(),    &(0, 100, .)))         // equality gap lorenz ordinate
-    asarray(A, "share"     , (`f'share(),     `p'2(),    &(0, 100, ., .)))      // percentile share (proportion)
-    asarray(A, "dshare"    , (`f'dshare(),    `p'2(),    &(0, 100, ., .)))      // percentile share (density)
-    asarray(A, "tshare"    , (`f'tshare(),    `p'2(),    &(0, 100, ., .)))      // percentile share (total/sum)
-    asarray(A, "gshare"    , (`f'gshare(),    `p'2(),    &(0, 100, ., .)))      // percentile share (generalized)
-    asarray(A, "ashare"    , (`f'ashare(),    `p'2(),    &(0, 100, ., .)))      // percentile share (average)
-    // inequality decomposition
-    asarray(A, "gw_gini"   , (`f'gw_gini(),   `p'y1(),   &(., ., 0)))           // weighted avg of within-group Gini
-    asarray(A, "b_gini"    , (`f'b_gini(),    `p'y1(),   &(., ., 0)))           // between Gini coefficient
-    asarray(A, "gw_mld"    , (`f'gw_mld(),    `p'y(),    &.))                   // weighted avg of within-group MLD
-    asarray(A, "w_mld"     , (`f'w_mld(),     `p'y(),    &.))                   // within MLD
-    asarray(A, "b_mld"     , (`f'b_mld(),     `p'y(),    &.))                   // between MLD
-    asarray(A, "gw_theil"  , (`f'gw_theil(),  `p'y(),    &.))                   // weighted avg of within-group Theil
-    asarray(A, "w_theil"   , (`f'w_theil(),   `p'y(),    &.))                   // within Theil index
-    asarray(A, "b_theil"   , (`f'b_theil(),   `p'y(),    &.))                   // between Theil index
-    asarray(A, "gw_ge"     , (`f'gw_ge(),     `p'y1(),   &(., ., 1)))           // weighted avg of within-group GE
-    asarray(A, "w_ge"      , (`f'w_ge(),      `p'y1(),   &(., ., 1)))           // within generalized entropy
-    asarray(A, "b_ge"      , (`f'b_ge(),      `p'y1(),   &(., ., 1)))           // between generalized entropy
-    asarray(A, "gw_vlog"   , (`f'gw_vlog(),   `p'y1(),   &(., ., 1)))           // weighted avg of within-group vlog
-    asarray(A, "w_vlog"    , (`f'w_vlog(),    `p'y1(),   &(., ., 1)))           // within vlog
-    asarray(A, "b_vlog"    , (`f'b_vlog(),    `p'y1(),   &(., ., 1)))           // between vlog
-    // concentration
-    asarray(A, "gci"       , (`f'gci(),       `p'y1(),   &(., ., 0)))           // Gini concentration index
-    asarray(A, "aci"       , (`f'aci(),       `p'y1(),   &(., ., 0)))           // absolute Gini concentration index
-    asarray(A, "ccurve"    , (`f'ccurve(),    `p'1y(),   &(0, 100, .)))         // lorenz concentration ordinate
-    asarray(A, "tccurve"   , (`f'tccurve(),   `p'1y(),   &(0, 100, .)))         // total concentration ordinate
-    asarray(A, "gccurve"   , (`f'gccurve(),   `p'1y(),   &(0, 100, .)))         // generalized concentration ordinate
-    asarray(A, "accurve"   , (`f'accurve(),   `p'1y(),   &(0, 100, .)))         // absolute concentration ordinate
-    asarray(A, "eccurve"   , (`f'eccurve(),   `p'1y(),   &(0, 100, .)))         // equality gap concentration ordinate
-    asarray(A, "cshare"    , (`f'cshare(),    `p'2y(),   &(0, 100, ., .)))      // concentration share
-    asarray(A, "dcshare"   , (`f'dcshare(),   `p'2y(),   &(0, 100, ., .)))      // concentration share as density
-    asarray(A, "gcshare"   , (`f'gcshare(),   `p'2y(),   &(0, 100, ., .)))      // generalized concentration share
-    asarray(A, "tcshare"   , (`f'tcshare(),   `p'2y(),   &(0, 100, ., .)))      // concentration share as total
-    asarray(A, "acshare"   , (`f'acshare(),   `p'2y(),   &(0, 100, ., .)))      // concentration share as average
-    // poverty
-    asarray(A, "hcr"       , (`f'hcr(),       `p'pl(),   &.))                   // Head count ratio
-    asarray(A, "pgap"      , (`f'pgap(),      `p'pl(),   &.))                   // poverty gap
-    asarray(A, "apgap"     , (`f'apgap(),     `p'pl(),   &.))                   // absolute poverty gap
-    asarray(A, "pgi"       , (`f'pgi(),       `p'pl(),   &.))                   // poverty gap index
-    asarray(A, "apgi"      , (`f'apgi(),      `p'pl(),   &.))                   // absolute poverty gap index
-    asarray(A, "fgt"       , (`f'fgt(),       `p'1pl(),  &(0,   ., 0)))         // FGT poverty measure
-    asarray(A, "chu"       , (`f'chu(),       `p'1pl(),  &(0, 100, 50)))        // Clark-Hemming-Ulph poverty measure
-    asarray(A, "watts"     , (`f'watts(),     `p'pl(),   &.))                   // Watts index
-    asarray(A, "sen"       , (`f'sen(),       `p'pl(),   &.))                   // Sen poverty index
-    asarray(A, "sst"       , (`f'sst(),       `p'pl(),   &.))                   // Sen-Shorrocks-Thon poverty index
-    asarray(A, "takayama"  , (`f'takayama(),  `p'pl(),   &.))                   // Takayama poverty index
-    asarray(A, "tip"       , (`f'tip(),       `p'1pl(),  &(0, 100, .)))         // TIP ordinate
-    asarray(A, "atip"      , (`f'atip(),      `p'1pl(),  &(0, 100, .)))         // absolute TIP ordinate
-    // association
-    asarray(A, "corr"      , (`f'corr(),      `p'y(),    &.))                   // correlation
-    asarray(A, "rsquared"  , (`f'rsquared(),  `p'y(),    &.))                   // R squared
-    asarray(A, "cov"       , (`f'cov(),       `p'y1(),   &(., ., 1)))           // covariance
-    asarray(A, "spearman"  , (`f'spearman(),  `p'y(),    &.))                   // spearman rank correlation
-    asarray(A, "taua"      , (`f'taua(),      `p'y1(),   &(., ., 0)))           // Kendall's tau-a
-    asarray(A, "taub"      , (`f'taub(),      `p'y1(),   &(., ., 0)))           // Kendall's tau-b
-    asarray(A, "somersd"   , (`f'somersd(),   `p'y1(),   &(., ., 0)))           // Somers' D
-    asarray(A, "gamma"     , (`f'gamma(),     `p'y1(),   &(., ., 0)))           // Goodman and Kruskal's gamma
-    // categorical
-    asarray(A, "hhi"       , (`f'hhi(),       `p'0(),    &.))                   // Herfindahl–Hirschman index
-    asarray(A, "hhin"      , (`f'hhin(),      `p'0(),    &.))                   // normalized hhi
-    asarray(A, "gimp"      , (`f'gimp(),      `p'0(),    &.))                   // Gini impurity
-    asarray(A, "gimpn"     , (`f'gimpn(),     `p'0(),    &.))                   // normalized  Gini impurity
-    asarray(A, "entropy"   , (`f'entropy(),   `p'1(),    &(0, ., 0)))           // Shannon entropy
-    asarray(A, "hill"      , (`f'hill(),      `p'1(),    &(0, ., 1)))           // Hill number
-    asarray(A, "renyi"     , (`f'renyi(),     `p'1(),    &(0, ., 1)))           // Rényi entropy
-    asarray(A, "mindex"    , (`f'mindex(),    `p'y1(),   &(0, ., 0)))           // mutual information
-    asarray(A, "uc"        , (`f'uc(),        `p'y1(),   &(0, ., 0)))           // uncertainty coefficient (symmetric)
-    asarray(A, "ucl"       , (`f'ucl(),       `p'y1(),   &(0, ., 0)))           // uncertainty coefficient (left)
-    asarray(A, "ucr"       , (`f'ucr(),       `p'y1(),   &(0, ., 0)))           // uncertainty coefficient (right)
-    asarray(A, "cramersv"  , (`f'cramersv(),  `p'y1(),   &(., ., 0)))           // Cramér's V
-    asarray(A, "dissim"    , (`f'dissim(),    `p'y(),    &.))                   // (generalized) dissimilarity index
-    return(A)
+    if (strtrim(s0)=="") _ds_parse_stats_err(s0+o, "missing name")
+    if (_mm_strexpand(s, strlower(s0), list))
+        _ds_parse_stats_err(s0+o, "statistic not found")
+    return(s)
 }
 
-void _ds_parse_error(`SS' s)
+void _ds_parse_stats_err(`SS' s, | `SS' msg)
 {
-    ds_errtxt(sprintf("'%s' invalid", s))
+    if (args()<2) ds_errtxt(sprintf("{bf:%s} invalid", s))
+    else ds_errtxt(sprintf("{bf:%s} invalid; %s", s, msg))
     exit(198)
 }
 
-`SS' _ds_parse_stats_0(`Yvar' Y, `SS' s0, `SS' s, `SS' o, `RR' O)
-{   // name (without arguments)
-    pragma unused O
-    pragma unused Y
-    
-    if (o=="") return(s)
-    _ds_parse_error(s0)
-}
-
-`SS' _ds_parse_stats_1(`Yvar' Y, `SS' s0, `SS' s, `SS' o, `RR' O)
-{   // name# or name(#)
-    pragma unused Y
-    if (__ds_parse_stats_1(o, O[1], O[2], O[3])) return(s+o)
-    _ds_parse_error(s0)
-}
-
-`Bool' __ds_parse_stats_1(`SS' o, `RS' min, `RS' max, `RS' def)
-{   // replaces argument o
-    `Int'  l
-    `RR'   n
-    `SR'   s
+void _ds_parse_stats_k(`Stats' S, `Int' k, `SS' s0, `SS' s, `SS' o0, `SS' mask)
+{   // s0 name of statistic as specified
+    // s expanded name
+    // o arguments as specified (including parentheses)
     `Bool' br
+    `Int'  i, n, j, nj, yj
+    `SS'   o, y
+    `RS'   mi
+    `SR'   args, opts
+    `RM'   M
     
-    s = _ds_parse_stats_args(o, br=`FALSE')
-    n = strtoreal(s)
-    l = length(n)
-    if (l>1) return(0)
-    if (!l) {
-        if (missing(def)) return(0)
-        o = ""
-        return(1)
-    }
-    if (hasmissing(n)) return(0)
-    if ((min<. & n[1]<min) | (max<. & n[1]>max)) return(0)
-    o = _ds_parse_stats_brace(s, br)
-    return(1)
-}
-
-`SS' _ds_parse_stats_1or2(`Yvar' Y, `SS' s0, `SS' s, `SS' o, `RR' O)
-{   // name#, name(#), or name(#,#)
-    pragma unused Y
-    
-    if (__ds_parse_stats_1or2(o, O[1], O[2], O[|3\.|])) return(s+o)
-    _ds_parse_error(s0)
-}
-
-`Bool' __ds_parse_stats_1or2(`SS' o, `RS' min, `RS' max, `RR' def)
-{   // replaces argument o
-    `Int'  l
-    `RR'   n
-    `SR'   s
-    `Bool' br
-    
-    s = _ds_parse_stats_args(o, br=`FALSE')
-    n = strtoreal(s)
-    l = length(n)
-    if (l>2) return(0)
-    if (!l) {
-        if (missing(def)) return(0)
-        o = ""
-        return(1)
-    }
-    if (hasmissing(n)) return(0)
-    if ((min<. & n[1]<min) | (max<. & n[1]>max))  return(0)
-    if (l==2) {
-        if ((min<. & n[2]<min) | (max<. & n[2]>max)) return(0)
-    }
-    o = _ds_parse_stats_brace(invtokens(s,","), br)
-    return(1)
-}
-
-`SS' _ds_parse_stats_2(`Yvar' Y, `SS' s0, `SS' s, `SS' o, `RR' O)
-{   // name(#,#)
-    pragma unused Y
-    
-    if (__ds_parse_stats_2(o, O[1], O[2], O[|3\.|])) return(s+o)
-    _ds_parse_error(s0)
-}
-
-`Bool' __ds_parse_stats_2(`SS' o, `RS' min, `RS' max, `RR' def)
-{   // replaces argument o
-    `Int'  l
-    `RR'   n
-    `SR'   s
-    `Bool' br
-    
-    s = _ds_parse_stats_args(o, br=`FALSE')
-    n = strtoreal(s)
-    l = length(n)
-    if (l>2 | l==1) return(0)
-    if (!l) {
-        if (missing(def)) return(0)
-        o = ""
-        return(1)
-    }
-    if (hasmissing(n)) return(0)
-    if ((min<. & n[1]<min) | (max<. & n[1]>max))  return(0)
-    if ((min<. & n[2]<min) | (max<. & n[2]>max)) return(0)
-    o = _ds_parse_stats_brace(invtokens(s,","), br)
-    return(1)
-}
-
-`SS' _ds_parse_stats_2or4(`Yvar' Y, `SS' s0, `SS' s, `SS' o, `RR' O)
-{   // name(#,#) or name(#,#,#,#)
-    pragma unused Y
-    
-    if (__ds_parse_stats_2or4(o, O[1], O[2], O[|3\.|])) return(s+o)
-    _ds_parse_error(s0)
-}
-
-`Bool' __ds_parse_stats_2or4(`SS' o, `RS' min, `RS' max, `RR' def)
-{   // replaces argument o
-    `Int'  l
-    `RR'   n
-    `SR'   s
-    `Bool' br
-    
-    s = _ds_parse_stats_args(o, br=`FALSE')
-    n = strtoreal(s)
-    l = length(n)
-    if (l>4 | l==1 | l==3) return(0)
-    if (!l) {
-        if (missing(def)) return(0)
-        o = ""
-        return(1)
-    }
-    if (hasmissing(n)) return(0)
-    if ((min<. & n[1]<min) | (max<. & n[1]>max)) return(0)
-    if ((min<. & n[2]<min) | (max<. & n[2]>max)) return(0)
-    if (l>2) {
-        if ((min<. & n[3]<min) | (max<. & n[3]>max)) return(0)
-        if ((min<. & n[4]<min) | (max<. & n[4]>max)) return(0)
-    }
-    o = _ds_parse_stats_brace(invtokens(s,","), br)
-    return(1)
-}
-
-`SS' _ds_parse_stats_y(`Yvar' Y, `SS' s0, `SS' s, `SS' o, `RR' O)
-{   // name[(yvar)]
-    pragma unused O
-    
-    if (__ds_parse_stats_y(Y, o)) return(s+o)
-    _ds_parse_error(s0)
-}
-
-`Bool' __ds_parse_stats_y(`Yvar' Y, `SS' o)
-{   // replaces argument o
-    `Int'  l
-    `SR'   s
-    `Bool' br, rc
-    
-    s = _ds_parse_stats_args(o, br=`FALSE')
-    l = length(s)
-    if (l==0)      rc = _ds_parse_stats_get_y(Y, "")
-    else if (l==1) rc = _ds_parse_stats_get_y(Y, s)
-    else           rc = 1
-    if (rc)        return(0)
-    if (l==0) o = ""
-    else      o = _ds_parse_stats_brace(s, br)
-    return(1)
-}
-
-`Bool' _ds_parse_stats_get_y(`Yvar' Y, `SS' y0)
-{
-    `Int' j
-    `SS'  y
-    
-    if (y0=="") y = Y.yvar
-    else {
-        j = _st_varindex(y0, st_global("c(varabbrev)")=="on")
-        if (j>=.) {
-            ds_errtxt(sprintf("variable {bf:%s} not found", y0))
-            return(1)
-        }
-        y = st_varname(j)
-        if (!anyof(Y.yvars, y)) Y.yvars = (Y.yvars, y)
-    }
-    if (y=="") {
-        ds_errtxt("{it:by} or {bf:by()} required")
-        return(1)
-    }
-    return(0)
-}
-
-`SS' _ds_parse_stats_y1(`Yvar' Y, `SS' s0, `SS' s, `SS' o, `RR' O)
-{   // name(yvar), name(#), or name(yvar,#)
-    if (__ds_parse_stats_y1(Y, o, O[1], O[2], O[3])) return(s+o)
-    _ds_parse_error(s0)
-}
-
-`Bool' __ds_parse_stats_y1(`Yvar' Y, `SS' o, `RS' min, `RS' max, `RR' def)
-{   // replaces argument o
-    `Int'  l
-    `SR'   s
-    `RS'   o1
-    `Bool' br, rc
-    
-    s = _ds_parse_stats_args(o, br=`FALSE')
-    l = length(s)
-    if (l==0) {
-        rc = _ds_parse_stats_get_y(Y, "")
-        o1 = def
-    }
-    else if (l==1) {
-        o1 = strtoreal(s)
-        if (o1<.) rc = _ds_parse_stats_get_y(Y, "")
-        else {
-            rc = _ds_parse_stats_get_y(Y, s)
-            o1 = def
-        }
-    }
-    else if (l==2) {
-        rc = _ds_parse_stats_get_y(Y, s[1])
-        o1 = strtoreal(s[2])
-    }
-    else rc = 1
-    if (rc)    return(0)
-    if (o1>=.) return(0)
-    if ((min<. & o1<min) | (max<. & o1>max)) return(0)
-    if (l==0) o = ""
-    else      o = _ds_parse_stats_brace(invtokens(s,","), br)
-    return(1)
-}
-
-`SS' _ds_parse_stats_1y(`Yvar' Y, `SS' s0, `SS' s, `SS' o, `RR' O)
-{   // name(#) or name(#, yvar)
-    if (__ds_parse_stats_1y(Y, o, O[1], O[2], O[3])) return(s+o)
-    _ds_parse_error(s0)
-}
-
-`Bool' __ds_parse_stats_1y(`Yvar' Y, `SS' o, `RS' min, `RS' max, `RR' def)
-{   // replaces argument o
-    `Int'  l
-    `RS'   o1
-    `SR'   s
-    `Bool' br, rc
-    
-    s = _ds_parse_stats_args(o, br=`FALSE')
-    l = length(s)
-    if (l<2) {
-        if (l==0) o1 = def
-        else      o1 = strtoreal(s)
-        rc = _ds_parse_stats_get_y(Y, "")
-    }
-    else if (l==2) {
-        o1 = strtoreal(s[1])
-        rc = _ds_parse_stats_get_y(Y, s[2])
-    }
-    else rc = 1
-    if (rc)    return(0)
-    if (o1>=.) return(0)
-    if ((min<. & o1<min) | (max<. & o1>max)) return(0)
-    if (l==0) o = ""
-    else      o = _ds_parse_stats_brace(invtokens(s,","), br)
-    return(1)
-}
-
-`SS' _ds_parse_stats_2y(`Yvar' Y, `SS' s0, `SS' s, `SS' o, `RR' O)
-{   // name(#, #) or name(#, #, yvar)
-    if (__ds_parse_stats_2y(Y, o, O[1], O[2], O[|3\.|])) return(s+o)
-    _ds_parse_error(s0)
-}
-
-`Bool' __ds_parse_stats_2y(`Yvar' Y, `SS' o, `RS' min, `RS' max, `RR' def)
-{   // replaces argument o
-    `Int'  l
-    `RS'   o1, o2
-    `SR'   s
-    `Bool' br, rc
-    
-    s = _ds_parse_stats_args(o, br=`FALSE')
-    l = length(s)
-    if (l<3) {
-        if (l<1) o1 = def[1]
-        else     o1 = strtoreal(s[1])
-        if (l<2) o2 = def[2]
-        else     o2 = strtoreal(s[2])
-        rc = _ds_parse_stats_get_y(Y, "")
-    }
-    else if (l==3) {
-        o1 = strtoreal(s[1])
-        o2 = strtoreal(s[2])
-        rc = _ds_parse_stats_get_y(Y, s[3])
-    }
-    else rc = 1
-    if (rc)    return(0)
-    if (o1>=.) return(0)
-    if ((min<. & o1<min) | (max<. & o1>max)) return(0)
-    if (o2>=.) return(0)
-    if ((min<. & o2<min) | (max<. & o2>max)) return(0)
-    if (l==0) o = ""
-    else      o = _ds_parse_stats_brace(invtokens(s,","), br)
-    return(1)
-}
-
-`SS' _ds_parse_stats_pl(`Yvar' Y, `SS' s0, `SS' s, `SS' o, `RR' O)
-{   // name or name(pline)
-    pragma unused O
-    
-    if (__ds_parse_stats_pl(Y, o)) return(s+o)
-    _ds_parse_error(s0)
-}
-
-`Bool' __ds_parse_stats_pl(`Yvar' Y, `SS' o)
-{   // replaces argument o
-    `Int'  l
-    `SR'   s
-    `Bool' br, rc
-    
-    s = _ds_parse_stats_args(o, br=`FALSE')
-    l = length(s)
-    if (l==0) {
-        rc = _ds_parse_stats_get_pl(Y, "")
-        o = ""
-    }
-    else if (l==1) {
-        rc = _ds_parse_stats_get_pl(Y, s)
-        o = _ds_parse_stats_brace(s, br)
-    }
-    else rc = 1
-    if (rc) return(0)
-    return(1)
-}
-
-`Bool' _ds_parse_stats_get_pl(`Yvar' Y, `SS' pl0)
-{
-    `Int' j
-    `SS'  pl
-    
-    if (pl0=="") pl = Y.pline!="" ? Y.pline : Y.plvar
-    else {
-        if (strtoreal(pl0)<.) {
-            pl = pl0
-            if (strtoreal(pl)<=0) {
-                ds_errtxt("poverty line must be positive")
-                return(1)
-            }
-        }
-        else {
-            j = _st_varindex(pl0, st_global("c(varabbrev)")=="on")
-            if (j>=.) {
-                ds_errtxt(sprintf("variable {bf:%s} not found", pl0))
-                return(1)
-            }
-            pl = st_varname(j)
-            if (!anyof(Y.plvars, pl)) Y.plvars = (Y.plvars, pl)
-        }
-    }
-    if (pl=="") {
-        ds_errtxt("{it:pline} or {bf:pline()} required")
-        return(1)
-    }
-    return(0)
-}
-
-`SS' _ds_parse_stats_1pl(`Yvar' Y, `SS' s0, `SS' s, `SS' o, `RR' O)
-{   // name, name(#), or name(#, pline)
-    if (__ds_parse_stats_1pl(Y, o, O[1], O[2], O[3])) return(s+o)
-    _ds_parse_error(s0)
-}
-
-`Bool' __ds_parse_stats_1pl(`Yvar' Y, `SS' o, `RS' min, `RS' max, `RR' def)
-{   // replaces argument o
-    `Int'  l
-    `RS'   o1
-    `SR'   s
-    `Bool' br, rc
-    
-    s = _ds_parse_stats_args(o, br=`FALSE')
-    l = length(s)
-    if (l<2) {
-        if (l==0) o1 = def
-        else      o1 = strtoreal(s)
-        rc = _ds_parse_stats_get_pl(Y, "")
-    }
-    else if (l==2) {
-        o1 = strtoreal(s[1])
-        rc = _ds_parse_stats_get_pl(Y, s[2])
-    }
-    else rc = 1
-    if (rc)    return(0)
-    if (o1>=.) return(0)
-    if ((min<. & o1<min) | (max<. & o1>max)) return(0)
-    if (l==0) o = ""
-    else      o = _ds_parse_stats_brace(invtokens(s,","), br)
-    return(1)
-}
-
-`SR' _ds_parse_stats_args(`SS' o, `Bool' br)
-{
-    `SR'   s
-    `Int'  r
-    `IntR' p
-
-    s = o
-    if (substr(s,1,1)=="(") {
-        s = substr(s, 2, strlen(s)-2)
+    o = subinstr(o0," ","")    // remove blanks
+    if (substr(o,1,1)=="(") {  // remove ()
+        o = substr(o, 2, strlen(o)-2)
         br = `TRUE'
     }
-    s = tokens(s, ",")
-    if (length(s)) { // remove commas at even positions (except at end)
-        r = length(s)
-        p = 1..r
-        s = strtrim(select(s, s:!="," :| mod(p,2) :| p:==r))
+    else br = `FALSE'
+    // statistic without arguments
+    if (mask=="") { 
+        if (o!="") _ds_parse_stats_err(s0+o0, "too many arguments")
+        S.stats[,k] = s0 + _ds_parse_stats_brace(o, br) \ s
+        return
     }
-    return(s)
+    M = _ds_parse_stats_mask(mask)
+    n = rows(M)
+    opts = J(1, n, "")
+    args = tokens(o,",")
+    j = length(args)
+    args = select(args, args:!=",")
+    nj = length(args)
+    if (j & j!=(nj+nj-1)) _ds_parse_stats_err(s0+o0, 
+                          "empty argument(s) not allowed")
+    j = 1
+    for (i=1;i<=n;i++) {
+        // tie: argument required
+        if (M[i,4]) {
+            if (j==(nj+1)) _ds_parse_stats_err(s0+o0, "too few arguments")
+        }
+        mi = M[i,1]
+        // by
+        if (mi==.a) {
+            if (j>nj) y = S.yvar
+            else {
+                if (strtoreal(args[j])<.) y = S.yvar 
+                else {
+                    y = args[j]
+                    yj = _st_varindex(y, st_global("c(varabbrev)")=="on")
+                    if (yj>=.) _ds_parse_stats_err(s0+o0,
+                               sprintf("variable {bf:%s} not found", y))
+                    y = st_varname(yj)
+                    j++     // [move to next argument only of by is provided!]
+                }
+            }
+            if (y=="") _ds_parse_stats_err(s0+o0, 
+                       "{it:by} or {bf:by()} required")
+            if (!anyof(S.yvars, y)) S.yvars = (S.yvars, y)
+            opts[i] = strofreal(selectindex(S.yvars:==y))
+            continue
+        }
+        // pline (use negative index if a variable)
+        if (mi==.b) {
+            if (j>nj) {
+                if (S.plvar=="") {
+                    if (S.pline=="") _ds_parse_stats_err(s0+o0,
+                                    "{it:pline} or {bf:pline()} required")
+                    opts[i] = S.pline
+                }
+                else {
+                    y = S.plvar
+                    if (!anyof(S.yvars, y)) {
+                        S.yvars  = (S.yvars, y)
+                        S.plvars = (S.plvars, y)
+                    }
+                    opts[i] = strofreal(-selectindex(S.yvars:==y)) // [negative]
+                }
+                j++
+                continue
+            }
+            mi = strtoreal(args[j])
+            if (mi<.) {
+                if (mi<0) _ds_parse_stats_err(s0+o0, 
+                          "poverty line must be positive")
+                opts[i] = args[j]
+            }
+            else {
+                y = args[j]
+                yj = _st_varindex(y, st_global("c(varabbrev)")=="on")
+                if (yj>=.) _ds_parse_stats_err(s0+o0, 
+                           sprintf("variable {bf:%s} not found", y))
+                y = st_varname(yj)
+                if (!anyof(S.yvars, y)) {
+                    S.yvars  = (S.yvars, y)
+                    S.plvars = (S.plvars, y)
+                }
+                opts[i] = strofreal(-selectindex(S.yvars:==y)) // [negative]
+            }
+            j++
+            continue
+        }
+        // numeric argument
+        if (j>nj) {
+            if (mi==.) _ds_parse_stats_err(s0+o0, "too few arguments")
+            opts[i] = strofreal(mi) // use default value
+            j++
+            continue
+        }
+        mi = strtoreal(args[j])
+        if (mi>=.) _ds_parse_stats_err(s0+o0, "numeric argument expected")
+        if (M[i,2]<.) { // check min
+            if (mi<M[i,2]) _ds_parse_stats_err(s0+o0, "argument out of range")
+        }
+        if (M[i,3]<.) { // check max
+            if (mi>M[i,3]) _ds_parse_stats_err(s0+o0, "argument out of range")
+        }
+        opts[i] = args[j]
+        j++
+    }
+    if (nj>=j) _ds_parse_stats_err(s0+o0, "too many arguments")
+    S.stats[,k] = s0 + _ds_parse_stats_brace(o, br) \ 
+                  s  + "(" + invtokens(opts, ",") + ")"
+}
+
+`RM' _ds_parse_stats_mask(`SS' mask)
+{   //      mask = grp1;grp2;...      (grp can also just be a single arg)
+    // with grp# = arg1:arg2:...      (group of tied arguments)
+    // with arg# = value[,min[,max]]  (min=. mean no min)
+    // with value = "by"   (optional byvar)  => will be coded as .a
+    //            = "pl"   (pl)              => will be coded as .b
+    //            = .      (required numeric argument)
+    //            = #      (optional argument; # serves as default)
+    //            = .z     (optional argument; no default)
+    `Int'  n, i, j
+    `Bool' tie
+    `SR'   args
+    `RM'   M
+    
+    args = tokens(mask, ";:")
+    n = length(args)
+    M = J(n, 4, .) // cols: arg, min, max, tie
+    j = tie = 0
+    for (i=1;i<=n;i++) {
+        if (args[i]==";") {
+            tie = 0
+            continue
+        }
+        if (args[i]==":") {
+            tie = 1
+            continue
+        }
+        M[++j,] = __ds_parse_stats_mask(args[i]), tie
+    }
+    if (j) return(M[|1,1 \ j,.|])
+    return(J(0,4,.))
+}
+
+`RR' __ds_parse_stats_mask(`SS' arg)
+{
+    `Int' n
+    `SR'  args
+    
+    if (arg=="by") return((.a, ., .))    // byvar
+    if (arg=="pl") return((.b, ., .))    // pline
+    args = tokens(subinstr(arg,","," ")) // #,#,# (assuming 0 to 3 elements)
+    n = length(args)
+    if (n==0) return((.,.,.))
+    if (n==1) return((strtoreal(args),.,.))
+    if (n==2) return((strtoreal(args),.))
+              return(strtoreal(args)) 
 }
 
 `SS' _ds_parse_stats_brace(`SS' s, `Bool' br)
 {
-    if (s=="") return(s)
     if (br)                       return("("+s+")")
+    if (s=="")                    return(s)
     if (!(regexm(s, "^[0-9]+$"))) return("("+s+")")
     return(s)
 }
 
-void ds_slist_collect(`Int' n)
+void ds_parse_stats_hasdens(`Int' n)
 {
     `Int' i
-    `SR'  slist
+    `T'   A
+    `SC'  list
     
-    slist = J(1, 2*n, "")
+    A = _ds_parse_stats_lib()
+    list = sort(asarray_keys(A), 1)
     for (i=1;i<=n;i++) {
-        slist[2*i-1] = st_local("stats_"+strofreal(i))
-        slist[2*i]   = st_local("vars_"+strofreal(i))
+        if (_ds_parse_stats_hasdens(list, 
+            _ds_parse_stats_tok(st_local("stats_" + strofreal(i))))) {
+            st_local("hasdens", "1")
+            return
+        }
     }
-    slist = ("`" + `"""') :+ slist :+  (`"""' + "'")
-    st_local("slist", invtokens(slist))
+}
+
+`Bool' _ds_parse_stats_hasdens(`SC' list, `SR' stats)
+{
+    `Int' k, n
+    `SR'  dens
+    `SS'  s0, s, o
+    
+    dens = ("d", "density")
+    n = length(stats)
+    for (k=1; k<=n; k++) {
+        s0 = stats[k]
+        o = _ds_parse_stats_split(s0) // replaces s0
+        s = _ds_parse_stats_match(list, s0, o)
+        if (anyof(dens, s)) return(1)
+    }
+    return(0)
 }
 
 void ds_slist_expand()
 {
     `Int' i, n, rc
-    `SR'  S, V, s, v
+    `SR'  V, v
+    `SM'  S
 
-    S = tokens(st_local("slist"))
-    n = length(S)
-    V = S[mm_seq(2, n, 2)]
-    S = S[mm_seq(1, n, 2)]
-    n = length(S)
+    V  = tokens(st_local("vlist"))
+    S  = tokens(st_local("slist")) \ tokens(st_local("slist2"))
+    n = length(V)
     for (i=1;i<=n;i++) {
         rc = _stata("fvexpand " + V[i] + " if \`touse'")
         if (rc) exit(rc)
         v = tokens(st_global("r(varlist)"))
-        s = tokens(S[i])
-        V[i] = invtokens(mm_expand(v, 1, length(s), 1))
-        S[i] = invtokens(J(1,length(v),s))
+        V[i]   = invtokens(mm_expand(v, 1, length(tokens(S[1,i])), 1))
+        S[1,i] = invtokens(J(1,length(v),S[1,i]))
+        S[2,i] = invtokens(J(1,length(v),S[2,i]))
     }
-    st_local("vlist", V = invtokens(V))
-    st_local("slist", _ds_slist_clean((tokens(V)', tokens(invtokens(S))')))
+    V = invtokens(V)
+    S = invtokens(S[1,]) \ invtokens(S[2,])
+    S = _ds_slist_clean((tokens(V)', tokens(S[1])', tokens(S[2])'))
+    st_local("varlist", V)
+    st_local("slist",   S[1]) // (stats) varname (stats) varname ...
+    st_local("slist2",  S[2]) // (stats) (stats) ...
 }
 
-`SS' _ds_slist_clean(`SM' S)
+`SC' _ds_slist_clean(`SM' S)
 {
     `Int' i, j, k, n
 
@@ -3483,9 +3239,10 @@ void ds_slist_expand()
             if (i>n) break
         }
         i--
-        S[++k,1] = "("+invtokens(S[|j,2 \ i,2|]')+") " + S[i,1]
+        S[++k,2] = "("+invtokens(S[|j,2 \ i,2|]')+") " + S[i,1]
+        S[k,3]   = "("+invtokens(S[|j,3 \ i,3|]')+")"
     }
-    return(invtokens(S[|1,1 \ k,1|]'))
+    return(invtokens(S[|1,2 \ k,2|]') \ invtokens(S[|1,3 \ k,3|]'))
 }
 
 `RC' _ds_order_sgrp(`SC' S)
@@ -3872,7 +3629,6 @@ class `GRP' {
     `RC'    X          // current variable
     void    reset()    // clear xtmp, ytmp, xytmp
     void    Yset()     // set Y variable and clear ytmp, xytmp
-    `Int'   y()        // index of Y
     `RC'    Y()        // retrieve Y
     `IntC'  pX(), pY(), pXY()   // sort order of X, Y, or (X,Y)
     `RC'    Xs(), Ys()          // sorted X or Y
@@ -3919,8 +3675,6 @@ void `GRP'::Yset(`Int' y0, `RC' Y0)
     ytmp.y = y0
     ytmp.Y = Y0
 }
-
-`Int' `GRP'::y() return(ytmp.y)
 
 `RC' `GRP'::Y() return(ytmp.Y)
 
@@ -4364,8 +4118,9 @@ void `GRP'::cd_fast(`RC' naive)
 `RC' `GRP'::cd_k()
 {
     if (rows(xtmp.cd_k)) return(xtmp.cd_k)
-    if (rows(w)==1) xtmp.cd_k = J(N, 1, N-1)
-    else            xtmp.cd_k = W :- w
+    if (rows(w)==1)    xtmp.cd_k = J(N, 1, N-1)
+    else if (wtype==1) xtmp.cd_k = J(N, 1, W-1)
+    else               xtmp.cd_k = W :- w
     return(xtmp.cd_k)
 }
 
@@ -4373,8 +4128,9 @@ void `GRP'::cd_fast(`RC' naive)
 {
     if (rows(xtmp.cd_t)) return(xtmp.cd_t)
     xtmp.cd_t = J(N,1,.)
-    if (rows(w)==1) xtmp.cd_t[pX()] = __ds_ifreq(Xs(), 1, N)  :- 1
-    else            xtmp.cd_t[pX()] = __ds_ifreq(Xs(), ws(), N) - ws()
+    if (rows(w)==1)    xtmp.cd_t[pX()] = __ds_ifreq(Xs(), 1, N)    :- 1
+    else if (wtype==1) xtmp.cd_t[pX()] = __ds_ifreq(Xs(), ws(), N) :- 1
+    else               xtmp.cd_t[pX()] = __ds_ifreq(Xs(), ws(), N) - ws()
     return(xtmp.cd_t)
 }
 
@@ -4385,7 +4141,8 @@ void `GRP'::cd_fast(`RC' naive)
     if (rows(w)==1) ytmp.cd_u[pY()] = __ds_ifreq(Ys(), 1, N)  :- 1
     else {
         ytmp.cd_u[pY()] = __ds_ifreq(Ys(), wsY(), N)
-        ytmp.cd_u = ytmp.cd_u - w
+        if (wtype==1) ytmp.cd_u = ytmp.cd_u :- 1
+        else          ytmp.cd_u = ytmp.cd_u - w
     }
     return(ytmp.cd_u)
 }
@@ -4409,8 +4166,9 @@ void `GRP'::cd_fast(`RC' naive)
 {
     if (rows(xytmp.cd_v)) return(xytmp.cd_v)
     xytmp.cd_v = J(N,1,.)
-    if (rows(w)==1) xytmp.cd_v = _ds_ifreq((X, Y()), 1, N, pXY()) :- 1
-    else            xytmp.cd_v = _ds_ifreq((X, Y()), w, N, pXY()) - w
+    if (rows(w)==1)    xytmp.cd_v = _ds_ifreq((X, Y()), 1, N, pXY()) :- 1
+    else if (wtype==1) xytmp.cd_v = _ds_ifreq((X, Y()), w, N, pXY()) :- 1
+    else               xytmp.cd_v = _ds_ifreq((X, Y()), w, N, pXY()) - w
     return(xytmp.cd_v)
 }
 
@@ -4675,12 +4433,9 @@ struct `DATA' {
     `Bool'  abs        // absolute (lorenz)
     `Bool'  ave        // average (share)
     `Bool'  relax      // relax option (summarize)
-    `SS'    yvar       // default auxiliary variable (summarize, lorenz, share)
-    `SR'    yvars      // names of auxiliary variables (summarize, lorenz, share)
     `RM'    Y          // view on auxiliary variables (summarize, lorenz, share)
     `Bool'  pstrong    // use strong poverty definition (summarize, tip)
     `RS'    pline      // default poverty line (summarize, tip)
-    `SS'    plvar      // default poverty line variable (summarize, tip)
     // `RR'    hcr, pgi   // containers to store HCR and PGI (tip)
 }
 
@@ -4717,6 +4472,7 @@ void dstat()
     D.ave       = st_local("average")!=""
     D.relax     = st_local("relax")!=""
     D.pstrong   = st_local("pstrong")!=""
+    D.pline     = strtoreal(st_local("pline"))
     
     // get data
     D.touse = st_varindex(st_local("touse"))
@@ -4745,11 +4501,7 @@ void dstat()
         if (D.noIF==0) D.mvj = J(1, D.nvars, NULL)
     }
     st_numscalar(st_local("W"), D.W)
-    D.yvar  = st_local("byvar")
-    D.yvars = tokens(st_local("yvars"))
-    if (length(D.yvars)) st_view(D.Y, ., D.yvars, D.touse)
-    D.pline  = strtoreal(st_local("pline"))
-    D.plvar  = st_local("plvar")
+    if (st_local("yvars")!="") st_view(D.Y, ., st_local("yvars"), D.touse)
     
     // over
     D.ovar = st_local("over")
@@ -5315,16 +5067,19 @@ void _ds_get_atmat(`Data' D, `SS' matnm)
 void _ds_get_stats(`Data' D)
 {
     `Int' j
-    `SS'  s
-    `T'   t
+    `SS'  s, s2
+    `T'   t, t2
     
-    t = tokeninit(" ", "", "()")
+    t = t2 = tokeninit(" ", "", "()")
     tokenset(t, st_local("slist"))
+    tokenset(t2, st_local("slist2"))
     D.AT = J(1, D.nvars, NULL)
     j = 0
     while ((s = tokenget(t)) != "") {
-        D.AT[++j] = &(tokens(substr(s,2,strlen(s)-2))')
-        s = tokenget(t)
+        s2 = tokenget(t2)
+        D.AT[++j] = &(tokens(substr(s2,2,strlen(s2)-2))', // expanded
+                      tokens(substr(s,2,strlen(s)-2))')   // as specified
+        s = tokenget(t) // varname
         assert(s==D.xvars[j])
     }
 }
@@ -5483,7 +5238,7 @@ void _ds_get_at_hist(`Data' D, `SS' rule)
                 }
                 else if (rule=="doane") {
                     n = ceil(ln(N)/ln(2) + 
-                        ln(1 + abs(_ds_skewness(G.X, G.w, G.W)) / 
+                        ln(1 + abs(_ds_sum_skewness(G.X, G.w, G.W)) / 
                         sqrt(6 * (N-2) / ((N+1) * (N+3))))/ln(2))
                 }
                 else if (rule=="scott") {
@@ -6560,7 +6315,7 @@ void dstat_lorenz(`Data' D)
     else if (D.sum)    t = 2 // total
     else if (D.pct)    t = 1 // ordinary in percent
     else               t = 0 // ordinary
-    if (D.yvar!="") y = 1
+    if (cols(D.Y)) y = 1     // by() has been specified
     D.k = b = 0
     for (i=1; i<=D.nover; i++) {
         G = ds_init_grp(D, i)
@@ -6695,7 +6450,7 @@ void dstat_share(`Data' D)
     else if (D.sum)  {; d = 0; t = 2; } // total
     else if (D.pct)  {; d = 0; t = 1; } // percent
     else             {; d = 1; t = 0; } // density
-    if (D.yvar!="") y = 1
+    if (cols(D.Y)) y = 1 // by() has been specified
     D.k = b = 0
     for (i=1; i<=D.nover; i++) {
         G = ds_init_grp(D, i)
@@ -6756,9 +6511,9 @@ void dstat_tip(`Data' D)
     `Grp'  G
     
     // D.hcr = D.pgi = J(1, D.nvars*D.nover, .)
-    if   (D.abs) t = 1 // absolute
-    else         t = 0 // relative
-    if (D.plvar!="") y = 1
+    if   (D.abs) t = 1   // absolute
+    else         t = 0   // relative
+    if (cols(D.Y)) y = 1 // plvar has been specified
     D.k = b = 0
     for (i=1; i<=D.nover; i++) {
         G = ds_init_grp(D, i)
@@ -6828,15 +6583,9 @@ void ds_tip_IF(`Data' D, `Grp' G, `Int' a, `Int' b, `RC' P, `RC' pg)
 void dstat_sum(`Data' D)
 {
     `Int' i, j, a, b, ii, nn
-    `SC'  AT
-    `SS'  s, o
-    `SC'  list
+    `SM'  AT
     `Grp' G
-    `T'   A
-    `PR'  P
     
-    A = ds_stats_lib()
-    list = sort(asarray_keys(A), 1)
     D.k = b = 0
     for (i=1; i<=D.nover; i++) {
         G = ds_init_grp(D, i)
@@ -6846,7 +6595,7 @@ void dstat_sum(`Data' D)
             nn = rows(AT)
             a = b + 1
             b = a + nn - 1
-            ds_set_cstripe(D, G, i, j, a, b, AT)
+            ds_set_cstripe(D, G, i, j, a, b, AT[,2]) // stats as specified
             if (G.N==0) {
                 ds_noobs(D, a, b)
                 ds_set_nobs_sumw(D, G, a, b)
@@ -6854,15 +6603,38 @@ void dstat_sum(`Data' D)
             else {
                 for (ii=1; ii<=nn; ii++) {
                     _ds_sum_reset_X(D, G) // (sample might have changed)
-                    s = AT[ii]
-                    o = _ds_sum_split(s) // replaces s
-                    P = asarray(A, mm_strexpand(s, list))
-                    (*P[1])(D, G, a, o, *P[3])
+                    _dstat_sum(D, G, a, AT[ii,1])
                     ds_set_nobs_sumw(D, G, a)
                     a++
                 }
             }
         }
+    }
+}
+
+void _dstat_sum(`Data' D, `Grp' G, `Int' i, `SS' s) // s assumed fleeting
+{
+    `RC'  o
+    `Int' l
+    `PS'  f
+    
+    l = strpos(s,"(")
+    if (l) {
+        o = strtoreal(tokens(subinstr(substr(s,l+1,strlen(s)-l-1),","," ")))
+        s = substr(s,1,l-1)
+    }
+    l = length(o)
+    f = findexternal("ds_sum_"+s+"()")
+    if      (l==0) (*f)(D, G, i)
+    else if (l==1) (*f)(D, G, i, o[1])
+    else if (l==2) (*f)(D, G, i, o[1],o[2])
+    else if (l==3) (*f)(D, G, i, o[1],o[2],o[3])
+    else if (l==4) (*f)(D, G, i, o[1],o[2],o[3],o[4])
+    else if (l==5) (*f)(D, G, i, o[1],o[2],o[3],o[4],o[5])
+    else {
+        // not reached
+        ds_errtxt("ds_sum_"+s+"(): too many arguments")
+        exit(499)
     }
 }
 
@@ -6887,26 +6659,6 @@ void _ds_sum_update_X(`Data' D, `Grp' G, `RC' x)
     if (rows(G.pp)==0) _ds_init_X(D, G, 1, 1, x:<.)
     else _ds_init_X(D, G, 1, 1, ds_invp(G.G0.N, G.pp, (x:<.), 0))
     G.reset = 1
-}
-
-`SS' _ds_sum_split(`SS' s)
-{
-    `Int' p
-    `SS'  o
-    `SS'  rexp
-    
-    rexp = "[0-9]+$"
-    if ((p=strpos(s,"("))) {
-        o = substr(s, p+1, .)
-        o = subinstr(substr(o, 1, strlen(o)-1), ",", " ") // remove pars and ,
-        s = substr(s, 1, p-1)
-    }
-    else if (regexm(s, rexp)) {
-        o = regexs(0)
-        s = substr(s, 1, strlen(s)-strlen(o))
-    }
-    s = strlower(s)
-    return(o)
 }
 
 `Bool' _ds_sum_omit(`Data' D, `Int' i)
@@ -6948,16 +6700,10 @@ void _ds_sum_invalid(`Data' D, `Grp' G, `SS' s, `Int' N)
     }
 }
 
-void _ds_sum_set_y(`Data' D, `Grp' G, `SS' o, `RR' O, | `RC' o1)
+void _ds_sum_set_y(`Data' D, `Grp' G, `Int' y)
 {
-    `Int' y
     `RC'  Y
     
-    if (args()<5) {
-        if (o=="") y = selectindex(D.yvars:==D.yvar)
-        else       y = selectindex(D.yvars:==ds_unab(o))
-    }
-    else           y = __ds_sum_set_y(D, o, O, o1) // parse y1-syntax
     Y = D.Y[G.p, y]
     if (D.nocw) {
         if (hasmissing(Y)) {
@@ -6969,79 +6715,20 @@ void _ds_sum_set_y(`Data' D, `Grp' G, `SS' o, `RR' O, | `RC' o1)
     G.Yset(y, Y)
 }
 
-`Int' __ds_sum_set_y(`Data' D, `SS' o, `RR' O, `RC' o1)
+`RC' _ds_sum_get_pl(`Data' D, `Grp' G, `RS' PL)
 {
-    `Int' l, y
-    `SR'  args
-    
-    args = tokens(o)
-    l = length(args)
-    if (l==0) {
-        y = selectindex(D.yvars:==D.yvar)
-        o1 = O[3]
-    }
-    else if (l==1) {
-        o1 = strtoreal(args[1])
-        if (o1<.) y = selectindex(D.yvars:==D.yvar)
-        else {
-            y = selectindex(D.yvars:==ds_unab(args[1]))
-            o1 = O[3]
-        }
-    }
-    else {
-        y = selectindex(D.yvars:==ds_unab(args[1]))
-        o1 = strtoreal(args[2])
-    }
-    return(y)
-}
-
-`RC' _ds_sum_get_pl(`Data' D, `Grp' G, `SS' o, `RR' O, | `RC' o1)
-{
-    `Int' y
-    `SS'  s
     `RC'  pl
     
-    // collect arguments
-    if (args()<5) s = o
-    else          s = __ds_sum_get_pl(o, O, o1) // parse 1pl-syntax
-    // determine whether pl is a variable
-    if (s!="") {
-        if (strtoreal(s)>=.) {
-            y = selectindex(D.yvars:==ds_unab(s))
-        }
-    }
-    else if (D.plvar!="") {
-        y = selectindex(D.yvars:==D.plvar)
-    }
-    // if pl is not a variable: return scalar
-    if (y>=.) {
-        if (s!="") return(strtoreal(s))
-        return(D.pline)
-    }
-    // if pl is a variables: possibly update sample and return variable
-    pl = D.Y[G.p, y]
+    // PL is a scalar
+    if (PL>=0) return(PL)
+    // PL is index of a variable (PL < 0)
+    pl = D.Y[G.p, -PL]
     if (D.nocw==0) return(pl)
     if (hasmissing(pl)) {
         _ds_sum_update_X(D, G, pl) // update sample
         pl = select(pl, pl:<.)
     }
     return(pl)
-}
-
-`SS' __ds_sum_get_pl(`SS' o, `RR' O, `RC' o1)
-{
-    `SR'  args
-    `Int' l
-
-    args = tokens(o)
-    l = length(args)
-    if (l==0) {
-        o1 = O[3]
-        return("")
-    }
-    o1 = strtoreal(args[1])
-    if (l==1) return("")
-    return(args[2])
 }
 
 `RC' _ds_sum_ccdf(`RC' X, `RC' w, `RS' W)
@@ -7076,20 +6763,19 @@ void _ds_sum_gw(`Data' D, `Grp' G, `Int' i, `PS' f, | `PR' o)
     ds_set_IF(D, G, i, h / G.W)
 }
 
-void ds_sum_q(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_q(`Data' D, `Grp' G, `Int' i, `RS' p)
 {
-    ds_sum_quantile(D, G, i, o, O)
+    _ds_sum_q(D, G, i, p/100)
 }
 
-void ds_sum_p(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_p(`Data' D, `Grp' G, `Int' i, `RS' p)
 {
-    ds_sum_quantile(D, G, i, o, O)
+    _ds_sum_q(D, G, i, p/100)
 }
 
-void ds_sum_quantile(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_quantile(`Data' D, `Grp' G, `Int' i, `RS' p)
 {
-    pragma unused O
-    _ds_sum_q(D, G, i, strtoreal(o)/100)
+    _ds_sum_q(D, G, i, p/100)
 }
 
 void _ds_sum_q(`Data' D, `Grp' G, `Int' i, `RS' p)
@@ -7114,10 +6800,9 @@ void _ds_sum_q(`Data' D, `Grp' G, `Int' i, `RS' p)
     ds_set_IF(D, G, i, (ds_mean(z, G.w, G.W) :- z) / (G.W * fx))
 }
 
-void ds_sum_hdquantile(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_hdquantile(`Data' D, `Grp' G, `Int' i, `RS' p)
 {
-    pragma unused O
-    _ds_sum_hdquantile(D, G, i, i, strtoreal(o)/100)
+    _ds_sum_hdquantile(D, G, i, i, p/100)
 }
 
 void _ds_sum_hdquantile(`Data' D, `Grp' G, `Int' a, `Int' b, `RC' p)
@@ -7162,10 +6847,9 @@ void _ds_sum_hdquantile(`Data' D, `Grp' G, `Int' a, `Int' b, `RC' p)
     return(ds_invp(G.N, G.pX(), h :- ds_mean(h, G.ws(), G.W)) / G.W)
 }
 
-void ds_sum_mquantile(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_mquantile(`Data' D, `Grp' G, `Int' i, `RS' p)
 {
-    pragma unused O
-    _ds_sum_mquantile(D, G, i, i, strtoreal(o)/100)
+    _ds_sum_mquantile(D, G, i, i, p/100)
 }
 
 void _ds_sum_mquantile(`Data' D, `Grp' G, `Int' a, `Int' b, `RC' p)
@@ -7207,18 +6891,15 @@ void _ds_sum_mquantile(`Data' D, `Grp' G, `Int' a, `Int' b, `RC' p)
     }
 }
 
-void ds_sum_d(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_d(`Data' D, `Grp' G, `Int' i, `RC' at)
 {
-    ds_sum_density(D, G, i, o, O)
+    ds_sum_density(D, G, i, at)
 }
 
-void ds_sum_density(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_density(`Data' D, `Grp' G, `Int' i, `RC' at)
 {
-    `RS' at
     `RC' z
-    pragma unused O
     
-    at = strtoreal(o)
     D.b[i] = _ds_sum_d(D, G, at)
     if (D.noIF) return
     z = ds_invp(G.N, G.pX(), D.S.K(D.S.X(), at, D.S.h()*D.S.l()))
@@ -7232,19 +6913,15 @@ void ds_sum_density(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     return(D.S.d(at, D.exact))
 }
 
-void ds_sum_hist(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_hist(`Data' D, `Grp' G, `Int' i, `RS' lo, `RS' up)
 {
     `RS' c
-    `RR' at
     `RC' z
-    pragma unused O
-    
-    at = strtoreal(tokens(o))
-    if (at[1]>at[2]) D.b[i] = .
+    if (lo>up) D.b[i] = .
     else {
-        c = 1 / (at[2] - at[1])
+        c = 1 / (up - lo)
         if (c>=.) c = 0 // zero width bin
-        z = G.X:>at[1] :& G.X:<=at[2]
+        z = G.X:>lo :& G.X:<=up
         D.b[i] = ds_mean(z, G.w, G.W) * c
     }
     if (_ds_sum_omit(D, i)) return
@@ -7252,26 +6929,21 @@ void ds_sum_hist(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, (z*c :- D.b[i])/G.W)
 }
 
-void ds_sum_cdf(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_cdf(`Data' D, `Grp' G, `Int' i, `RC' at)
 {
-    `RS' at
     `RC' z
-    pragma unused O
     
-    at = strtoreal(o)
     z = G.X:<=at
     D.b[i] = ds_mean(z, G.w, G.W)
     if (D.noIF) return
     ds_set_IF(D, G, i, (z :- D.b[i]) / G.W)
 }
 
-void ds_sum_cdfm(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_mcdf(`Data' D, `Grp' G, `Int' i, `RC' at)
 {
-    `RS' at, C, P
+    `RS' C, P
     `RC' z, zp
-    pragma unused O
     
-    at = strtoreal(o)
     z  = G.X:<at
     zp = G.X:==at
     C  = ds_mean(z, G.w, G.W)
@@ -7281,39 +6953,31 @@ void ds_sum_cdfm(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, ((z :- C) + (zp :- P)/2) / G.W)
 }
 
-void ds_sum_cdff(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_fcdf(`Data' D, `Grp' G, `Int' i, `RC' at)
 {
-    `RS' at
     `RC' z
-    pragma unused O
     
-    at = strtoreal(o)
     z = G.X:<at
     D.b[i] = ds_mean(z, G.w, G.W)
     if (D.noIF) return
     ds_set_IF(D, G, i, (z :- D.b[i]) / G.W)
 }
 
-void ds_sum_ccdf(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_ccdf(`Data' D, `Grp' G, `Int' i, `RC' at)
 {
-    `RS' at
     `RC' z
-    pragma unused O
     
-    at = strtoreal(o)
     z = G.X:>at
     D.b[i] = ds_mean(z, G.w, G.W)
     if (D.noIF) return
     ds_set_IF(D, G, i, (z :- D.b[i]) / G.W)
 }
 
-void ds_sum_ccdfm(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_mccdf(`Data' D, `Grp' G, `Int' i, `RC' at)
 {
-    `RS' at, C, P
+    `RS' C, P
     `RC' z, zp
-    pragma unused O
     
-    at = strtoreal(o)
     z  = G.X:>at
     zp = G.X:==at
     C  = ds_mean(z, G.w, G.W)
@@ -7323,62 +6987,56 @@ void ds_sum_ccdfm(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, ((z :- C) + (zp :- P)/2) / G.W)
 }
 
-void ds_sum_ccdff(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_fccdf(`Data' D, `Grp' G, `Int' i, `RC' at)
 {
-    `RS' at
     `RC' z
-    pragma unused O
     
-    at = strtoreal(o)
     z = G.X:>=at
     D.b[i] = ds_mean(z, G.w, G.W)
     if (D.noIF) return
     ds_set_IF(D, G, i, (z :- D.b[i]) / G.W)
 }
 
-void ds_sum_prop(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_prop(`Data' D, `Grp' G, `Int' i, `RS' lo, `RS' up)
 {
-    _ds_sum_freq(D, G, i, o, O, 0)
+    _ds_sum_freq(D, G, i, lo, up, 0)
     if (D.omit[i]) return
     D.b[i] = D.b[i] / G.W
     if (D.noIF) return
     D.IF[,i] = D.IF[,i] / G.W
 }
 
-void ds_sum_pct(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_pct(`Data' D, `Grp' G, `Int' i, `RS' lo, `RS' up)
 {
-    _ds_sum_freq(D, G, i, o, O, 0)
+    _ds_sum_freq(D, G, i, lo, up, 0)
     if (D.omit[i]) return
     D.b[i] = D.b[i] * (100 / G.W)
     if (D.noIF) return
     D.IF[,i] = D.IF[,i] * (100/G.W)
 }
 
-void ds_sum_f(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_f(`Data' D, `Grp' G, `Int' i, `RS' lo, `RS' up)
 {
-    ds_sum_freq(D, G, i, o, O)
+    _ds_sum_freq(D, G, i, lo, up, 1)
 }
 
-void ds_sum_freq(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_freq(`Data' D, `Grp' G, `Int' i, `RS' lo, `RS' up)
 {
-    _ds_sum_freq(D, G, i, o, O, 1)
+    _ds_sum_freq(D, G, i, lo, up, 1)
 }
 
-void _ds_sum_freq(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, `Bool' tot)
+void _ds_sum_freq(`Data' D, `Grp' G, `Int' i, `RS' lo, `RS' up, `Bool' tot)
 {
-    `RR' at
     `RC' z
-    pragma unused O
     
-    at = strtoreal(tokens(o))
-    if (length(at)==1) {
-        z = G.X:==at
+    if (up==.z) {
+        z = G.X:==lo
         D.b[i] = quadsum(G.w:*z)
     }
     else {
-        if (at[1]>at[2]) D.b[i] = .
+        if (lo>up) D.b[i] = .
         else {
-            z = G.X:>=at[1] :& G.X:<=at[2]
+            z = G.X:>=lo :& G.X:<=up
             D.b[i] = quadsum(G.w:*z)
         }
         if (_ds_sum_omit(D, i)) return
@@ -7388,18 +7046,17 @@ void _ds_sum_freq(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, `Bool' tot)
     ds_set_IF(D, G, i, (z :- (D.b[i]/G.W)), 0, D.b[i]/G.W)
 }
 
-void ds_sum_total(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_total(`Data' D, `Grp' G, `Int' i, `RS' lo, `RS' up)
 {
-    `RR' at
     `RC' z
-    pragma unused O
     
-    at = strtoreal(tokens(o))
-    if      (length(at)==0) z = G.X
-    else if (length(at)==1) z = G.X * (G.X:==at)
+    lo
+    up
+    if      (lo==.z) z = G.X
+    else if (up==.z) z = G.X :* (G.X:==lo)
     else {
-        if (at[1]>at[2]) z = J(G.N, 1, .) // so that D.b[i]=.
-        else             z = G.X * (G.X:>=at[1] :& G.X:<=at[2])
+        if (lo>up) z = J(G.N, 1, .) // so that D.b[i]=.
+        else       z = G.X :* (G.X:>=lo :& G.X:<=up)
     }
     D.b[i] = quadsum(G.w:*z, 1)
     if (_ds_sum_omit(D, i)) return
@@ -7408,53 +7065,36 @@ void ds_sum_total(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, (z :- (D.b[i]/G.W)), 0, D.b[i]/G.W)
 }
 
-void ds_sum_min(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_min(`Data' D, `Grp' G, `Int' i)
 {
-    pragma unused o
-    pragma unused O
-    
     _ds_sum_fixed(D, i, min(G.X))
 }
 
-void ds_sum_max(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_max(`Data' D, `Grp' G, `Int' i)
 {
-    pragma unused o
-    pragma unused O
-
     _ds_sum_fixed(D, i, max(G.X))
 }
 
-void ds_sum_range(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_range(`Data' D, `Grp' G, `Int' i)
 {
-    pragma unused o
-    pragma unused O
-
     _ds_sum_fixed(D, i, mm_diff(minmax(G.X)))
 }
 
-void ds_sum_midrange(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_midrange(`Data' D, `Grp' G, `Int' i)
 {
-    pragma unused o
-    pragma unused O
-
     _ds_sum_fixed(D, i, sum(minmax(G.X))/2)
 }
 
-void ds_sum_mean(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_mean(`Data' D, `Grp' G, `Int' i)
 {
-    pragma unused o
-    pragma unused O
-    
     D.b[i] = G.mean()
     if (D.noIF) return
     ds_set_IF(D, G, i, (G.X :- D.b[i]) / G.W)
 }
 
-void ds_sum_gmean(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_gmean(`Data' D, `Grp' G, `Int' i)
 {
     `RC' z
-    pragma unused o
-    pragma unused O
     
     z = ln(G.X)
     if (hasmissing(z)) {
@@ -7468,11 +7108,9 @@ void ds_sum_gmean(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, (z :- ln(D.b[i])) * (D.b[i] / G.W))
 }
 
-void ds_sum_hmean(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_hmean(`Data' D, `Grp' G, `Int' i)
 {
     `RC'   z
-    pragma unused o
-    pragma unused O
     
     z = 1 :/ G.X
     if (hasmissing(z)) {
@@ -7486,18 +7124,15 @@ void ds_sum_hmean(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, (z :- 1/D.b[i]) * (-D.b[i]^2 / G.W))
 }
 
-void ds_sum_trim(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_trim(`Data' D, `Grp' G, `Int' i, `RS' a, `RS' b)
 {
-    `RR'   args
     `RS'   p1, p2, plo, pup
     `RC'   z, q
     `IntC' lo, up, mid
     
-    args = strtoreal(tokens(o))
-    if (!length(args)) args = O[3]
-    p1 = args[1]/100
-    if (length(args)==1) p2 = 1 - p1
-    else                 p2 = 1 - args[2]/100
+    p1 = a/100
+    if (b==.z) p2 = 1 - p1
+    else       p2 = 1 - b/100
     q = _mm_quantile(G.Xs(), G.ws(), p1\p2, D.qdef, D.wtype==1)
     lo = (p1>0 ? G.X:<=q[1] : J(G.N, 1, 0)) // tag obs <= lower quantile
     up = (p2<1 ? G.X:>=q[2] : J(G.N, 1, 0)) // tag obs >= upper quantile
@@ -7517,18 +7152,15 @@ void ds_sum_trim(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     // upper quantile: (q[2]*(up :- pup)) / ((1-plo-pup)*G.W)
 }
 
-void ds_sum_winsor(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_winsor(`Data' D, `Grp' G, `Int' i, `RS' a, `RS' b)
 {
-    `RR'   args
     `RS'   p1, p2, plo, pup
     `RC'   z, q, fx
     `IntC' lo, up, mid
     
-    args = strtoreal(tokens(o))
-    if (!length(args)) args = O[3]
-    p1 = args[1]/100
-    if (length(args)==1) p2 = 1 - p1
-    else                 p2 = 1 - args[2]/100
+    p1 = a/100
+    if (b==.z) p2 = 1 - p1
+    else       p2 = 1 - b/100
     q = _mm_quantile(G.Xs(), G.ws(), p1\p2, D.qdef, D.wtype==1)
     lo = (p1>0 ? G.X:<=q[1] : J(G.N, 1, 0)) // tag obs <= lower quantile
     up = (p2<1 ? G.X:>=q[2] : J(G.N, 1, 0)) // tag obs >= upper quantile
@@ -7551,21 +7183,17 @@ void ds_sum_winsor(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, z)
 }
 
-void ds_sum_median(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_median(`Data' D, `Grp' G, `Int' i)
 {
-    pragma unused o
-    pragma unused O
     _ds_sum_q(D, G, i, .5)
 }
 
-void ds_sum_huber(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_huber(`Data' D, `Grp' G, `Int' i, `RS' eff)
 {
-    `RS' eff, s, k, med, mad
+    `RS' s, k, med, mad
     `RC' d, z, phi, zmed, zmad
     `T'  S
     
-    if (o!="") eff = strtoreal(o)
-    else       eff = O[3]
     med = _mm_median(G.Xs(), G.ws())
     S = mm_mloc(G.X, G.w, eff, "huber", med)
     D.b[i] = mm_mloc_b(S)
@@ -7585,14 +7213,12 @@ void ds_sum_huber(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
         / (ds_mean(phi, G.w, G.W) * G.W))
 }
 
-void ds_sum_biweight(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_biweight(`Data' D, `Grp' G, `Int' i, `RS' eff)
 {
-    `RS' eff, s, k, med, mad
+    `RS' s, k, med, mad
     `RC' d, z, phi, zmed, zmad
     `T'  S
     
-    if (o!="") eff = strtoreal(o)
-    else       eff = O[3]
     med = _mm_median(G.Xs(), G.ws())
     S = mm_mloc(G.X, G.w, eff, "biweight", med)
     D.b[i] = mm_mloc_b(S)
@@ -7612,11 +7238,9 @@ void ds_sum_biweight(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
         / (ds_mean(phi, G.w, G.W) * G.W))
 }
 
-void ds_sum_hl(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_hl(`Data' D, `Grp' G, `Int' i)
 {
     `RC' z, F, d
-    pragma unused o
-    pragma unused O
     
     D.b[i] = mm_hl(G.Xs(), G.ws(), D.wtype==1)
     if (D.noIF) return
@@ -7629,9 +7253,9 @@ void ds_sum_hl(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     // using mean(F, G.w) instead of 0.5 so that total of IF is exactly zero
 }
 
-void ds_sum_sd(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_sd(`Data' D, `Grp' G, `Int' i, `RS' df)
 {
-    ds_sum_variance(D, G, i, o, O)
+    ds_sum_variance(D, G, i, df)
     if (D.b[i]==0) return // too few observations
     D.b[i] = sqrt(D.b[i])
     if (D.noIF) return
@@ -7639,13 +7263,11 @@ void ds_sum_sd(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     D.IF[,i] = D.IF[,i] / (2 * D.b[i])
 }
 
-void ds_sum_variance(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_variance(`Data' D, `Grp' G, `Int' i, `RS' df)
 {
-    `RS' m, c, df
+    `RS' m, c
     pragma unset m
     
-    if (o!="") df = strtoreal(o)
-    else       df = O[3]
     D.b[i] = _ds_variance(G.X, G.w, G.W, D.wtype, df, m)
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
@@ -7671,18 +7293,10 @@ void ds_sum_variance(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     return(v)
 }
 
-void ds_sum_mse(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_mse(`Data' D, `Grp' G, `Int' i, `RS' m, `RS' df)
 {
-    `RR' args
-    `RS' m, df, c
+    `RS' c
     
-    if (o!="") {
-        args = strtoreal(tokens(o))
-        m = args[1]
-        if (length(args)>1) df = args[2]
-        else                df = O[4]
-    }
-    else {; m = O[3]; df = O[4]; }
     D.b[i] = quadcrossdev(G.X,m, G.w, G.X,m) / G.W
     if (df!=0) {
         if (D.wtype==1)  D.b[i] = D.b[i] * (G.W / (G.W - df))
@@ -7698,9 +7312,9 @@ void ds_sum_mse(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, (c*(G.X :- m):^2 :- D.b[i]) / G.W)
 }
 
-void ds_sum_smse(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_smse(`Data' D, `Grp' G, `Int' i, `RS' m, `RS' df)
 {
-    ds_sum_mse(D, G, i, o, O)
+    ds_sum_mse(D, G, i, m, df)
     if (D.b[i]==0) return // too few observations
     D.b[i] = sqrt(D.b[i])
     if (D.noIF) return
@@ -7708,48 +7322,33 @@ void ds_sum_smse(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     D.IF[,i] = D.IF[,i] / (2 * D.b[i])
 }
 
-void ds_sum_iqr(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_iqr(`Data' D, `Grp' G, `Int' i, `RS' lo, `RS' up)
 {
     `RS' b1
-    `RC' p, IF1
+    `RC' IF1
     
-    if (o!="") p = strtoreal(tokens(o)') / 100
-    else       p = O[(3,4)]' / 100
-    _ds_sum_q(D, G, i, p[1]) // lower quantile
+    _ds_sum_q(D, G, i, lo/100) // lower quantile
     b1 = D.b[i]
     if (D.noIF==0) IF1 = D.IF[,i]
-    _ds_sum_q(D, G, i, p[2]) // upper quantile
+    _ds_sum_q(D, G, i, up/100) // upper quantile
     D.b[i] = D.b[i] - b1
     if (D.noIF) return
     D.IF[,i] = D.IF[,i] - IF1
 }
 
-void ds_sum_iqrn(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_iqrn(`Data' D, `Grp' G, `Int' i, `RS' lo, `RS' up)
 {
     `RS' c
-    `RC' p
 
-    ds_sum_iqr(D, G, i, o, O)
-    if (o!="") p = strtoreal(tokens(o)') / 100
-    else       p = O[(3,4)]' / 100
-    c = 1 / (invnormal(p[2]) - invnormal(p[1]))
+    ds_sum_iqr(D, G, i, lo , up)
+    c = 1 / (invnormal(up/100) - invnormal(lo/100))
     D.b[i] = D.b[i] * c
     if (D.noIF) return
     D.IF[,i] = D.IF[,i] * c
 }
 
-void ds_sum_mad(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_mad(`Data' D, `Grp' G, `Int' i, `RS' l, `RS' t)
 {
-    `RR' args
-    `RS' l, t
-    
-    if (o!="") {
-        args = strtoreal(tokens(o))
-        l = args[1]
-        if (length(args)>1) t = args[2]
-        else                t = O[4]
-    }
-    else {; l = O[3]; t = O[4]; }
     if (l & t)  _ds_sum_mad_mean_mean(D, G, i)
     else if (l) _ds_sum_mad_mean_med(D, G, i)
     else if (t) _ds_sum_mad_med_mean(D, G, i)
@@ -7819,17 +7418,11 @@ void _ds_sum_mad_med_med(`Data' D, `Grp' G, `Int' i)
         (b-a)/d[2]*(ds_mean(z, G.w, G.W) :- z)) / ((a+b)*G.W))
 }
 
-void ds_sum_madn(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_madn(`Data' D, `Grp' G, `Int' i, `RS' l, `RS' t)
 {
-    `RR' args
-    `RS' l, c
+    `RS' c
     
-    if (o!="") {
-        args = strtoreal(tokens(o))
-        l = args[1]
-    }
-    else l = O[3]
-    ds_sum_mad(D, G, i, o, O)
+    ds_sum_mad(D, G, i, l, t)
     if (l) c = sqrt(pi() / 2)
     else   c = 1 / invnormal(0.75)
     D.b[i] = D.b[i] * c
@@ -7837,18 +7430,8 @@ void ds_sum_madn(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     D.IF[,i] = D.IF[,i] * c
 }
 
-void ds_sum_mae(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_mae(`Data' D, `Grp' G, `Int' i, `RS' l, `RS' t)
 {
-    `RR' args
-    `RS' l, t
-    
-    if (o!="") {
-        args = strtoreal(tokens(o))
-        l = args[1]
-        if (length(args)>1) t = args[2]
-        else                t = O[4]
-    }
-    else {; l = O[3]; t = O[4]; }
     if (l) _ds_sum_mae_mean(D, G, i, t)
     else   _ds_sum_mae_med(D, G, i, t)
 }
@@ -7876,17 +7459,11 @@ void _ds_sum_mae_med(`Data' D, `Grp' G, `Int' i, `RS' t)
     ds_set_IF(D, G, i, (ds_mean(z, G.w, G.W) :- z) / (d * G.W))
 }
 
-void ds_sum_maen(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_maen(`Data' D, `Grp' G, `Int' i, `RS' l, `RS' t)
 {
-    `RR' args
-    `RS' l, c
+    `RS' c
     
-    if (o!="") {
-        args = strtoreal(tokens(o))
-        l = args[1]
-    }
-    else l = O[3]
-    ds_sum_mae(D, G, i, o, O)
+    ds_sum_mae(D, G, i, l, t)
     if (l) c = sqrt(pi() / 2)
     else   c = 1 / invnormal(0.75)
     D.b[i] = D.b[i] * c
@@ -7894,12 +7471,10 @@ void ds_sum_maen(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     D.IF[,i] = D.IF[,i] * c
 }
 
-void ds_sum_md(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_md(`Data' D, `Grp' G, `Int' i)
 {
     `RS' m, cov
     `RC' F, B
-    pragma unused o
-    pragma unused O
     
     m   = G.mean()
     F   = _mm_ranks(G.Xs(), G.ws(), 3, 1, 1)
@@ -7913,25 +7488,23 @@ void ds_sum_md(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, ((4*F :- 2):*G.X :- D.b[i] :+ 4*(B :- cov)) / G.W)
 }
 
-void ds_sum_mdn(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_mdn(`Data' D, `Grp' G, `Int' i)
 {
     `RC' c
     
-    ds_sum_md(D, G, i, o, O)
+    ds_sum_md(D, G, i)
     c = sqrt(pi())/2
     D.b[i] = D.b[i] * c
     if (D.noIF) return
     D.IF[,i] = D.IF[,i] * c
 }
 
-void ds_sum_mscale(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_mscale(`Data' D, `Grp' G, `Int' i, `RS' bp)
 {
-    `RS' bp, k, med, d, delta
+    `RS' k, med, d, delta
     `RC' z, psi, zmed
     `T'  S
     
-    if (o!="") bp = strtoreal(o)
-    else       bp = O[3]
     med = _mm_median(G.Xs(), G.ws())
     S = mm_mscale(G.X, G.w, bp, ., med)
     D.b[i] = mm_mscale_b(S)
@@ -7947,12 +7520,10 @@ void ds_sum_mscale(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
         / (ds_mean(psi:*z, G.w, G.W) * G.W))
 }
 
-void ds_sum_qn(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_qn(`Data' D, `Grp' G, `Int' i)
 {
     `RC' c
     `RC' z1, z2, F, d
-    pragma unused o
-    pragma unused O
     
     D.b[i] = mm_qn(G.Xs(), G.ws(), D.wtype==1)
     if (D.noIF) return
@@ -7966,37 +7537,34 @@ void ds_sum_qn(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
         (1 / (c * ds_mean(d, G.ws(), G.W) * G.W)))
 }
 
-void ds_sum_skewness(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_skewness(`Data' D, `Grp' G, `Int' i)
 {
     `RS' m, sd
     `RC' z
-    pragma unused o
-    pragma unused O
     pragma unset m
     pragma unset sd
     
-    D.b[i] = _ds_skewness(G.X, G.w, G.W, m, sd)
+    D.b[i] = _ds_sum_skewness(G.X, G.w, G.W, m, sd)
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
     z = (G.X :- m) / sd 
     ds_set_IF(D, G, i, (z:^3 :- 3*z :- D.b[i]*(3/2)*(z:^2:-1) :- D.b[i]) / G.W)
 }
 
-`RS' _ds_skewness(`RC' X, `RC' w, `RS' W, | `Rs' m, `Rs' sd) 
+`RS' _ds_sum_skewness(`RC' X, `RC' w, `RS' W, | `Rs' m, `Rs' sd) 
 {   // replaces m and sd
     m  = ds_mean(X, w, W)
     sd = sqrt(quadcrossdev(X,m, w, X,m)/W) // sd without df correction
     return(ds_mean((X:-m):^3, w) / sd^3)
 }
 
-void ds_sum_qskew(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_qskew(`Data' D, `Grp' G, `Int' i, `RS' p)
 {
-    `RS' p,    p1, p2, p3
-    `RC' q, d, z1, z2, z3
+    `RS' p1, p2, p3
+    `RC' z1, z2, z3
+    `RC' q, d
     
-    if (o!="") p = strtoreal(o) / 100
-    else       p = O[3] / 100
-    q = _mm_quantile(G.Xs(), G.ws(), p \ 0.5 \ 1-p, D.qdef, D.wtype==1)
+    q = _mm_quantile(G.Xs(), G.ws(), p/100 \ 0.5 \ 1-p/100, D.qdef, D.wtype==1)
     D.b[i] = (q[1] + q[3] - 2*q[2]) / (q[3] - q[1])
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
@@ -8009,12 +7577,10 @@ void ds_sum_qskew(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
                          * (2 / ((q[3] - q[1])^2 * G.W)))
 }
 
-void ds_sum_mc(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_mc(`Data' D, `Grp' G, `Int' i)
 {
     `RS' mc, q, dq, dH
     `RC' z, F1, F2, d, IF
-    pragma unused o
-    pragma unused O
     
     D.b[i] = mm_mc(G.Xs(), G.ws(), D.wtype==1)
     if (D.noIF) return
@@ -8043,12 +7609,10 @@ void ds_sum_mc(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     return(F)
 }
 
-void ds_sum_kurtosis(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_kurtosis(`Data' D, `Grp' G, `Int' i)
 {
     `RS' sd, sk
     `RC' m, z
-    pragma unused o
-    pragma unused O
     
     m = G.mean()
     sd = sqrt(quadcrossdev(G.X,m, G.w, G.X,m)/G.W) // sd without df correction
@@ -8062,21 +7626,18 @@ void ds_sum_kurtosis(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
         D.b[i]*(D.b[i]-1)) / G.W) 
 }
 
-void ds_sum_ekurtosis(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_ekurtosis(`Data' D, `Grp' G, `Int' i)
 {
-    ds_sum_kurtosis(D, G, i, o, O)
+    ds_sum_kurtosis(D, G, i)
     D.b[i] = D.b[i] - 3
 }
 
-void ds_sum_qw(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_qw(`Data' D, `Grp' G, `Int' i, `RS' P)
 {
-    `RS' P
     `RC' p, q, d
     `RM' Z
     
-    if (o!="") P = strtoreal(o) / 100
-    else       P = O[3] / 100
-    p = P/2 \ P \ .5 - P/2 \ .5 + P/2 \ 1 - P \ 1 - P/2
+    p = P/200 \ P/100 \ .5 - P/200 \ .5 + P/200 \ 1 - P/100 \ 1 - P/200
     q = _mm_quantile(G.Xs(), G.ws(), p, D.qdef, D.wtype==1)
     D.b[i] = (q[6] - q[4] + q[3] - q[1])/ (q[5] - q[2])
     if (_ds_sum_omit(D, i)) return
@@ -8091,15 +7652,12 @@ void ds_sum_qw(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
                                 - (p[2]:-Z[,2])/d[2])) / ((q[5]-q[2])^2 * G.W))
 }
 
-void ds_sum_lqw(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_lqw(`Data' D, `Grp' G, `Int' i, `RS' P)
 {
-    `RS' P
     `RC' p, q, d
     `RM' Z
     
-    if (o!="") P = strtoreal(o) / 100
-    else       P = O[3] / 100
-    p = P/2 \ .25 \ .5 - P/2
+    p = P/200 \ .25 \ .5 - P/200
     q = _mm_quantile(G.Xs(), G.ws(), p, D.qdef, D.wtype==1)
     D.b[i] = - (q[1] + q[3] - 2*q[2]) / (q[3] - q[1])
     if (_ds_sum_omit(D, i)) return
@@ -8113,15 +7671,12 @@ void ds_sum_lqw(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
        * (2 / ((q[3] - q[1])^2 * G.W)))
 }
 
-void ds_sum_rqw(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_rqw(`Data' D, `Grp' G, `Int' i, `RS' P)
 {
-    `RS' P
     `RC' p, q, d
     `RM' Z
     
-    if (o!="") P = strtoreal(o) / 100
-    else       P = O[3] / 100
-    p = .5 + P/2 \ .75 \ 1 - P/2
+    p = .5 + P/200 \ .75 \ 1 - P/200
     q = _mm_quantile(G.Xs(), G.ws(), p, D.qdef, D.wtype==1)
     D.b[i] = (q[1] + q[3] - 2*q[2]) / (q[3] - q[1])
     if (_ds_sum_omit(D, i)) return
@@ -8135,12 +7690,10 @@ void ds_sum_rqw(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
        * (2 / ((q[3] - q[1])^2 * G.W)))
 }
 
-void ds_sum_lmc(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_lmc(`Data' D, `Grp' G, `Int' i)
 {
     `RS' med, mc, q, dq, dH, gmed, Fmed
     `RC' p, z, F1, F2, d, IF
-    pragma unused o
-    pragma unused O
     
     med = _mm_median(G.Xs(), G.ws())
     p = selectindex(G.Xs():<med)
@@ -8168,12 +7721,10 @@ void ds_sum_lmc(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, IF / G.W)
 }
 
-void ds_sum_rmc(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_rmc(`Data' D, `Grp' G, `Int' i)
 {
     `RS' med, mc, q, dq, dH, gmed, Fmed
     `RC' p, z, F1, F2, d, IF
-    pragma unused o
-    pragma unused O
     
     med = _mm_median(G.Xs(), G.ws())
     p = selectindex(G.Xs():>med)
@@ -8201,12 +7752,10 @@ void ds_sum_rmc(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, IF / G.W)
 }
 
-void ds_sum_hoover(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_hoover(`Data' D, `Grp' G, `Int' i)
 {
     `RS' t
     `RC' z, z2
-    pragma unused o
-    pragma unused O
     
     t  = G.mean()
     z  = G.X :- t
@@ -8217,32 +7766,29 @@ void ds_sum_hoover(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
         - ds_mean(sign(z) * t + z2, G.w, G.W) / (2 * t^2) * z) / G.W)
 }
 
-void ds_sum_gini(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_gini(`Data' D, `Grp' G, `Int' i, `RS' df)
 {
-    __ds_sum_gini(0, D, G, i, o, O)
+    __ds_sum_gini(0, D, G, i, df)
 }
 
-void ds_sum_agini(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_agini(`Data' D, `Grp' G, `Int' i, `RS' df)
 {
-    __ds_sum_gini(1, D, G, i, o, O)
+    __ds_sum_gini(1, D, G, i, df)
 }
 
-void __ds_sum_gini(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void __ds_sum_gini(`Bool' abs, `Data' D, `Grp' G, `Int' i, `RS' df)
 {
     `RC' h
     
-    D.b[i] = _ds_sum_gini(G.Xs(), G.ws(), G.W, D.noIF, h=.,
-            (&abs, &(o!="" ? strtoreal(o) : O[3]), &D.wtype))
+    D.b[i] = _ds_sum_gini(G.Xs(), G.ws(), G.W, D.noIF, h=., (&abs, &df, &D.wtype))
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
     ds_set_IF(D, G, i, ds_invp(G.N, G.pX(), h) / G.W)
 }
 
-void ds_sum_gw_gini(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_gw_gini(`Data' D, `Grp' G, `Int' i, `Int' y, `RS' df)
 {
-    `RS' df
-    
-    _ds_sum_set_y(D, G, o, O, df=.)
+    _ds_sum_set_y(D, G, y)
     _ds_sum_gw(D, G, i, &_ds_sum_gini(), (&0, &df, &D.wtype))
 }
 
@@ -8276,15 +7822,13 @@ void ds_sum_gw_gini(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     return(b)
 }
 
-void ds_sum_b_gini(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_b_gini(`Data' D, `Grp' G, `Int' i, `Int' y, `RS' df)
 {
-    `RS'   df, m, cp, c
+    `RS'   m, cp, c
     `IntC' p
     `RC'   w, mg, F, B, h
     
-    if (o!="") df = strtoreal(o)
-    else       df = O[3]
-    _ds_sum_set_y(D, G, o, O)
+    _ds_sum_set_y(D, G, y)
     m  = G.mean()
     mg = ds_invp(G.N, G.pY(), _mm_collapse2(G.XsY(), G.wsY(), G.Ys()))
     p  = mm_order(mg, 1, 1) // stable sort
@@ -8308,11 +7852,9 @@ void ds_sum_b_gini(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, h / G.W)
 }
 
-void ds_sum_mld(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
+void ds_sum_mld(`Data' D, `Grp' G, `Int' i, | `SS' lbl)
 {
     `RC' h
-    pragma unused o
-    pragma unused O
     
     if (hasmissing(ln(G.X))) {
         _ds_sum_invalid(D, G, lbl!="" ? lbl : "mld", G.N-missing(ln(G.X)))
@@ -8324,13 +7866,13 @@ void ds_sum_mld(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
     ds_set_IF(D, G, i, h / G.W)
 }
 
-void ds_sum_gw_mld(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
+void ds_sum_gw_mld(`Data' D, `Grp' G, `Int' i, `Int' y, | `SS' lbl)
 {
-    _ds_sum_set_y(D, G, o, O)
+    _ds_sum_set_y(D, G, y)
     if (hasmissing(ln(G.X))) {
         _ds_sum_invalid(D, G, lbl!="" ? lbl : "gw_mld", G.N-missing(ln(G.X)))
         _ds_sum_update_X(D, G, ln(G.X)) // update sample
-        _ds_sum_set_y(D, G, o, O)
+        _ds_sum_set_y(D, G, y)
     }
     _ds_sum_gw(D, G, i, &_ds_sum_mld())
 }
@@ -8349,16 +7891,16 @@ void ds_sum_gw_mld(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
     return(b)
 }
 
-void ds_sum_w_mld(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
+void ds_sum_w_mld(`Data' D, `Grp' G, `Int' i, `Int' y, | `SS' lbl)
 {
     `RC'   mg, z, h
     
-    _ds_sum_set_y(D, G, o, O)
+    _ds_sum_set_y(D, G, y)
     z = ln(G.X)
     if (hasmissing(z)) {
         _ds_sum_invalid(D, G, lbl!="" ? lbl : "w_mld", G.N-missing(z))
         _ds_sum_update_X(D, G, z) // update sample
-        _ds_sum_set_y(D, G, o, O)
+        _ds_sum_set_y(D, G, y)
         z = ln(G.X)
     }
     mg = J(G.N, 1, .)
@@ -8371,19 +7913,18 @@ void ds_sum_w_mld(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
     ds_set_IF(D, G, i, h / G.W)
 }
 
-void ds_sum_b_mld(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, 
-    | `SS' lbl)
+void ds_sum_b_mld(`Data' D, `Grp' G, `Int' i, `Int' y, | `SS' lbl)
 {
     `RS'   m
     `RC'   mg, z, h
     
-    _ds_sum_set_y(D, G, o, O)
+    _ds_sum_set_y(D, G, y)
     z = ln(G.X)
     if (hasmissing(z)) {
         _ds_sum_invalid(D, G, lbl!="" ? lbl : "b_mld", G.N-missing(z))
         _ds_sum_update_X(D, G, z) // update sample
-        _ds_sum_set_y(D, G, o, O)
-        z = ln(G.X) // not really needed; not used below
+        _ds_sum_set_y(D, G, y)
+        // z = ln(G.X) // not used below
     }
     m = G.mean()
     mg = J(G.N, 1, .)
@@ -8395,11 +7936,9 @@ void ds_sum_b_mld(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O,
     ds_set_IF(D, G, i, h / G.W)
 }
 
-void ds_sum_theil(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
+void ds_sum_theil(`Data' D, `Grp' G, `Int' i, | `SS' lbl)
 {
     `RC' h
-    pragma unused o
-    pragma unused O
     
     if (hasmissing(ln(G.X))) {
         _ds_sum_invalid(D, G, lbl!="" ? lbl : "theil", G.N-missing(ln(G.X)))
@@ -8411,13 +7950,13 @@ void ds_sum_theil(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
     ds_set_IF(D, G, i, h / G.W)
 }
 
-void ds_sum_gw_theil(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
+void ds_sum_gw_theil(`Data' D, `Grp' G, `Int' i, `Int' y, | `SS' lbl)
 {
-    _ds_sum_set_y(D, G, o, O)
+    _ds_sum_set_y(D, G, y)
     if (hasmissing(ln(G.X))) {
         _ds_sum_invalid(D, G, lbl!="" ? lbl : "gw_theil", G.N-missing(ln(G.X)))
         _ds_sum_update_X(D, G, ln(G.X)) // update sample
-        _ds_sum_set_y(D, G, o, O)
+        _ds_sum_set_y(D, G, y)
     }
     _ds_sum_gw(D, G, i, &_ds_sum_theil())
 }
@@ -8438,18 +7977,17 @@ void ds_sum_gw_theil(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, | `SS' lbl)
     return(b)
 }
 
-void ds_sum_w_theil(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O,
-    | `SS' lbl)
+void ds_sum_w_theil(`Data' D, `Grp' G, `Int' i, `Int' y, | `SS' lbl)
 {
     `RS'   m
     `RC'   mg, z, h
     
-    _ds_sum_set_y(D, G, o, O)
+    _ds_sum_set_y(D, G, y)
     z = ln(G.X)
     if (hasmissing(z)) {
         _ds_sum_invalid(D, G, lbl!="" ? lbl : "w_theil", G.N-missing(z))
         _ds_sum_update_X(D, G, z) // update sample
-        _ds_sum_set_y(D, G, o, O)
+        _ds_sum_set_y(D, G, y)
         z = ln(G.X)
     }
     m = G.mean()
@@ -8464,19 +8002,18 @@ void ds_sum_w_theil(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O,
     ds_set_IF(D, G, i, h / G.W)
 }
 
-void ds_sum_b_theil(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O, 
-    | `SS' lbl)
+void ds_sum_b_theil(`Data' D, `Grp' G, `Int' i, `Int' y, | `SS' lbl)
 {
     `RS'   m, mz
     `RC'   mg, z, h
     
-    _ds_sum_set_y(D, G, o, O)
+    _ds_sum_set_y(D, G, y)
     z = ln(G.X)
     if (hasmissing(z)) {
         _ds_sum_invalid(D, G, lbl!="" ? lbl : "b_theil", G.N-missing(z))
         _ds_sum_update_X(D, G, z) // update sample
-        _ds_sum_set_y(D, G, o, O)
-        z = ln(G.X) // not really needed; not used below
+        _ds_sum_set_y(D, G, y)
+        // z = ln(G.X) // not used below
     }
     m = G.mean()
     mg = J(G.N, 1, .)
@@ -8491,19 +8028,16 @@ void ds_sum_b_theil(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O,
     ds_set_IF(D, G, i, h / G.W)
 }
 
-void ds_sum_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_ge(`Data' D, `Grp' G, `Int' i, `RS' a)
 {
-    `RS'   a
     `RC'   h
     
-    if (o!="") a = strtoreal(o)
-    else       a = O[3]
     if (a==0) {
-        ds_sum_mld(D, G, i, o, O, "ge(0)")
+        ds_sum_mld(D, G, i, "ge(0)")
         return
     }
     if (a==1) {
-        ds_sum_theil(D, G, i, o, O, "ge(1)")
+        ds_sum_theil(D, G, i, "ge(1)")
         return
     }
     if (hasmissing(G.X:^a)) {
@@ -8516,25 +8050,21 @@ void ds_sum_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, h / G.W)
 }
 
-void ds_sum_gw_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_gw_ge(`Data' D, `Grp' G, `Int' i, `Int' y, `RS' a)
 {
-    `Int'  y
-    `RS'   a
-    
-    y = __ds_sum_set_y(D, o, O, a=.)
     if (a==0) {
-        ds_sum_gw_mld(D, G, i, D.yvars[y], O, "gw_ge(0)")
+        ds_sum_gw_mld(D, G, i, y, "gw_ge(0)")
         return
     }
     if (a==1) {
-        ds_sum_gw_theil(D, G, i, D.yvars[y], O, "gw_ge(1)")
+        ds_sum_gw_theil(D, G, i, y, "gw_ge(1)")
         return
     }
-    _ds_sum_set_y(D, G, o, O, a=.)
+    _ds_sum_set_y(D, G, y)
     if (hasmissing(G.X:^a)) {
         _ds_sum_invalid(D, G, "gw_ge("+strofreal(a)+")", G.N-missing(G.X:^a))
         _ds_sum_update_X(D, G, G.X:^a) // update sample
-        _ds_sum_set_y(D, G, o, O, a=.)
+        _ds_sum_set_y(D, G, y)
     }
     _ds_sum_gw(D, G, i, &_ds_sum_ge(), &a)
 }
@@ -8557,27 +8087,25 @@ void ds_sum_gw_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     return(b)
 }
 
-void ds_sum_w_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_w_ge(`Data' D, `Grp' G, `Int' i, `Int' y, `RS' a)
 {
-    `Int'  y
-    `RS'   a, m
+    `RS'   m
     `RC'   z, mg, delta, h
     
-    y = __ds_sum_set_y(D, o, O, a=.)
     if (a==0) {
-        ds_sum_w_mld(D, G, i, D.yvars[y], O, "w_ge(0)")
+        ds_sum_w_mld(D, G, i, y, "w_ge(0)")
         return
     }
     if (a==1) {
-        ds_sum_w_theil(D, G, i, D.yvars[y], O, "w_ge(1)")
+        ds_sum_w_theil(D, G, i, y, "w_ge(1)")
         return
     }
-    _ds_sum_set_y(D, G, o, O, a=.)
+    _ds_sum_set_y(D, G, y)
     z = G.X:^a
     if (hasmissing(z)) {
         _ds_sum_invalid(D, G, "w_ge("+strofreal(a)+")", G.N-missing(z))
         _ds_sum_update_X(D, G, z) // update sample
-        _ds_sum_set_y(D, G, o, O, a=.)
+        _ds_sum_set_y(D, G, y)
         z = G.X:^a
     }
     m = G.mean()
@@ -8594,28 +8122,26 @@ void ds_sum_w_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, h / G.W)
 }
 
-void ds_sum_b_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_b_ge(`Data' D, `Grp' G, `Int' i, `Int' y, `RS' a)
 {
-    `Int'  y
-    `RS'   a, c, m
+    `RS'   c, m
     `RC'   z, mg, delta, h
     
-    y = __ds_sum_set_y(D, o, O, a=.)
     if (a==0) {
-        ds_sum_b_mld(D, G, i, D.yvars[y], O, "b_ge(0)")
+        ds_sum_b_mld(D, G, i, y, "b_ge(0)")
         return
     }
     if (a==1) {
-        ds_sum_b_theil(D, G, i, D.yvars[y], O, "w_ge(1)")
+        ds_sum_b_theil(D, G, i, y, "w_ge(1)")
         return
     }
-    _ds_sum_set_y(D, G, o, O, a=.)
+    _ds_sum_set_y(D, G, y)
     z = G.X:^a
     if (hasmissing(z)) {
         _ds_sum_invalid(D, G, "w_ge("+strofreal(a)+")", G.N-missing(z))
         _ds_sum_update_X(D, G, z) // update sample
-        _ds_sum_set_y(D, G, o, O, a=.)
-        z = G.X:^a  // not really needed; not used below
+        _ds_sum_set_y(D, G, y)
+        //z = G.X:^a  // not used below
     }
     c = 1 / (a * (a - 1))
     m = G.mean()
@@ -8631,14 +8157,10 @@ void ds_sum_b_ge(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, h / G.W)
 }
 
-void ds_sum_atkinson(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_atkinson(`Data' D, `Grp' G, `Int' i, `RS' e)
 {
-    `RS' eps
-    
-    if (o!="") eps = strtoreal(o)
-    else       eps = O[3]
-    if (eps==1) _ds_sum_atkinson1(D, G, i)
-    else        _ds_sum_atkinson(D, G, i, eps)
+    if (e==1) _ds_sum_atkinson1(D, G, i)
+    else      _ds_sum_atkinson(D, G, i, e)
     
 }
 
@@ -8681,13 +8203,11 @@ void _ds_sum_atkinson(`Data' D, `Grp' G, `Int' i, `RS' e)
         (lm^(e/(1-e)) / ((1-e)*m))) / G.W)
 }
 
-void ds_sum_cv(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_cv(`Data' D, `Grp' G, `Int' i, `RS' df)
 {
-    `RS' m, sd, c, df
+    `RS' m, sd, c
     pragma unset m
     
-    if (o!="") df = strtoreal(o)
-    else       df = O[3]
     sd = sqrt(_ds_variance(G.X, G.w, G.W, D.wtype, df, m))
     D.b[i] = sd / m
     if (_ds_sum_omit(D, i)) return
@@ -8703,13 +8223,11 @@ void ds_sum_cv(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
         )
 }
 
-void ds_sum_lvar(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_lvar(`Data' D, `Grp' G, `Int' i, `RS' df)
 {
-    `RS' m, c, df
+    `RS' m, c
     `RC' z
     
-    if (o!="") df = strtoreal(o)
-    else       df = O[3]
     z = ln(G.X)
     if (hasmissing(z)) {
         _ds_sum_invalid(D, G, "lvar", G.N-missing(z))
@@ -8731,13 +8249,10 @@ void ds_sum_lvar(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
 }
 
 
-void ds_sum_vlog(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_vlog(`Data' D, `Grp' G, `Int' i, `RS' df)
 {
-    `RS' df
     `RC' h
     
-    if (o!="") df = strtoreal(o)
-    else       df = O[3]
     if (hasmissing(ln(G.X))) {
         _ds_sum_invalid(D, G, "vlog", G.N-missing(ln(G.X)))
         _ds_sum_update_X(D, G, ln(G.X)) // update sample
@@ -8748,15 +8263,13 @@ void ds_sum_vlog(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, h / G.W)
 }
 
-void ds_sum_gw_vlog(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_gw_vlog(`Data' D, `Grp' G, `Int' i, `Int' y, `RS' df)
 {
-    `RS' df
-    
-    _ds_sum_set_y(D, G, o, O, df=.)
+    _ds_sum_set_y(D, G, y)
     if (hasmissing(ln(G.X))) {
         _ds_sum_invalid(D, G, "gw_vlog", G.N-missing(ln(G.X)))
         _ds_sum_update_X(D, G, ln(G.X)) // update sample
-        _ds_sum_set_y(D, G, o, O, df=.)
+        _ds_sum_set_y(D, G, y)
     }
     _ds_sum_gw(D, G, i, &_ds_sum_vlog(), (&df, &D.wtype))
 }
@@ -8782,27 +8295,27 @@ void ds_sum_gw_vlog(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     return(b)
 }
 
-void ds_sum_w_vlog(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_w_vlog(`Data' D, `Grp' G, `Int' i, `Int' y, `RS' df)
 {
-    __ds_sum_vlog(0, D, G, i, o, O)
+    __ds_sum_vlog(0, D, G, i, y, df)
 }
 
-void ds_sum_b_vlog(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_b_vlog(`Data' D, `Grp' G, `Int' i, `Int' y, `RS' df)
 {
-    __ds_sum_vlog(1, D, G, i, o, O)
+    __ds_sum_vlog(1, D, G, i, y, df)
 }
 
-void __ds_sum_vlog(`Bool' btw, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void __ds_sum_vlog(`Bool' btw, `Data' D, `Grp' G, `Int' i, `Int' y, `RS' df)
 {
-    `RS'   m, c, df
+    `RS'   m, c
     `RC'   z, mg, zmg
     
-    _ds_sum_set_y(D, G, o, O, df=.)
+    _ds_sum_set_y(D, G, y)
     z = ln(G.X)
     if (hasmissing(z)) {
         _ds_sum_invalid(D, G, btw ? "b_vlog" : "w_vlog", G.N-missing(z))
         _ds_sum_update_X(D, G, z) // update sample
-        _ds_sum_set_y(D, G, o, O, df=.)
+        _ds_sum_set_y(D, G, y)
         z = ln(G.X)
     }
     c = 1
@@ -8833,40 +8346,25 @@ void __ds_sum_vlog(`Bool' btw, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     }
 }
 
-void ds_sum_top(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_top(`Data' D, `Grp' G, `Int' i, `RS' p)
 {
-    `RS' p
-    
-    if (o!="") p = strtoreal(o) / 100
-    else       p = O[3] / 100
-    _ds_sum_share(D, G, i, (1-p)\1)
+    _ds_sum_share(D, G, i, (1-p/100) \ 1)
 }
 
-void ds_sum_bottom(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_bottom(`Data' D, `Grp' G, `Int' i, `RS' p)
 {
-    `RS' p
-    
-    if (o!="") p = strtoreal(o) / 100
-    else       p = O[3] / 100
-    _ds_sum_share(D, G, i, 0\p)
+    _ds_sum_share(D, G, i, 0 \ p/100)
 }
 
-void ds_sum_mid(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_mid(`Data' D, `Grp' G, `Int' i, `RS' lo, `RS' up)
 {
-    `RC' p
-    
-    if (o!="") p = strtoreal(tokens(o)') / 100
-    else       p = O[(3,4)]' / 100
-    _ds_sum_share(D, G, i, p)
+    _ds_sum_share(D, G, i, (lo \ up)/100)
 }
 
-void ds_sum_palma(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_palma(`Data' D, `Grp' G, `Int' i)
 {
     `RS' b1, b2
     `RC' IF1
-    
-    pragma unused o
-    pragma unused O
     
     _ds_sum_share(D, G, i, 0\.4) // bottom 40%
     b1 = D.b[i]
@@ -8879,17 +8377,15 @@ void ds_sum_palma(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     D.IF[,i] = D.IF[,i] / b1 - b2/b1^2 * IF1
 }
 
-void ds_sum_qratio(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_qratio(`Data' D, `Grp' G, `Int' i, `RS' lo, `RS' up)
 {
     `RS' b1, b2
-    `RC' p, IF1
+    `RC' IF1
     
-    if (o!="") p = strtoreal(tokens(o)') / 100
-    else       p = O[(3,4)]' / 100
-    _ds_sum_q(D, G, i, p[1]) // lower quantile
+    _ds_sum_q(D, G, i, lo/100) // lower quantile
     b1 = D.b[i]
     if (D.noIF==0) IF1 = D.IF[,i]
-    _ds_sum_q(D, G, i, p[2]) // upper quantile
+    _ds_sum_q(D, G, i, up/100) // upper quantile
     b2 = D.b[i]
     D.b[i] = b2 / b1
     if (_ds_sum_omit(D, i)) return
@@ -8897,16 +8393,15 @@ void ds_sum_qratio(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     D.IF[,i] = D.IF[,i] / b1 - b2/b1^2 * IF1
 }
 
-void ds_sum_sratio(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_sratio(`Data' D, `Grp' G, `Int' i,
+    `RS' l1, `RS' u1, `RS' l2, `RS' u2)
 {
     `RS' b1, b2
     `RC' p, IF1
     
-    if (o!="") {
-        p = strtoreal(tokens(o)')
-        if (length(p)==2) p = O[3] \ p \ O[6]
-    }
-    else p = O[|3\6|]'
+    if      (l1==.z) p = (0,10,90,100)' // zero arguments
+    else if (l2==.z) p = (0,l1,u1,100)' // two arguments
+    else             p = (l1,u1,l2,u2)' // four arguments
     p = p / 100
     _ds_sum_share(D, G, i, p[|1\2|]) // lower share
     b1 = D.b[i]
@@ -8919,10 +8414,9 @@ void ds_sum_sratio(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     D.IF[,i] = D.IF[,i] / b1 - b2/b1^2 * IF1
 }
 
-void ds_sum_lorenz(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_lorenz(`Data' D, `Grp' G, `Int' i, `RS' p)
 {
-    pragma unused O
-    _ds_sum_lorenz(D, G, i, strtoreal(o) / 100, 0)
+    _ds_sum_lorenz(D, G, i, p/100, 0)
 }
 
 void _ds_sum_lorenz(`Data' D, `Grp' G, `Int' i, `RC' at, `Int' t)
@@ -8933,34 +8427,29 @@ void _ds_sum_lorenz(`Data' D, `Grp' G, `Int' i, `RC' at, `Int' t)
     D.IF[,i] = _ds_lorenz_IF(D, G, at, t, D.b[i])
 }
 
-void ds_sum_tlorenz(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_tlorenz(`Data' D, `Grp' G, `Int' i, `RS' p)
 {
-    pragma unused O
-    _ds_sum_lorenz(D, G, i, strtoreal(o) / 100, 2)
+    _ds_sum_lorenz(D, G, i, p/100, 2)
 }
 
-void ds_sum_glorenz(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_glorenz(`Data' D, `Grp' G, `Int' i, `RS' p)
 {
-    pragma unused O
-    _ds_sum_lorenz(D, G, i, strtoreal(o) / 100, 3)
+    _ds_sum_lorenz(D, G, i, p/100, 3)
 }
 
-void ds_sum_alorenz(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_alorenz(`Data' D, `Grp' G, `Int' i, `RS' p)
 {
-    pragma unused O
-    _ds_sum_lorenz(D, G, i, strtoreal(o) / 100, 4)
+    _ds_sum_lorenz(D, G, i, p/100, 4)
 }
 
-void ds_sum_elorenz(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_elorenz(`Data' D, `Grp' G, `Int' i, `RS' p)
 {
-    pragma unused O
-    _ds_sum_lorenz(D, G, i, strtoreal(o) / 100, 5)
+    _ds_sum_lorenz(D, G, i, p/100, 5)
 }
 
-void ds_sum_share(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_share(`Data' D, `Grp' G, `Int' i, `RS' p1, `RS' p2)
 {
-    pragma unused O
-    _ds_sum_share(D, G, i, strtoreal(tokens(o)') / 100)
+    _ds_sum_share(D, G, i, (p1 \ p2) / 100)
 }
 
 void _ds_sum_share(`Data' D, `Grp' G, `Int' i, `RC' at, | `Int' t, `Bool' d)
@@ -8981,47 +8470,43 @@ void _ds_sum_share(`Data' D, `Grp' G, `Int' i, `RC' at, | `Int' t, `Bool' d)
     D.IF[,i] = _ds_share_IF(D, G, at, t, d, L)
 }
 
-void ds_sum_dshare(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_dshare(`Data' D, `Grp' G, `Int' i, `RS' p1, `RS' p2)
 {
-    pragma unused O
-    _ds_sum_share(D, G, i, strtoreal(tokens(o)') / 100, 0, 1)
+    _ds_sum_share(D, G, i, (p1 \ p2) / 100, 0, 1)
 }
 
-void ds_sum_tshare(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_tshare(`Data' D, `Grp' G, `Int' i, `RS' p1, `RS' p2)
 {
-    pragma unused O
-    _ds_sum_share(D, G, i, strtoreal(tokens(o)') / 100, 2, 0)
+    _ds_sum_share(D, G, i, (p1 \ p2) / 100, 2, 0)
 }
 
-void ds_sum_gshare(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_gshare(`Data' D, `Grp' G, `Int' i, `RS' p1, `RS' p2)
 {
-    pragma unused O
-    _ds_sum_share(D, G, i, strtoreal(tokens(o)') / 100, 3, 0)
+    _ds_sum_share(D, G, i, (p1 \ p2) / 100, 3, 0)
 }
 
-void ds_sum_ashare(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_ashare(`Data' D, `Grp' G, `Int' i, `RS' p1, `RS' p2)
 {
-    pragma unused O
-    _ds_sum_share(D, G, i, strtoreal(tokens(o)') / 100, 3, 1)
+    _ds_sum_share(D, G, i, (p1 \ p2) / 100, 3, 1)
 }
 
-void ds_sum_gci(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_gci(`Data' D, `Grp' G, `Int' i, `Int' y, `RS' df)
 {
-    _ds_sum_gci(0, D, G, i, o, O)
+    _ds_sum_gci(0, D, G, i, y, df)
 }
 
-void ds_sum_aci(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_aci(`Data' D, `Grp' G, `Int' i, `Int' y, `RS' df)
 {
-    _ds_sum_gci(1, D, G, i, o, O)
+    _ds_sum_gci(1, D, G, i, y, df)
 }
 
-void _ds_sum_gci(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void _ds_sum_gci(`Bool' abs, `Data' D, `Grp' G, `Int' i, `Int' y, `RS' df)
 {
-    `RS'  df, m, mF, cov, c
+    `RS'  m, mF, cov, c
     `RM'  mv
     `RC'  F, B
 
-    _ds_sum_set_y(D, G, o, O, df=.)
+    _ds_sum_set_y(D, G, y)
     F   = _mm_ranks(G.Ys(), G.wsY(), 3, 1, 1)
     mv  = quadmeanvariance((G.XsY(), F), G.wsY())
     m   = mv[1,1]; mF  = mv[1,2]
@@ -9051,119 +8536,115 @@ void _ds_sum_gci(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     }
 }
 
-void ds_sum_ccurve(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_ccurve(`Data' D, `Grp' G, `Int' i, `RS' p, `Int' y)
 {
-    _ds_sum_ccurve(D, G, i, 0, o, O)
+    _ds_sum_ccurve(D, G, i, 0, p, y)
 }
 
-void _ds_sum_ccurve(`Data' D, `Grp' G, `Int' i, `Int' t, `SS' o, `RR' O)
+void _ds_sum_ccurve(`Data' D, `Grp' G, `Int' i, `Int' t, `RS' p, `Int' y)
 {
-    `SR'  args
-    `RS'  at
+    `RS' at
     
-    args = tokens(o)
-    at   = strtoreal(args[1]) / 100
-    _ds_sum_set_y(D, G, length(args)>1 ? args[2] : "", O)
-    D.b[i] = _ds_lorenz(G, at, t, G.y())
+    at = p / 100
+    _ds_sum_set_y(D, G, y)
+    D.b[i] = _ds_lorenz(G, at, t, y)
     if (D.noIF) return
     if (t==2) D.IFtot[i] = D.b[i] // total
-    D.IF[,i] = _ds_lorenz_IF(D, G, at, t, D.b[i], G.y())
+    D.IF[,i] = _ds_lorenz_IF(D, G, at, t, D.b[i], y)
 }
 
-void ds_sum_tccurve(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_tccurve(`Data' D, `Grp' G, `Int' i, `RS' p, `Int' y)
 {
-    _ds_sum_ccurve(D, G, i, 2, o, O)
+    _ds_sum_ccurve(D, G, i, 2, p, y)
 }
 
-void ds_sum_gccurve(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_gccurve(`Data' D, `Grp' G, `Int' i, `RS' p, `Int' y)
 {
-    _ds_sum_ccurve(D, G, i, 3, o, O)
+    _ds_sum_ccurve(D, G, i, 3, p, y)
 }
 
-void ds_sum_accurve(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_accurve(`Data' D, `Grp' G, `Int' i, `RS' p, `Int' y)
 {
-    _ds_sum_ccurve(D, G, i, 4, o, O)
+    _ds_sum_ccurve(D, G, i, 4, p, y)
 }
 
-void ds_sum_eccurve(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_eccurve(`Data' D, `Grp' G, `Int' i, `RS' p, `Int' y)
 {
-    _ds_sum_ccurve(D, G, i, 5, o, O)
+    _ds_sum_ccurve(D, G, i, 5, p, y)
 }
 
-void ds_sum_cshare(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_cshare(`Data' D, `Grp' G, `Int' i, `RS' p1, `RS' p2, `Int' y)
 {
-    _ds_sum_cshare(D, G, i, 0, 0, o, O)
+    _ds_sum_cshare(D, G, i, 0, 0, p1, p2, y)
 }
 
 void _ds_sum_cshare(`Data' D, `Grp' G, `Int' i, `Int' t, `Bool' d,
-    `SS' o, `RR' O)
+    `RS' p1, `RS' p2, `Int' y)
 {
-    `SR'  args
     `RC'  L, at
     
-    args = tokens(o)
-    at   = strtoreal(args[|1\2|]') / 100
-    _ds_sum_set_y(D, G, length(args)>2 ? args[3] : "", O)
+    at = (p1 \ p2) / 100
+    _ds_sum_set_y(D, G, y)
     if (at[1]>at[2]) D.b[i] = .
     else {
-        L = _ds_lorenz(G, at, t, G.y())
+        L = _ds_lorenz(G, at, t, y)
         D.b[i] = mm_diff(L)
         if (d) D.b[i] = D.b[i] * editmissing(1/(at[2]-at[1]), 0)
     }
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
     if (t==2) D.IFtot[i] = D.b[i] // total
-    D.IF[,i] = _ds_share_IF(D, G, at, t, d, L, G.y())
+    D.IF[,i] = _ds_share_IF(D, G, at, t, d, L, y)
 }
 
-void ds_sum_dcshare(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_dcshare(`Data' D, `Grp' G, `Int' i, `RS' p1, `RS' p2, `Int' y)
 {
-    _ds_sum_cshare(D, G, i, 0, 1, o, O)
+    _ds_sum_cshare(D, G, i, 0, 1, p1, p2, y)
 }
 
-void ds_sum_tcshare(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_tcshare(`Data' D, `Grp' G, `Int' i, `RS' p1, `RS' p2, `Int' y)
 {
-    _ds_sum_cshare(D, G, i, 2, 0, o, O)
+    _ds_sum_cshare(D, G, i, 2, 0, p1, p2, y)
 }
 
-void ds_sum_gcshare(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_gcshare(`Data' D, `Grp' G, `Int' i, `RS' p1, `RS' p2, `Int' y)
 {
-    _ds_sum_cshare(D, G, i, 3, 0, o, O)
+    _ds_sum_cshare(D, G, i, 3, 0, p1, p2, y)
 }
 
-void ds_sum_acshare(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_acshare(`Data' D, `Grp' G, `Int' i, `RS' p1, `RS' p2, `Int' y)
 {
-    _ds_sum_cshare(D, G, i, 3, 1, o, O)
+    _ds_sum_cshare(D, G, i, 3, 1, p1, p2, y)
 }
 
-void ds_sum_hcr(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_hcr(`Data' D, `Grp' G, `Int' i, `RS' PL)
 {
     `RC' z, pl
     
-    pl = _ds_sum_get_pl(D, G, o, O)
+    pl = _ds_sum_get_pl(D, G, PL)
     z = (D.pstrong ? G.X:<=pl : G.X:<pl)
     D.b[i] = ds_mean(z, G.w, G.W)
     if (D.noIF) return
     ds_set_IF(D, G, i, (z :- D.b[i]) / G.W)
 }
 
-void ds_sum_pgap(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_pgap(`Data' D, `Grp' G, `Int' i, `RS' PL)
 {
-    _ds_sum_pgap(0, D, G, i, o, O)
+    _ds_sum_pgap(0, D, G, i, PL)
 }
 
-void ds_sum_apgap(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_apgap(`Data' D, `Grp' G, `Int' i, `RS' PL)
 {
-    _ds_sum_pgap(1, D, G, i, o, O)
+    _ds_sum_pgap(1, D, G, i, PL)
 }
 
-void _ds_sum_pgap(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void _ds_sum_pgap(`Bool' abs, `Data' D, `Grp' G, `Int' i, `RS' PL)
 {
     `RS'   N, W
     `RC'   z, h, w, pl
     `IntC' p
     
-    pl = _ds_sum_get_pl(D, G, o, O)
+    pl = _ds_sum_get_pl(D, G, PL)
     p = selectindex(D.pstrong ? G.X:<=pl : G.X:<pl)
     N = length(p)
     if (N==0) { // no poor
@@ -9189,21 +8670,21 @@ void _ds_sum_pgap(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, h)
 }
 
-void ds_sum_pgi(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_pgi(`Data' D, `Grp' G, `Int' i, `RS' PL)
 {
-    _ds_sum_pgi(0, D, G, i, o, O)
+    _ds_sum_pgi(0, D, G, i, PL)
 }
 
-void ds_sum_apgi(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_apgi(`Data' D, `Grp' G, `Int' i, `RS' PL)
 {
-    _ds_sum_pgi(1, D, G, i, o, O)
+    _ds_sum_pgi(1, D, G, i, PL)
 }
 
-void _ds_sum_pgi(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void _ds_sum_pgi(`Bool' abs, `Data' D, `Grp' G, `Int' i, `RS' PL)
 {
-    `RC'   z, pl
+    `RC' z, pl
     
-    pl = _ds_sum_get_pl(D, G, o, O)
+    pl = _ds_sum_get_pl(D, G, PL)
     z = (pl :- G.X) :* (D.pstrong ? G.X:<=pl : G.X:<pl)
     if (abs==0) z = z :/ pl
     D.b[i] = ds_mean(z, G.w, G.W)
@@ -9211,12 +8692,11 @@ void _ds_sum_pgi(`Bool' abs, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, (z :- D.b[i]) / G.W)
 }
 
-void ds_sum_fgt(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_fgt(`Data' D, `Grp' G, `Int' i, `RS' a, `RS' PL)
 {
-    `RS'  a
     `RC'  z, pl
     
-    pl = _ds_sum_get_pl(D, G, o, O, a=.)
+    pl = _ds_sum_get_pl(D, G, PL)
     z = (D.pstrong ? G.X:<=pl : G.X:<pl)
     z = ((pl :- G.X) :* z :/ pl):^a :* z
     if (hasmissing(z)) D.b[i] = .
@@ -9226,18 +8706,18 @@ void ds_sum_fgt(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, (z :- D.b[i]) / G.W)
 }
 
-void ds_sum_chu(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_chu(`Data' D, `Grp' G, `Int' i, `RS' a0, `RS' PL)
 {
     `RS'   a, m
     `RC'   z, pl, h
     
-    pl = _ds_sum_get_pl(D, G, o, O, a=.)
-    a  = a/100
+    pl = _ds_sum_get_pl(D, G, PL)
+    a  = a0/100
     z = (D.pstrong ? G.X:<=pl : G.X:<pl)
     if (a==0) z = (ln(G.X) :- ln(pl)) :* z
     else      z = (1 :- (G.X:/pl):^a) :* z
     if (hasmissing(z)) {
-        _ds_sum_invalid(D, G, "chu("+strofreal(a*100)+")", G.N-missing(z))
+        _ds_sum_invalid(D, G, "chu("+strofreal(a0)+")", G.N-missing(z))
         _ds_sum_update_X(D, G, z) // update sample
         if (rows(pl)==rows(z)) pl = select(pl, z:<.)
         z = select(z, z:<.)
@@ -9258,11 +8738,11 @@ void ds_sum_chu(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, h / G.W)
 }
 
-void ds_sum_watts(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_watts(`Data' D, `Grp' G, `Int' i, `RS' PL)
 {
     `RC'   z, pl
     
-    pl = _ds_sum_get_pl(D, G, o, O)
+    pl = _ds_sum_get_pl(D, G, PL)
     z = (ln(pl) :- ln(G.X)) :* (G.X :< pl)
     if (hasmissing(z)) {
         _ds_sum_invalid(D, G, "watts", G.N-missing(z))
@@ -9276,7 +8756,7 @@ void ds_sum_watts(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, (z :- D.b[i]) / G.W)
 }
 
-void ds_sum_sen(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_sen(`Data' D, `Grp' G, `Int' i, `RS' PL)
 {
     `RS'   hcr, pgi, Gp
     `RC'   z_hcr, z_pgi, z_Gp, pl
@@ -9284,7 +8764,7 @@ void ds_sum_sen(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     `RC'   Xs, ws, F, B
     `IntC' p
     
-    pl = _ds_sum_get_pl(D, G, o, O)
+    pl = _ds_sum_get_pl(D, G, PL)
     // head count ratio
     z_hcr  = (D.pstrong ? G.X:<=pl : G.X:<pl)
     hcr    = ds_mean(z_hcr, G.w, G.W)
@@ -9320,13 +8800,13 @@ void ds_sum_sen(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, (z_pgi + z_hcr + (hcr-pgi) * z_Gp) / G.W)
 }
 
-void ds_sum_sst(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_sst(`Data' D, `Grp' G, `Int' i, `RS' PL)
 {
     `RS'   pgi, Gp, m, cp
     `RC'   pg, pl, Xs, ws, F, B, h
     `IntC' p
     
-    pl = _ds_sum_get_pl(D, G, o, O)
+    pl = _ds_sum_get_pl(D, G, PL)
     // poverty gap index
     pg  = ((pl :- G.X) :/ pl) :* (D.pstrong ? G.X:<=pl : G.X:<pl)
     pgi = ds_mean(pg, G.w, G.W)
@@ -9349,13 +8829,13 @@ void ds_sum_sst(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, ((1+Gp) * (pg :- pgi) + pgi * h) / G.W)
 }
 
-void ds_sum_takayama(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_takayama(`Data' D, `Grp' G, `Int' i, `RS' PL)
 {
     `RS'   m, cp
     `RC'   pl, Xs, ws, F, B, h
     `IntC' p
     
-    pl = _ds_sum_get_pl(D, G, o, O)
+    pl = _ds_sum_get_pl(D, G, PL)
     // generate censored outcomes
     Xs = (D.pstrong ? G.X:<=pl : G.X:<pl)
     Xs = (G.X :* Xs) + (pl :* (1:-Xs))
@@ -9374,32 +8854,31 @@ void ds_sum_takayama(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, h / G.W)
 }
 
-void ds_sum_tip(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_tip(`Data' D, `Grp' G, `Int' i, `RS' p, `RS' PL)
 {
-    _ds_sum_tip(D, G, i, 0, o, O)
+    _ds_sum_tip(D, G, i, 0, p, PL)
 }
 
-void ds_sum_atip(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_atip(`Data' D, `Grp' G, `Int' i, `RS' p, `RS' PL)
 {
-    _ds_sum_tip(D, G, i, 1, o, O)
+    _ds_sum_tip(D, G, i, 1, p, PL)
 }
 
-void _ds_sum_tip(`Data' D, `Grp' G, `Int' i, `Int' t, `SS' o, `RR' O)
+void _ds_sum_tip(`Data' D, `Grp' G, `Int' i, `Int' t, `RS' p, `RS' PL)
 {
-    `RS'  at
     `RC'  pl
     
-    pl = _ds_sum_get_pl(D, G, o, O, at=.)
-    D.b[i] = _ds_tip(D, G, at/100, t, i, i, pl) // also computes IF
+    pl = _ds_sum_get_pl(D, G, PL)
+    D.b[i] = _ds_tip(D, G, p/100, t, i, i, pl) // also computes IF
 }
 
-void ds_sum_corr(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_corr(`Data' D, `Grp' G, `Int' i, `Int' y)
 {
     `RS'  mX, sdX, mY, sdY, cov
     `RM'  mv
     `RC'  zX, zY
     
-    _ds_sum_set_y(D, G, o, O)
+    _ds_sum_set_y(D, G, y)
     mv = quadmeanvariance((G.X, G.Y()), G.w)
     mv[(2,3),] = mv[(2,3),] * ((G.W-1)/G.W) // remove df correction
     sdX = sqrt(mv[2,1]); sdY = sqrt(mv[3,2]); cov = mv[3,1]
@@ -9413,13 +8892,13 @@ void ds_sum_corr(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
         + (zY:^2:-sdY^2)/(2*sdY^2))) / (sdX*sdY*G.W))
 }
 
-void ds_sum_rsquared(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_rsquared(`Data' D, `Grp' G, `Int' i, `Int' y)
 {
     `RS'  mX, VX, mY, VY, cov
     `RM'  mv
     `RC'  zX, zY
     
-    _ds_sum_set_y(D, G, o, O)
+    _ds_sum_set_y(D, G, y)
     mv = quadmeanvariance((G.X, G.Y()), G.w)
     mv[(2,3),] = mv[(2,3),] * ((G.W-1)/G.W) // remove df correction
     VX = mv[2,1]; VY = mv[3,2]; cov = mv[3,1]
@@ -9433,12 +8912,12 @@ void ds_sum_rsquared(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
         - cov^2/VX*(zX:^2:-VX) - cov^2/VY*(zY:^2:-VY)) / (VX*VY*G.W))
 }
 
-void ds_sum_cov(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_covar(`Data' D, `Grp' G, `Int' i, `Int' y, `RS' df)
 {
-    `RS'  df, c, mX, mY
+    `RS'  c, mX, mY
     `RM'  mv
     
-    _ds_sum_set_y(D, G, o, O, df=.)
+    _ds_sum_set_y(D, G, y)
     mv = quadmeanvariance((G.X, G.Y()), G.w)
     mv[(2,3),] = mv[(2,3),] * ((G.W-1)/G.W) // remove df correction
     if (df!=0) { // small-sample adjustment
@@ -9454,12 +8933,12 @@ void ds_sum_cov(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, (c*((G.X:-mX) :* (G.Y():-mY)) :- D.b[i]) / G.W)
 }
 
-void ds_sum_spearman(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_spearman(`Data' D, `Grp' G, `Int' i, `Int' y)
 {
     `RM' mv, cov, vx, vy
     `RC' FX, FY, hX, hY, hXY
     
-    _ds_sum_set_y(D, G, o, O)
+    _ds_sum_set_y(D, G, y)
     FX = FY = J(G.N, 1, .)
     FX[G.pX()] = _mm_ranks(G.Xs(), G.ws(), 3, 1, 1)
     FY[G.pY()] = _mm_ranks(G.Ys(), G.wsY(), 3, 1, 1)
@@ -9481,13 +8960,12 @@ void ds_sum_spearman(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
                           (sqrt(vx)*sqrt(vy) * G.W))
 }
 
-void ds_sum_taua(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_taua(`Data' D, `Grp' G, `Int' i, `Int' y, `Bool' naive)
 {
-    `Bool' naive
-    `RS'   K, S
-    `RC'   h
+    `RS' K, S
+    `RC' h
     
-    _ds_sum_set_y(D, G, o, O, naive=.)
+    _ds_sum_set_y(D, G, y)
     G.cd_fast(naive)
     S = G.cd_S()
     K = G.cd_K()
@@ -9499,13 +8977,12 @@ void ds_sum_taua(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, h * (2/G.W))
 }
 
-void ds_sum_taub(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_taub(`Data' D, `Grp' G, `Int' i, `Int' y, `Bool' naive)
 {
-    `Bool' naive
-    `RS'   K, S, T, U, Q
-    `RC'   h
+    `RS' K, S, T, U, Q
+    `RC' h
     
-    _ds_sum_set_y(D, G, o, O, naive=.)
+    _ds_sum_set_y(D, G, y)
     G.cd_fast(naive)
     S = G.cd_S()
     K = G.cd_K()
@@ -9521,13 +8998,12 @@ void ds_sum_taub(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, h * (2/G.W))
 }
 
-void ds_sum_somersd(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_somersd(`Data' D, `Grp' G, `Int' i, `Int' y, `Bool' naive)
 {
-    `Bool' naive
-    `RS'   K, S, T, Q
-    `RC'   h
+    `RS' K, S, T, Q
+    `RC' h
     
-    _ds_sum_set_y(D, G, o, O, naive=.)
+    _ds_sum_set_y(D, G, y)
     G.cd_fast(naive)
     S = G.cd_S()
     K = G.cd_K()
@@ -9541,13 +9017,12 @@ void ds_sum_somersd(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, h * (2/G.W))
 }
 
-void ds_sum_gamma(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_gamma(`Data' D, `Grp' G, `Int' i, `Int' y, `Bool' naive)
 {
-    `Bool' naive
-    `RS'   K, S, T, U, V, Q
-    `RC'   h
+    `RS' K, S, T, U, V, Q
+    `RC' h
     
-    _ds_sum_set_y(D, G, o, O, naive=.)
+    _ds_sum_set_y(D, G, y)
     G.cd_fast(naive)
     S = G.cd_S()
     K = G.cd_K()
@@ -9564,11 +9039,9 @@ void ds_sum_gamma(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, 2*h / G.W)
 }
 
-void ds_sum_hhi(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_hhi(`Data' D, `Grp' G, `Int' i)
 {
     `RC' h
-    pragma unused o
-    pragma unused O
     
     D.b[i] = ds_mean(G.prX(), G.w, G.W)  // = sum_j pj^2
     if (D.noIF) return
@@ -9577,12 +9050,10 @@ void ds_sum_hhi(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, h * (2/G.W))
 }
 
-void ds_sum_hhin(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_hhin(`Data' D, `Grp' G, `Int' i)
 {
     `Int'  K
     `RC'   h
-    pragma unused o
-    pragma unused O
     
     K = sum(G.tagX())
     D.b[i] = (ds_mean(G.prX(), G.w, G.W) - 1/K) / (1 - 1/K)
@@ -9592,31 +9063,28 @@ void ds_sum_hhin(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, h * (2/(G.W * (1 - 1/K))))
 }
 
-void ds_sum_gimp(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_gimp(`Data' D, `Grp' G, `Int' i)
 {
-    (void) ds_sum_hhi(D, G, i, o, O)  // = 1 - sum_j pj^2 = sum_j pj*(1-pj)
+    (void) ds_sum_hhi(D, G, i)  // = 1 - sum_j pj^2 = sum_j pj*(1-pj)
     if (D.omit[i]) return
     D.b[i] = 1 - D.b[i]
     if (D.noIF) return
     D.IF[,i] = -D.IF[,i]
 }
 
-void ds_sum_gimpn(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_gimpn(`Data' D, `Grp' G, `Int' i)
 {
-    (void) ds_sum_hhin(D, G, i, o, O)
+    (void) ds_sum_hhin(D, G, i)
     if (D.omit[i]) return
     D.b[i] = 1 - D.b[i]
     if (D.noIF) return
     D.IF[,i] = -D.IF[,i]
 }
 
-void ds_sum_entropy(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
-{
-    `Int' base
-    `RC'  pj, h
+void ds_sum_entropy(`Data' D, `Grp' G, `Int' i, `RS' base)
+{   // base=0 => ln()
+    `RC' pj, h
     
-    if (o!="") base = strtoreal(o)
-    else       base = O[3] // base=0 => ln()
     D.b[i] = -ds_mean(ln(G.prX()), G.w, G.W)  // = - sum_j pj * ln(pj)
     if (base!=0) D.b[i] = D.b[i] / ln(base)
     if (D.noIF) return
@@ -9627,14 +9095,11 @@ void ds_sum_entropy(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, -h/G.W)
 }
 
-void ds_sum_hill(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_hill(`Data' D, `Grp' G, `Int' i, `RS' q)
 {
-    `Int' q
-    `RS'  b0
-    `RC'  pj, h
+    `RS' b0
+    `RC' pj, h
     
-    if (o!="") q = strtoreal(o)
-    else       q = O[3]
     if (q==0) {
         _ds_sum_fixed(D, i, sum(G.tagX()))      // = sum_j pj^0 (n. of levels)
         return
@@ -9664,45 +9129,42 @@ void ds_sum_hill(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, h/G.W)
 }
 
-void ds_sum_renyi(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_renyi(`Data' D, `Grp' G, `Int' i, `RS' q)
 {
-    `Int' q
-    `RS'  b0
+    `RS' b0
     
-    if (o!="") q = strtoreal(o)
-    else       q = O[3]
     if (q==1) {
-        ds_sum_entropy(D, G, i, "", J(1,3,0))
+        ds_sum_entropy(D, G, i, 0)
         return
     }
-    ds_sum_hill(D, G, i, "", J(1,3,q))
+    ds_sum_hill(D, G, i, q)
     b0 = D.b[i]
     D.b[i] = ln(b0)
     if (D.noIF) return
     D.IF[,i] = (1/b0) :* D.IF[,i]
 }
 
-void ds_sum_mindex(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_mindex(`Data' D, `Grp' G, `Int' i, `Int' y, `RS' base)
 {
-    _ds_sum_minfo(1, D, G, i, o, O)
+    _ds_sum_minfo(1, D, G, i, y, base)
 }
 
-void ds_sum_uc(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_uc(`Data' D, `Grp' G, `Int' i, `Int' y)
 {
-    _ds_sum_minfo(2, D, G, i, o, O)
+    _ds_sum_minfo(2, D, G, i, y, 0)
 }
 
-void ds_sum_ucl(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_ucl(`Data' D, `Grp' G, `Int' i, `Int' y)
 {
-    _ds_sum_minfo(3, D, G, i, o, O)
+    _ds_sum_minfo(3, D, G, i, y, 0)
 }
 
-void ds_sum_ucr(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_ucr(`Data' D, `Grp' G, `Int' i, `Int' y)
 {
-    _ds_sum_minfo(4, D, G, i, o, O)
+    _ds_sum_minfo(4, D, G, i, y, 0)
 }
 
-void _ds_sum_minfo(`Int' stat, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void _ds_sum_minfo(`Int' stat, `Data' D, `Grp' G, `Int' i, `Int' y, `RS' base)
 {   // stat: 0 = joint entropy [currently not used]
     //       1 = M index
     //       2 = uncertainty coefficient (symmetric)
@@ -9710,11 +9172,10 @@ void _ds_sum_minfo(`Int' stat, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     //       4 = uncertainty coefficient (right)
     // could also add support for conditional entropy:
     //     H(X|Y) = H(X,Y) - H(Y)  and  H(Y|X) = H(X,Y) - H(X)
-    `Int' base
-    `RS'  b, bX, bY
-    `RC'  h, hX, hY, p
+    `RS' b, bX, bY
+    `RC' h, hX, hY, p
     
-    _ds_sum_set_y(D, G, o, O, base=.)
+    _ds_sum_set_y(D, G, y)
     b = -ds_mean(ln(G.prXY()), G.w, G.W)      // = - sum_j sum_k pjk * ln(pjk)
     if (base!=0) b = b / ln(base)
     if (stat) {
@@ -9748,17 +9209,15 @@ void _ds_sum_minfo(`Int' stat, `Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, -h/G.W)
 }
 
-void ds_sum_cramersv(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_cramersv(`Data' D, `Grp' G, `Int' i, `Int' y, `Bool' bc)
 {
-    `Int' bc
     `Int' C, R, RC
     `RS'  b, pr0, q
     `RM'  prXY
     `RC'  h, z
-    pragma unset bc  // bias correction not implemented
-    pragma unused bc
+    pragma unused bc // bias correction not implemented
     
-    _ds_sum_set_y(D, G, o, O, bc=.)
+    _ds_sum_set_y(D, G, y)
     // obtain probability table (long format): x, y, pxy, px, py, px*py
     prXY = select((G.X, G.Y(), G.prXY()), G.tagXY())
     RC   = rows(prXY) // number of (nonempty) cells
@@ -9796,14 +9255,14 @@ void ds_sum_cramersv(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
     ds_set_IF(D, G, i, h/G.W)
 }
 
-void ds_sum_dissim(`Data' D, `Grp' G, `Int' i, `SS' o, `RR' O)
+void ds_sum_dissim(`Data' D, `Grp' G, `Int' i, `Int' y)
 {
     `Int' C, R, RC
     `RS'  b, d, pr0, q
     `RM'  prXY
     `RC'  prY, h, z, u, Z
     
-    _ds_sum_set_y(D, G, o, O)
+    _ds_sum_set_y(D, G, y)
     // obtain probability table (long format): x, y, pxy, px, py
     prXY = select((G.X, G.Y(), G.prXY()), G.tagXY())
     RC   = rows(prXY) // number of (nonempty) cells

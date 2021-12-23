@@ -39,6 +39,12 @@ Installation from GitHub:
 
 Main changes:
 
+    22dec2021 (version 1.2.8)
+    - dstat sum: computation of taua was wrong in case of fweights; this is fixed
+    - dstat sum: renamed cdfm to mcdf, cdff to fcdf, ccdfm to mccdf, ccdff to fccdf
+    - system for parsing syntax of -dstat sum- rewritten (more general, cleaner
+      code, easier to manage/expand, better error messages)
+
     22dec2021 (version 1.2.7)
     - support for qdef(11) added (mid-quantile); option -mquantile- is a synonym
       for qdef(11)

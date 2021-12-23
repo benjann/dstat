@@ -1,5 +1,5 @@
 {smcl}
-{* 22dec2021}{...}
+{* 23dec2021}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -405,10 +405,10 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt hist}{cmd:(}{it:x1}{cmd:,}{it:x2}{cmd:)}}histogram density of data within ({it:x1},{it:x2}]
     {p_end}
-{synopt:{opt cdf}[*]{cmd:(}{it:x}{cmd:)}}cumulative distribution (CDF) at value {it:x}; suffix {it:*} is empty for default,
+{synopt:[*]{opt cdf}{cmd:(}{it:x}{cmd:)}}cumulative distribution (CDF) at value {it:x}; prefix {it:*} is empty for default,
     {cmd:m} for mid-adjusted CDF, {cmd:f} for floor CDF
     {p_end}
-{synopt:{opt ccdf}[*]{cmd:(}{it:x}{cmd:)}}complementary CDF at value {it:x}; suffix {it:*} is empty for default,
+{synopt:[*]{opt ccdf}{cmd:(}{it:x}{cmd:)}}complementary CDF at value {it:x}; prefix {it:*} is empty for default,
     {cmd:m} for mid-adjusted CCDF, {cmd:f} for floor CCDF
     {p_end}
 {synopt:{opt prop}{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}}proportion of data equal to {it:x1} or within [{it:x1},{it:x2}]
@@ -499,7 +499,7 @@ help for {hi:dstat}{...}
 {syntab:Kurtosis measures}
 {synopt:{opt kurtosis}}kurtosis
     {p_end}
-{synopt:{opt kurtosis}}excess kurtosis; equal to {cmd:kurtosis}-3
+{synopt:{opt ekurtosis}}excess kurtosis; equal to {cmd:kurtosis}-3
     {p_end}
 {synopt:{opt qw}[{cmd:(}{it:alpha}{cmd:)}]}quantile tail weight; {it:alpha}
     in [0,50]; default is {it:alpha}=25
@@ -579,7 +579,7 @@ help for {hi:dstat}{...}
 {synopt:{opt gw_theil}[{cmd:(}{it:{help varname:by}}{cmd:)}]}weighted
     average of group-specific Theil indices; {it:by} as for {cmd:gw_gini}
     {p_end}
-{synopt:{opt gw_ge}[{cmd:(}{it:{help varname:by}}{cmd:)}]}weighted
+{synopt:{opt gw_ge}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:alpha}]{cmd:)}]}weighted
     average of group-specific generalized entropy; {it:by} as for {cmd:gw_gini};
     can also specify {opt gw_ge(alpha)}
     {p_end}
@@ -681,7 +681,7 @@ help for {hi:dstat}{...}
 {synopt:{opt corr}[{cmd:(}{it:{help varname:by}}{cmd:)}]}correlation coefficient;
     {it:by} specifies the secondary variable; default is as set by option {cmd:by()}
     {p_end}
-{synopt:{opt cov}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}covariance; {it:df} applies small-sample
+{synopt:{opt covar}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}covariance; {it:df} applies small-sample
     adjustment; default is {it:df}=1; can also specify {opt cov(df)};
     {it:by} as for {cmd:corr}
     {p_end}
@@ -1168,7 +1168,7 @@ help for {hi:dstat}{...}
 {phang2}
     {opt na:pprox(#)} specifies the grid size used by the binned approximation
     density estimator (and by the data-driven bandwidth selectors). The default
-    is {cmd:napprox(512)}.
+    is {cmd:napprox(1024)}.
 
 {phang2}
     {opt pad(#)} specifies the padding proportion of the approximation grid. Default is
