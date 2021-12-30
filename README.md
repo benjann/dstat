@@ -39,6 +39,12 @@ Installation from GitHub:
 
 Main changes:
 
+    30dec2021 (version 1.2.9)
+    - system for managing selection of observations and temporary results rewritten
+      (more systematic, cleaner code, less error prone, more efficient)
+    - dstat sum: harmonic mean (hmean) is now set to zero if at least one outcome
+      value is equal to zero
+
     22dec2021 (version 1.2.8)
     - dstat sum: computation of taua was wrong in case of fweights; this is fixed
     - dstat sum: renamed cdfm to mcdf, cdff to fcdf, ccdfm to mccdf, ccdff to fccdf
