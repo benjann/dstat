@@ -39,6 +39,12 @@ Installation from GitHub:
 
 Main changes:
 
+
+    07jan2022 (version 1.3.0)
+    - dstat sum: huber, biweight, mad[n], mae[n], mscale now take account of qdef()
+    - dstat sum: computation of IFs for winsor, qskew, qw, lqw, rqw revised so that
+      qdef() is taken into account (only relevant if qdef=10 or qdef=11)
+  
     30dec2021 (version 1.2.9)
     - system for managing selection of observations and temporary results rewritten
       (more systematic, cleaner code, less error prone, more efficient)

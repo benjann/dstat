@@ -1,5 +1,5 @@
 {smcl}
-{* 23dec2021}{...}
+{* 07jan2022}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -1061,7 +1061,10 @@ help for {hi:dstat}{...}
     described in Hyndman and Fan (1996), definition 0 is the "high" quantile,
     definition 10 is the Harrell-Davis quantile (Harrell and Davis 1982), 
     definition 11 is the mid-quantile (Ma et al. 2011); see
-    {helpb mf_mm_quantile:mm_quantile()} for more information.
+    {helpb mf_mm_quantile:mm_quantile()} for more information. Apart from the
+    quantile per se, option {cmd:qdef()} affects all statistics that make use of
+    quantiles (e.g. {cmd:trim}, {cmd:winsor}, {cmd:huber}, {cmd:biweight},
+    {cmd:mad}, etc.).
 
 {phang}
     {opt hdquantile} is a synonym for {cmd:qdef(10)} (Harrell-Davis
