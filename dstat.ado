@@ -1,4 +1,4 @@
-*! version 1.3.0  07jan2022  Ben Jann
+*! version 1.3.1  11jan2022  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -3572,7 +3572,9 @@ struct `XTMP' {
     `RC'    ws         // weights sorted by X
     `RS'    mean       // mean of X
     `RS'    Neff       // effective sample size
-    `RC'    hdq_F, hdq_F0  // temp results used for IFs of hdquantile
+    `RC'    hdq_F      // hdquantile: CDF at unique values
+    `RC'    hdq_dx     // hdquantile: differenced unique X
+    `IntC'  hdq_p      // hdquantile: permutation vector to expand results
     `RC'    mq_x       // mid-quantiles: unique values of X
     `RC'    mq_F       // mid-quantiles: mid CDF at unique values
     `RC'    mq_sp      // mid-quantiles: sparsity function at unique values
@@ -3642,7 +3644,9 @@ class `GRP' {
     `RS'    mean()     // mean of X
     `BoolC' poor()     // 1 = poor, 0 = else
     `RC'    pl()       // poverty line
-    `RC'    hdq_F(), hdq_F0() // temp results used for IFs of hdquantile
+    `RC'    hdq_F()    // ECDF at unique values
+    `RC'    hdq_dx()   // differenced unique X
+    `IntC'  hdq_p()    // permutation vector to expand results
     `Int'   mq_j       // current position in mq_F()
     `RC'    mq_x()     // unique values of X
     `RC'    mq_F()     // mid ECDF at unique values
@@ -3812,38 +3816,62 @@ void `GRP'::PLset(`Int' pl, | `RC' PL)
 `RC' `GRP'::hdq_F()
 {
     if (rows(xtmp.hdq_F)) return(xtmp.hdq_F)
-    if (w()==1) xtmp.hdq_F = 0 \ (1::N)/(N-1)
-    else xtmp.hdq_F = _mm_ranks(Xs(), ws(), 0, 0, 1) * (Neff()/(Neff()-1))
+    _ds_hdq_cdf(Xs(), ws(), xtmp.hdq_F, xtmp.hdq_dx)
     return(xtmp.hdq_F)
 }
 
-`RC' `GRP'::hdq_F0()
+`RC' `GRP'::hdq_dx()
 {
-    if (rows(xtmp.hdq_F0)) return(xtmp.hdq_F0)
-    xtmp.hdq_F0 = hdq_F() :- (1 / (Neff()-1))
-    return(xtmp.hdq_F0)
+    if (rows(xtmp.hdq_dx)) return(xtmp.hdq_dx)
+    _ds_hdq_cdf(Xs(), ws(), xtmp.hdq_F, xtmp.hdq_dx)
+    return(xtmp.hdq_dx)
+}
+
+void _ds_hdq_cdf(`RC' X, `RC' w, `RC' F, `RC' dx)
+{   // X assumed sorted
+    `RM' M
+    
+    M  = _mm_ecdf2(X, w)
+    F  = M[,2]
+    dx = -mm_diff(M[,1]\0)
+}
+
+`IntC' `GRP'::hdq_p()
+{   // permutation vector to expand results back to the original sample; results
+    // have been computed at unique levels of X in reverse order
+    `Int' k
+    
+    if (rows(xtmp.hdq_p)) return(xtmp.hdq_p)
+    k = rows(hdq_F())
+    if (k==N) xtmp.hdq_p = invorder(revorder(pX()))
+    else {
+        xtmp.hdq_p = J(N,1,.)
+        xtmp.hdq_p[pX()] = runningsum(k \ -(Xs()[|2\N|]:!=Xs()[|1\N-1|]))
+    }
+    return(xtmp.hdq_p)
 }
 
 `RC' `GRP'::mq_x()
 {
-    `RM' cdf
-    
     if (rows(xtmp.mq_x)) return(xtmp.mq_x)
-    cdf = _mm_ecdf2(Xs(), ws(), 1)
-    xtmp.mq_x = cdf[,1]
-    xtmp.mq_F = cdf[,2]
+    _ds_mq_mcdf(Xs(), ws(), xtmp.mq_x, xtmp.mq_F)
     return(xtmp.mq_x)
 }
 
 `RC' `GRP'::mq_F()
 {
-    `RM' cdf
-
     if (rows(xtmp.mq_F)) return(xtmp.mq_F)
-    cdf = _mm_ecdf2(Xs(), ws(), 1)
-    xtmp.mq_x = cdf[,1]
-    xtmp.mq_F = cdf[,2]
+    _ds_mq_mcdf(Xs(), ws(), xtmp.mq_x, xtmp.mq_F)
     return(xtmp.mq_F)
+}
+
+void _ds_mq_mcdf(`RC' X, `RC' w, `RC' x, `RC' F)
+{   // X assumed sorted
+    `RM' M
+    
+    M = _mm_ecdf2(X, w, 1)
+    x = M[,1]
+    F = M[,2]
 }
 
 `RS' `GRP'::mq_s(`Int' j, `RS' p, `RS' q)
@@ -6888,25 +6916,15 @@ void _ds_sum_q(`Data' D, `Grp' G, `Int' i, `RS' p, `Int' qdef)
 { 
     if (p==0) return(J(G.N, 1, 0))
     if (p==1) return(J(G.N, 1, 0))
-    return(ds_invp(G.N, G.pX(), __ds_sum_q_IF10(G.Xs(), G.ws(), G.N, G.W, p,
-        G.Neff(), G.hdq_F(), G.w()==1 ? .z : G.hdq_F0())))
+    return(__ds_sum_q_IF10(G.hdq_F(), G.hdq_dx(), p, G.Neff())[G.hdq_p()])
 }
 
-`RC' __ds_sum_q_IF10(`RC' X, `RC' w, `Int' N, `RS' W, `RS' p,
-    `RS' n, `RC' F, `RC' F0) // X assumed sorted
-{   // obtain IFs in analogy to the jackknife approach by Harrell and Davis
-    // (1982); in the unweighted case, results are equivalent to
-    // hdquantiles_sd() from Python's -scipy-
-    `RS'  a, b
-    `RC'  d, h
+`RC' __ds_sum_q_IF10(`RC' F, `RC' dx, `RS' p, `RS' n)
+{   // (returns result in reverse order)
+    `RC'   h
     
-    a = p * (n + 1)
-    b = (1 - p) * (n + 1)
-    if (F0==.z) d = mm_diff(ibeta(a, b, F)) * (1 - n)
-    else        d = (ibeta(a, b, F) - ibeta(a, b, F0)) * (1 - n)
-    h = quadrunningsum(d :* (X[|2\N|] \ 0))
-    h = (0 \ quadrunningsum(d :* X))[|1 \ N|] + (h[N] :- (0 \ h[|1 \ N-1|]))
-    return(h :- ds_mean(h, w, W))
+    h = betaden(p*(n+1), (1-p)*(n+1), F) :* dx
+    return(quadrunningsum(h[rows(h)::1]) :- quadsum(h :* F))
 }
 
 `RC' _ds_sum_q_IF11(`Grp' G, `RS' p, `RS' q)
@@ -7489,29 +7507,17 @@ void _ds_sum_mad_med_med(`Data' D, `Grp' G, `Int' i)
     // is constructed for hdquantiles, the inverse of the total jump in the
     // influence function is used to recover the "density"
     cdf = _mm_ecdf2(G.Xs(), G.ws(), 1) // mid-cdf
-    d = _ds_sum_mad_med_IF10_d(G.Xs(),
+    d = _ds_sum_mad_med_IF10_d(G.hdq_F(), G.hdq_dx(),
             mm_fastipolate(cdf[,1], cdf[,2], (t-l)\(t+l), 1), // p at t+/-l
-            G.Neff(), G.hdq_F(), G.w()==1 ? .z : G.hdq_F0())
+            G.Neff())
     // influence function
-    return(ds_invp(G.N, p, _ds_sum_mae_med_IF10(G, Zs, ws)) - 
-        mm_diff(d)/sum(d) * U)
+    return(_ds_sum_mae_med_IF10(G, Zs, ws, p) - mm_diff(d)/sum(d) * U)
 }
 
-`RC' _ds_sum_mad_med_IF10_d(`RC' X, `RC' p, `RS' n, `RC' F, `RC' F0)
+`RC' _ds_sum_mad_med_IF10_d(`RC' F, `RC' dx, `RC' p, `RS' n)
 {   // X assumed sorted
-    `Int' i
-    `RS'  a, b
-    `RC'  d, h
-    
-    d = J(2,1,.)
-    for (i=1;i<=2;i++) {
-        a = p[i] * (n + 1)
-        b = (1 - p[i]) * (n + 1)
-        if (F0==.z) h = mm_diff(ibeta(a, b, F)) * (1 - n)
-        else        h = (ibeta(a, b, F) - ibeta(a, b, F0)) * (1 - n)
-        d[i] = 1 / quadsum(mm_diff(0 \ h) :* X)
-    }
-    return(d)
+    return(1/mm_diff(__ds_sum_q_IF10(F, dx, p[1], n)[rows(F)\1]) \
+           1/mm_diff(__ds_sum_q_IF10(F, dx, p[2], n)[rows(F)\1]))
 }
 
 `RC' _ds_sum_mad_med_IF11(`Grp' G, `RS' l, `RC' Z, `RS' t, `RC' U,
@@ -7596,7 +7602,7 @@ void _ds_sum_mae_med(`Data' D, `Grp' G, `Int' i, `RS' t)
     ws = rows(G.w())==1 ? G.w() : G.w()[p]
     D.b[i] = _mm_median(Zs, ws, D.qdef, D.wtype==1)
     if (D.noIF) return
-    if (D.qdef==10) h = ds_invp(G.N, p, _ds_sum_mae_med_IF10(G, Zs, ws))
+    if (D.qdef==10) h = _ds_sum_mae_med_IF10(G, Zs, ws, p)
     else            h = _ds_sum_mae_med_IF11(G, D.b[i], Z, Zs, ws)
     ds_set_IF(D, G, i, h / G.W)
 }
@@ -7609,18 +7615,20 @@ void _ds_sum_mae_med(`Data' D, `Grp' G, `Int' i, `RS' t)
     return((ds_mean(z, G.w(), G.W) :- z) / sum(_ds_sum_d(D, G, (t-l)\(t+l))))
 }
 
-`RC' _ds_sum_mae_med_IF10(`Grp' G, `RC' Z, `RC' w)
+`RC' _ds_sum_mae_med_IF10(`Grp' G, `RC' Z, `RC' w, `IntC' p)
 {   // Z assumed sorted
-    `RS' n
-    `RC' F
+    `Int'  N, k
+    `IntC' pinv
+    `RC'   F, dx
     
-    if (w==1) {
-        F = 0 \ (1::G.N)/(G.N-1) 
-        return(__ds_sum_q_IF10(Z, w, G.N, G.W, 0.5, G.N, F, .z))
+    _ds_hdq_cdf(Z, w, F=., dx=.)
+    N = rows(Z); k = rows(F)
+    if (k==N) pinv = invorder(revorder(p))
+    else {
+        pinv    = J(N, 1, .) 
+        pinv[p] = runningsum(k \ -(Z[|2\N|]:!=Z[|1\N-1|]))
     }
-    n = G.Neff()
-    F = _mm_ranks(Z, w, 0, 0, 1) * (n/(n-1))
-    return(__ds_sum_q_IF10(Z, w, G.N, G.W, 0.5, n, F, F:-(1/(n-1))))
+    return(__ds_sum_q_IF10(F, dx, .5, G.Neff())[pinv])
 }
 
 `RC' _ds_sum_mae_med_IF11(`Grp' G, `RS' l, `RC' Z, `RC' Zs, `RC' ws)

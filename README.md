@@ -39,6 +39,11 @@ Installation from GitHub:
 
 Main changes:
 
+    11jan2022 (version 1.3.1)
+    - now using a properly derived expression for the influence function of 
+      Harrell-Davis quantiles (rather than obtaining the IF by analogy to the
+      jackknife approach proposed by Harrell and Davis 1982); the new formulas
+      lead to slightly different results
 
     07jan2022 (version 1.3.0)
     - dstat sum: huber, biweight, mad[n], mae[n], mscale now take account of qdef()
