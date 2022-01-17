@@ -1,5 +1,5 @@
 {smcl}
-{* 07jan2022}{...}
+{* 17jan2022}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -124,6 +124,8 @@ help for {hi:dstat}{...}
 {synopt:{opt qdef(#)}}quantile definition; # in {c -(}0,...,11{c )-}
     {p_end}
 {synopt:{opt hdq:uantile}}synonym for {cmd:qdef(10)} (Harrell-Davis quantiles)
+    {p_end}
+{synopt:{opt hdt:rim}[{cmd:(}{it:width}{cmd:)}]}apply trimming to the Harrell-Davis estimator
     {p_end}
 {synopt:{opt mq:uantile}}synonym for {cmd:qdef(11)} (mid-quantiles)
     {p_end}
@@ -1062,9 +1064,9 @@ help for {hi:dstat}{...}
     definition 10 is the Harrell-Davis quantile (Harrell and Davis 1982), 
     definition 11 is the mid-quantile (Ma et al. 2011); see
     {helpb mf_mm_quantile:mm_quantile()} for more information. Apart from the
-    quantile per se, option {cmd:qdef()} affects all statistics that make use of
-    quantiles (e.g. {cmd:trim}, {cmd:winsor}, {cmd:huber}, {cmd:biweight},
-    {cmd:mad}, etc.).
+    {cmd:dstat quantile} and statistic {cmd:quantile()}, option {cmd:qdef()} affects
+    all statistics that make use of quantiles (e.g. {cmd:trim}, {cmd:winsor},
+    {cmd:huber}, {cmd:biweight}, {cmd:mad}, etc.).
 
 {phang}
     {opt hdquantile} is a synonym for {cmd:qdef(10)} (Harrell-Davis
@@ -1072,7 +1074,15 @@ help for {hi:dstat}{...}
     is allowed. The Harrell-Davis estimator typically leads to smoother
     quantile functions than classical quantile definitions. Furthermore,
     standard errors do not depend on density estimation and tend to be
-    more reliable than for other quantiles if there is heaping in the data.
+    more reliable than for other quantile definitions if there is heaping in the data.
+
+{phang}
+    {opt hdtrim}[{cmd:(}{it:width}{cmd:)}] applies trimming to the Harrell-Davis
+    quantile estimator as suggested by Akinshin (2021). If {cmd:hdtrim} is specified without
+    argument, the width of evaluation interval is set to 1/sqrt(n), where n 
+    is the effective sample size. Alternatively, specify a custom {it:width}. Sensible values
+    for {it:width} lie between 0 and 1 ({it:width}>=1 uses the untrimmed estimator; 
+    {it:width}<=0 sets the width to 1/sqrt(n)).
 
 {phang}
     {opt mquantile} is a synonym for {cmd:qdef(11)} (mid-quantiles). Only one 
@@ -1911,6 +1921,8 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(kernel)}}kernel as specified in {cmd:kernel()}{p_end}
 {synopt:{cmd:e(exact)}}{cmd:exact} or empty{p_end}
 {synopt:{cmd:e(boundary)}}boundary correction method{p_end}
+{synopt:{cmd:e(hdtrim)}}{cmd:hdtrim()} as specified{p_end}
+{synopt:{cmd:e(mqopts)}}{cmd:mqopts()} as specified{p_end}
 {synopt:{cmd:e(novalues)}}{cmd:novalues} or empty{p_end}
 {synopt:{cmd:e(vformat)}}display format specified in {cmd:vformat()}{p_end}
 {synopt:{cmd:e(stats)}}list of (unique) summary statistics{p_end}
@@ -1973,6 +1985,11 @@ help for {hi:dstat}{...}
 {marker references}{...}
 {title:References}
 
+{phang}
+    Akinshin, A. (2021). Trimmed Harrell-Davis quantile estimator based on the
+    highest density interval of the given 
+    width. {browse "http://arxiv.org/abs/2111.11776":arXiv:2111.11776} [stat.ME].
+    {p_end}
 {phang}
     Botev, Z.I., J.F. Grotowski, and D.P. Kroese (2010). Kernel density
     estimation via diffusion. Annals of Statistics

@@ -1,4 +1,4 @@
-*! version 1.3.1  11jan2022  Ben Jann
+*! version 1.3.2  17jan2022  Ben Jann
 
 capt findfile lmoremata.mlib
 if _rc {
@@ -561,7 +561,8 @@ program Predict_compute_IFs
         local cmdline `cmdline' [`e(wtype)'`e(wexp)'] // what about complex weights in svy?
     }
     local cmdline `cmdline' if `touse', nose `generate' `e(nocasewise)' /*
-        */ qdef(`e(qdef)') `e(mqopts)' vformat(`e(vformat)') `e(novalues)' 
+        */ qdef(`e(qdef)') `e(hdtrim)' `e(mqopts)' /*
+        */ vformat(`e(vformat)') `e(novalues)' 
     // - over()
     if `"`e(over)'"'!="" {
         local over
@@ -1589,7 +1590,7 @@ program _Estimate, eclass
     syntax `lhs' [if] [in] [fw iw pw/], [ ///
             NOVALues VFormat(str) NOCASEwise ///
             qdef(numlist max=1 int >=0 <=11) ///
-            HDQuantile MQuantile MQOPTs(str) ///
+            HDQuantile HDTrim HDTrim2(numlist max=1) MQuantile MQOPTs(str) ///
             Over(str) TOTal BALance(str) ///
             vce(str) NOSE Level(cilevel) ///
             Generate(passthru) rif(str) Replace ///
@@ -2010,12 +2011,12 @@ program _Estimate, eclass
     eret matrix sumw = `sumw'
     eret matrix omit = `omit'
     eret scalar qdef = `qdef'
+    if      "`hdtrim2'"!="" eret local hdtrim hdtrim(`hdtrim2')
+    else if "`hdtrim'"!=""  eret local hdtrim hdtrim
+    if `"`mqopts'"'!=""     eret local mqopts mqopts(`mqopts')
     eret local novalues "`novalues'"
     eret local vformat "`vformat'"
     eret local nocasewise "`nocasewise'"
-    if `"`mqopts'"'!="" {
-        eret local mqopts mqopts(`mqopts')
-    }
     eret local percent "`percent'"
     eret local proportion "`proportion'"
     eret local frequency "`frequency'"
@@ -3940,9 +3941,9 @@ void _ds_mq_mcdf(`RC' X, `RC' w, `RC' x, `RC' F)
     `RC'  X, w
     `PDF' S
     
-    g  = 1024   // grid size
+    g  = 1024 + 1   // grid size
     r  = rows(x)
-    c  = 1 - (F[1] + (1-F[r]))
+    c  = F[r] - F[1]
     X  = rangen(x[1], x[r], g)
     w = mm_fastipolate(x, F, X)
     w  = mm_diff(w) * (neff / c)
@@ -4508,6 +4509,7 @@ struct `DATA' {
     `Bool'  novalues   // do not use values as coefficient names
     `SS'    vfmt       // display format for values used as coefficient names
     `Int'   qdef       // quantile definition
+    `RS'    hdtrim     // apply trimming to hdquantile
     `MQopt' mqopt      // options for mid-quantiles
     `Int'   n          // number of evaluation points (if relevant)
     `Bool'  common     // common points across subpops (if relevant)
@@ -4552,6 +4554,8 @@ void dstat()
     D.novalues  = st_local("novalues")!=""
     D.vfmt      = st_local("vformat")
     D.qdef      = strtoreal(st_local("qdef"))
+    D.hdtrim    = st_local("hdtrim2")!="" ? strtoreal(st_local("hdtrim2")) :
+                  (st_local("hdtrim")!="" ? 0 : .)
     D.mqopt.cdf = st_local("mq_cdf")!=""
     D.mqopt.bw  = strtoreal(st_local("mq_bw"))
     D.mqopt.us  = strtoreal(st_local("mq_us"))
@@ -6397,7 +6401,8 @@ void dstat_quantile(`Data' D)
                 ds_noobs(D, a, b)
                 continue
             }
-            D.b[|a \ b|] = _mm_quantile(G.Xs(), G.ws(), AT, D.qdef, D.wtype==1)
+            D.b[|a \ b|] = 
+                _mm_quantile(G.Xs(), G.ws(), AT, D.qdef, D.wtype==1, D.hdtrim)
             if (D.noIF) continue
             ds_quantile_IF(D, G, a, b)
         }
@@ -6414,7 +6419,7 @@ void ds_quantile_IF(`Data' D, `Grp' G, `Int' a, `Int' b)
         l = 0
     }
     for (i=a; i<=b; i++) {
-        if      (D.qdef==10) h = _ds_sum_q_IF10(G, D.at[i])
+        if      (D.qdef==10) h = _ds_sum_q_IF10(G, D.at[i], D.hdtrim)
         else if (D.qdef==11) h = _ds_sum_q_IF11(G, D.at[i], D.b[i])
         else                 h = _ds_sum_q_IFxx(G, D.at[i], D.b[i], fx[++l])
         ds_set_IF(D, G, i, h / G.W)
@@ -6890,14 +6895,14 @@ void _ds_sum_q(`Data' D, `Grp' G, `Int' i, `RS' p, `Int' qdef)
     
     if (p==0) {; _ds_sum_fixed(D, i, G.Xs()[1]);   return; }
     if (p==1) {; _ds_sum_fixed(D, i, G.Xs()[G.N]); return; }
-    D.b[i] = _mm_quantile(G.Xs(), G.ws(), p, qdef, D.wtype==1)
+    D.b[i] = _mm_quantile(G.Xs(), G.ws(), p, qdef, D.wtype==1, D.hdtrim)
     if (D.noIF) return
     ds_set_IF(D, G, i, _ds_sum_q_IF(D, G, p, D.b[i], qdef) / G.W)
 }
 
 `RC' _ds_sum_q_IF(`Data' D, `Grp' G, `RS' p, `RS' q, `Int' qdef)
 {
-    if (qdef==10) return(_ds_sum_q_IF10(G, p))
+    if (qdef==10) return(_ds_sum_q_IF10(G, p, D.hdtrim))
     if (qdef==11) return(_ds_sum_q_IF11(G, p, q))
     return(_ds_sum_q_IFxx(G, p, q, _ds_sum_d(D, G, q)))
 }
@@ -6912,18 +6917,29 @@ void _ds_sum_q(`Data' D, `Grp' G, `Int' i, `RS' p, `Int' qdef)
     return((ds_mean(z, G.w(), G.W) :- z) / fx)
 }
 
-`RC' _ds_sum_q_IF10(`Grp' G, `RS' p)
+`RC' _ds_sum_q_IF10(`Grp' G, `RS' p, `RS' trim)
 { 
     if (p==0) return(J(G.N, 1, 0))
     if (p==1) return(J(G.N, 1, 0))
-    return(__ds_sum_q_IF10(G.hdq_F(), G.hdq_dx(), p, G.Neff())[G.hdq_p()])
+    return(__ds_sum_q_IF10(G.hdq_F(), G.hdq_dx(), p, G.Neff(), trim)[G.hdq_p()])
 }
 
-`RC' __ds_sum_q_IF10(`RC' F, `RC' dx, `RS' p, `RS' n)
+`RC' __ds_sum_q_IF10(`RC' F, `RC' dx, `RS' p, `RS' n, `RS' trim)
 {   // (returns result in reverse order)
-    `RC'   h
+    `RS' a, b, wd, l, r
+    `RC' h
     
-    h = betaden(p*(n+1), (1-p)*(n+1), F) :* dx
+    a = (n + 1) * p
+    b = (n + 1) * (1 - p)
+    h = betaden(a, b, F) :* dx
+    if (trim<1) {
+        wd = trim<=0 ? 1 / sqrt(n) : trim
+        if      (a<=1 & b<=1) {; l=.   ; r=. ; } // can only happen if n<=1
+        else if (a<=1 & b>1 ) {; l=0   ; r=wd; } // left border
+        else if (a>1  & b<=1) {; l=1-wd; r=1 ; } // right border
+        else {; l = __mm_quantile_hd_l(a, b, wd); r = l+wd; }
+        if (l<.) h = (h :* (F:>=l :& F:<=r)) / mm_diff(ibeta(a, b, l\r))
+    }
     return(quadrunningsum(h[rows(h)::1]) :- quadsum(h :* F))
 }
 
@@ -7195,7 +7211,7 @@ void ds_sum_trim(`Data' D, `Grp' G, `Int' i, `RR' o)
     p1 = o[1]/100
     if (o[2]==.z) p2 = 1 - p1
     else          p2 = 1 - o[2]/100
-    q = _mm_quantile(G.Xs(), G.ws(), p1\p2, D.qdef, D.wtype==1)
+    q = _mm_quantile(G.Xs(), G.ws(), p1\p2, D.qdef, D.wtype==1, D.hdtrim)
     lo = (p1>0 ? G.X():<=q[1] : J(G.N, 1, 0)) // tag obs <= lower quantile
     up = (p2<1 ? G.X():>=q[2] : J(G.N, 1, 0)) // tag obs >= upper quantile
     mid = !lo :& !up  // tag obs in (lower quantile, upper quantile)
@@ -7223,7 +7239,7 @@ void ds_sum_winsor(`Data' D, `Grp' G, `Int' i, `RR' o)
     p1 = o[1]/100
     if (o[2]==.z) p2 = 1 - p1
     else          p2 = 1 - o[2]/100
-    q = _mm_quantile(G.Xs(), G.ws(), p1\p2, D.qdef, D.wtype==1)
+    q = _mm_quantile(G.Xs(), G.ws(), p1\p2, D.qdef, D.wtype==1, D.hdtrim)
     lo = (p1>0 ? G.X():<=q[1] : J(G.N, 1, 0)) // tag obs <= lower quantile
     up = (p2<1 ? G.X():>=q[2] : J(G.N, 1, 0)) // tag obs >= upper quantile
     mid = !lo :& !up  // tag obs in (lower quantile, upper quantile)
@@ -7375,7 +7391,7 @@ void ds_sum_iqr(`Data' D, `Grp' G, `Int' i, `RR' o)
     `RC' p, q
     
     p = o'/100
-    q = _mm_quantile(G.Xs(), G.ws(), p, D.qdef, D.wtype==1)
+    q = _mm_quantile(G.Xs(), G.ws(), p, D.qdef, D.wtype==1, D.hdtrim)
     D.b[i] = q[2] - q[1]
     if (D.noIF) return
     ds_set_IF(D, G, i, (_ds_sum_q_IF(D, G, p[2], q[2], D.qdef)
@@ -7432,9 +7448,9 @@ void _ds_sum_mad_med_mean(`Data' D, `Grp' G, `Int' i)
     p  = mm_order(Z,1,1) // stable sort
     Zs = Z[p]
     ws = rows(G.w())==1 ? G.w() : G.w()[p]
-    D.b[i] = _mm_median(Zs, ws, D.qdef, D.wtype==1)
+    D.b[i] = _mm_median(Zs, ws, D.qdef, D.wtype==1, D.hdtrim)
     if (D.noIF) return
-    if (D.qdef==10) h = _ds_sum_mad_med_IF10(G, D.b[i], t, U, Zs, ws, p)
+    if (D.qdef==10) h = _ds_sum_mad_med_IF10(G, D.b[i], t, U, Zs, ws, p, D.hdtrim)
     else            h = _ds_sum_mad_med_IF11(G, D.b[i], Z, t, U, Zs, ws)
     ds_set_IF(D, G, i, h / G.W)
 }
@@ -7444,7 +7460,7 @@ void _ds_sum_mad_mean_med(`Data' D, `Grp' G, `Int' i)
     `RS' t
     `RC' Z, U
 
-    t = _mm_median(G.Xs(), G.ws(), D.qdef, D.wtype==1)
+    t = _mm_median(G.Xs(), G.ws(), D.qdef, D.wtype==1, D.hdtrim)
     U = G.X() :- t
     Z = abs(U)
     D.b[i] = ds_mean(Z, G.w(), G.W)
@@ -7468,7 +7484,7 @@ void _ds_sum_mad_med_med(`Data' D, `Grp' G, `Int' i)
     `IntC' p
     `RC'   Z, Zs, ws
 
-    t = _mm_median(G.Xs(), G.ws(), D.qdef, D.wtype==1)
+    t = _mm_median(G.Xs(), G.ws(), D.qdef, D.wtype==1, D.hdtrim)
     Z  = abs(G.X() :- t)
     if (D.qdef!=10 & D.qdef!=11) {
         b = mm_median(Z, G.w(), D.qdef, D.wtype==1) // Z not sorted!
@@ -7480,10 +7496,10 @@ void _ds_sum_mad_med_med(`Data' D, `Grp' G, `Int' i)
     p  = mm_order(Z,1,1) // stable sort
     Zs = Z[p]
     ws = rows(G.w())==1 ? G.w() : G.w()[p]
-    b  = _mm_median(Zs, ws, D.qdef, D.wtype==1)
+    b  = _mm_median(Zs, ws, D.qdef, D.wtype==1, D.hdtrim)
     if (D.noIF) return(b)
     h = _ds_sum_q_IF(D, G, .5, t, D.qdef) // IF of median
-    if (D.qdef==10) h = _ds_sum_mad_med_IF10(G, b, t, h, Zs, ws, p)
+    if (D.qdef==10) h = _ds_sum_mad_med_IF10(G, b, t, h, Zs, ws, p, D.hdtrim)
     else            h = _ds_sum_mad_med_IF11(G, b, Z, t, h, Zs, ws)
     return(b)
 }
@@ -7498,7 +7514,7 @@ void _ds_sum_mad_med_med(`Data' D, `Grp' G, `Int' i)
 }
 
 `RC' _ds_sum_mad_med_IF10(`Grp' G, `RS' l, `RS' t, `RC' U, `RC' Zs, `RC' ws,
-    `IntC' p)
+    `IntC' p, `RS' trim)
 {
     `RC' d
     `RM' cdf
@@ -7509,15 +7525,15 @@ void _ds_sum_mad_med_med(`Data' D, `Grp' G, `Int' i)
     cdf = _mm_ecdf2(G.Xs(), G.ws(), 1) // mid-cdf
     d = _ds_sum_mad_med_IF10_d(G.hdq_F(), G.hdq_dx(),
             mm_fastipolate(cdf[,1], cdf[,2], (t-l)\(t+l), 1), // p at t+/-l
-            G.Neff())
+            G.Neff(), trim)
     // influence function
-    return(_ds_sum_mae_med_IF10(G, Zs, ws, p) - mm_diff(d)/sum(d) * U)
+    return(_ds_sum_mae_med_IF10(G, Zs, ws, p, trim) - mm_diff(d)/sum(d) * U)
 }
 
-`RC' _ds_sum_mad_med_IF10_d(`RC' F, `RC' dx, `RC' p, `RS' n)
+`RC' _ds_sum_mad_med_IF10_d(`RC' F, `RC' dx, `RC' p, `RS' n, `RS' trim)
 {   // X assumed sorted
-    return(1/mm_diff(__ds_sum_q_IF10(F, dx, p[1], n)[rows(F)\1]) \
-           1/mm_diff(__ds_sum_q_IF10(F, dx, p[2], n)[rows(F)\1]))
+    return(1/mm_diff(__ds_sum_q_IF10(F, dx, p[1], n, trim)[rows(F)\1]) \
+           1/mm_diff(__ds_sum_q_IF10(F, dx, p[2], n, trim)[rows(F)\1]))
 }
 
 `RC' _ds_sum_mad_med_IF11(`Grp' G, `RS' l, `RC' Z, `RS' t, `RC' U,
@@ -7600,9 +7616,9 @@ void _ds_sum_mae_med(`Data' D, `Grp' G, `Int' i, `RS' t)
     p  = mm_order(Z,1,1) // stable sort
     Zs = Z[p]
     ws = rows(G.w())==1 ? G.w() : G.w()[p]
-    D.b[i] = _mm_median(Zs, ws, D.qdef, D.wtype==1)
+    D.b[i] = _mm_median(Zs, ws, D.qdef, D.wtype==1, D.hdtrim)
     if (D.noIF) return
-    if (D.qdef==10) h = _ds_sum_mae_med_IF10(G, Zs, ws, p)
+    if (D.qdef==10) h = _ds_sum_mae_med_IF10(G, Zs, ws, p, D.hdtrim)
     else            h = _ds_sum_mae_med_IF11(G, D.b[i], Z, Zs, ws)
     ds_set_IF(D, G, i, h / G.W)
 }
@@ -7615,7 +7631,7 @@ void _ds_sum_mae_med(`Data' D, `Grp' G, `Int' i, `RS' t)
     return((ds_mean(z, G.w(), G.W) :- z) / sum(_ds_sum_d(D, G, (t-l)\(t+l))))
 }
 
-`RC' _ds_sum_mae_med_IF10(`Grp' G, `RC' Z, `RC' w, `IntC' p)
+`RC' _ds_sum_mae_med_IF10(`Grp' G, `RC' Z, `RC' w, `IntC' p, `RS' trim)
 {   // Z assumed sorted
     `Int'  N, k
     `IntC' pinv
@@ -7628,7 +7644,7 @@ void _ds_sum_mae_med(`Data' D, `Grp' G, `Int' i, `RS' t)
         pinv    = J(N, 1, .) 
         pinv[p] = runningsum(k \ -(Z[|2\N|]:!=Z[|1\N-1|]))
     }
-    return(__ds_sum_q_IF10(F, dx, .5, G.Neff())[pinv])
+    return(__ds_sum_q_IF10(F, dx, .5, G.Neff(), trim)[pinv])
 }
 
 `RC' _ds_sum_mae_med_IF11(`Grp' G, `RS' l, `RC' Z, `RC' Zs, `RC' ws)
@@ -7705,7 +7721,7 @@ void ds_sum_mscale(`Data' D, `Grp' G, `Int' i, `RS' bp)
     `RC' z, psi
     `T'  S
     
-    med = _mm_median(G.Xs(), G.ws(), D.qdef, D.wtype==1)
+    med = _mm_median(G.Xs(), G.ws(), D.qdef, D.wtype==1, D.hdtrim)
     S = mm_mscale(G.X(), G.w(), bp, ., med)
     D.b[i] = mm_mscale_b(S)
     if (D.noIF) return
@@ -7762,7 +7778,7 @@ void ds_sum_qskew(`Data' D, `Grp' G, `Int' i, `RS' a)
     `RC' h2
     
     p = a/100 \ 0.5 \ 1 - a/100
-    q = _mm_quantile(G.Xs(), G.ws(), p, D.qdef, D.wtype==1)
+    q = _mm_quantile(G.Xs(), G.ws(), p, D.qdef, D.wtype==1, D.hdtrim)
     D.b[i] = (q[1] + q[3] - 2*q[2]) / (q[3] - q[1])
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
@@ -7833,7 +7849,7 @@ void ds_sum_qw(`Data' D, `Grp' G, `Int' i, `RS' a)
     `RC' p, q
     
     p = a/200 \ a/100 \ .5 - a/200 \ .5 + a/200 \ 1 - a/100 \ 1 - a/200
-    q = _mm_quantile(G.Xs(), G.ws(), p, D.qdef, D.wtype==1)
+    q = _mm_quantile(G.Xs(), G.ws(), p, D.qdef, D.wtype==1, D.hdtrim)
     D.b[i] = (q[6] - q[4] + q[3] - q[1])/ (q[5] - q[2])
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
@@ -7852,7 +7868,7 @@ void ds_sum_lqw(`Data' D, `Grp' G, `Int' i, `RS' a)
     `RC' p, q, h2
     
     p = a/200 \ .25 \ .5 - a/200
-    q = _mm_quantile(G.Xs(), G.ws(), p, D.qdef, D.wtype==1)
+    q = _mm_quantile(G.Xs(), G.ws(), p, D.qdef, D.wtype==1, D.hdtrim)
     D.b[i] = - (q[1] + q[3] - 2*q[2]) / (q[3] - q[1])
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
@@ -7868,7 +7884,7 @@ void ds_sum_rqw(`Data' D, `Grp' G, `Int' i, `RS' a)
     `RC' p, q, h2
     
     p = .5 + a/200 \ .75 \ 1 - a/200
-    q = _mm_quantile(G.Xs(), G.ws(), p, D.qdef, D.wtype==1)
+    q = _mm_quantile(G.Xs(), G.ws(), p, D.qdef, D.wtype==1, D.hdtrim)
     D.b[i] = (q[1] + q[3] - 2*q[2]) / (q[3] - q[1])
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
@@ -8534,7 +8550,7 @@ void ds_sum_qratio(`Data' D, `Grp' G, `Int' i, `RR' o)
     `RC' p, q
     
     p = o'/100
-    q = _mm_quantile(G.Xs(), G.ws(), p, D.qdef, D.wtype==1)
+    q = _mm_quantile(G.Xs(), G.ws(), p, D.qdef, D.wtype==1, D.hdtrim)
     D.b[i] = q[2] / q[1]
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
