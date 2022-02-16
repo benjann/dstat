@@ -39,6 +39,12 @@ Installation from GitHub:
 
 Main changes:
 
+    14feb2022 (version 1.3.3)
+    - additional statistics in dstat sum: -slope- or -b- (regression coefficient;
+      may also be used to compute mean difference or risk difference),
+      -or- (odds ratio in 2x2 table), -rr- (risk ratio in 2x2 table)
+    - version of moremata library is now checked
+
     17jan2022 (version 1.3.2)
     - option hdtrim() added (trimmed Harrell-Davis quantiles)
     - grid size in _ds_mq_d_init() now 1024+1 because first point will be removed

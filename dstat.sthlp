@@ -1,5 +1,5 @@
 {smcl}
-{* 17jan2022}{...}
+{* 16feb2022}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -683,6 +683,11 @@ help for {hi:dstat}{...}
 {synopt:{opt corr}[{cmd:(}{it:{help varname:by}}{cmd:)}]}correlation coefficient;
     {it:by} specifies the secondary variable; default is as set by option {cmd:by()}
     {p_end}
+{synopt:{opt slope}[{cmd:(}{it:{help varname:by}}{cmd:)}]}regression slope 
+    (equal to mean difference if {it:by} is dichotomous); {it:by} as for {cmd:corr}
+    {p_end}
+{synopt:{opt b}[{cmd:(}{it:{help varname:by}}{cmd:)}]}alias for {cmd:slope}
+    {p_end}
 {synopt:{opt covar}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}covariance; {it:df} applies small-sample
     adjustment; default is {it:df}=1; can also specify {opt cov(df)};
     {it:by} as for {cmd:corr}
@@ -745,6 +750,12 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt dissim}[{cmd:(}{it:{help varname:by}}{cmd:)}]}(generalized) dissimilarity index (Duncan's D);
     {it:by} as for {cmd:mindex}
+    {p_end}
+{synopt:{opt or}[{cmd:(}{it:{help varname:by}}{cmd:)}]}odds ratio; variables are
+    interpreted as true/false indicators (false if 0, else true); {it:by} as for {cmd:mindex}
+    {p_end}
+{synopt:{opt rr}[{cmd:(}{it:{help varname:by}}{cmd:)}]}risk ratio; variables are
+    interpreted as true/false indicators (false if 0, else true); {it:by} as for {cmd:mindex}
     {p_end}
 {synoptline}
 

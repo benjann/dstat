@@ -1,8 +1,9 @@
-*! version 1.3.2  17jan2022  Ben Jann
+*! version 1.3.3  14feb2022  Ben Jann
 
-capt findfile lmoremata.mlib
+capt mata: assert(mm_version()>=200)
 if _rc {
-    di as error "-moremata- is required; type {stata ssc install moremata}"
+    di as error "{bf:moremata} version 2.0.0 or newer is required; " _c
+    di as error "type {stata ssc install moremata, replace}"
     error 499
 }
 
@@ -423,6 +424,12 @@ program dstat_SVYR, eclass
     eret local command
     eret local V_modelbased "" // remove matrix e(V_modelbased)
 end
+
+program dstat_PW
+    
+    Estimate summarize `00'
+end
+
 
 program Remove_Cov, eclass
     // type of estimates
@@ -2884,6 +2891,8 @@ void ds_parse_stats(`Int' n)
     // association
     asarray(A, "corr"      , "by")      // correlation
     asarray(A, "rsquared"  , "by")      // R squared
+    asarray(A, "slope"     , "by")      // slope of linear regression
+    asarray(A, "b"         , "by")      // synonym for slope
     asarray(A, "covar"     , "by;1")    // covariance
     asarray(A, "spearman"  , "by")      // spearman rank correlation
     asarray(A, "taua"      , "by;0")    // Kendall's tau-a
@@ -2904,6 +2913,8 @@ void ds_parse_stats(`Int' n)
     asarray(A, "ucr"       , "by")      // uncertainty coefficient (right)
     asarray(A, "cramersv"  , "by;0,0,.") // Cramér's V
     asarray(A, "dissim"    , "by")      // (generalized) dissimilarity index
+    asarray(A, "or"        , "by")      // odds ratio (for 2x2 table)
+    asarray(A, "rr"        , "by")      // risk ratio (for 2x2 table)
     return(A)
 }
 
@@ -9052,6 +9063,27 @@ void ds_sum_rsquared(`Data' D, `Grp' G, `Int' i)
         - cov^2/VX*(zX:^2:-VX) - cov^2/VY*(zY:^2:-VY)) / (VX*VY*G.W))
 }
 
+void ds_sum_b(`Data' D, `Grp' G, `Int' i) ds_sum_slope(D, G, i)
+
+void ds_sum_slope(`Data' D, `Grp' G, `Int' i)
+{
+    `RS'  cov, VY
+    `RM'  mv
+    `RC'  zX, zY
+    
+    mv = quadmeanvariance((G.X(), G.Y()), G.w())
+    mv[(2,3),] = mv[(2,3),] * ((G.W-1)/G.W) // remove df correction
+    VY  = mv[3,2]
+    cov = mv[3,1]
+    D.b[i] = cov / VY
+    if (_ds_sum_omit(D, i)) return // can happen if N=1
+    // compute IF
+    if (D.noIF) return
+    zX = G.X() :- mv[1,1]
+    zY = G.Y() :- mv[1,2]
+    ds_set_IF(D, G, i, ((zX:*zY :- cov) - cov/VY*(zY:^2 :- VY)) / (VY*G.W))
+}
+
 void ds_sum_covar(`Data' D, `Grp' G, `Int' i, `RS' df)
 {
     `RS'  c, mX, mY
@@ -9433,6 +9465,61 @@ void ds_sum_dissim(`Data' D, `Grp' G, `Int' i)
     u = (-b / (2 * d^2)) * (1 :- 2*G.prY())
     h = (h :- q) + u
     ds_set_IF(D, G, i, h/G.W)
+}
+
+void ds_sum_or(`Data' D, `Grp' G, `Int' i)
+{
+    `RS'    p00, p01, p10, p11
+    `BoolC' X, Y
+    `RC'    h
+    
+    X = G.X():!=0; Y = G.Y():!=0
+    if (D.wtype) {
+        p11 = quadsum(( X:& Y):*G.w()) / G.W
+        p10 = quadsum(( X:&!Y):*G.w()) / G.W
+        p01 = quadsum((!X:& Y):*G.w()) / G.W
+    }
+    else {
+        p11 = sum( X:& Y) / G.N
+        p10 = sum( X:&!Y) / G.N
+        p01 = sum(!X:& Y) / G.N
+    }
+    p00 = 1 - (p11 + p10 + p01)
+    D.b[i] = (p11*p00) / (p10*p01)
+    if (_ds_sum_omit(D, i)) return
+    if (D.noIF) return
+    h = (p00/(p10*p01))         * (( X:& Y):-p11) +
+        (p11/(p10*p01))         * ((!X:&!Y):-p00) -
+        ((p11*p00)/(p10^2*p01)) * (( X:&!Y):-p10) -
+        ((p11*p00)/(p10*p01^2)) * ((!X:& Y):-p01)
+    ds_set_IF(D, G, i, h / G.W)
+}
+
+void ds_sum_rr(`Data' D, `Grp' G, `Int' i)
+{
+    `RS'    p00, p01, p10, p11, p1, p0
+    `BoolC' X, Y
+    `RC'    h
+    
+    X = G.X():!=0; Y = G.Y():!=0
+    if (D.wtype) {
+        p11 = quadsum(( X:& Y):*G.w()) / G.W
+        p10 = quadsum(( X:&!Y):*G.w()) / G.W
+        p01 = quadsum((!X:& Y):*G.w()) / G.W
+    }
+    else {
+        p11 = sum( X:& Y) / G.N
+        p10 = sum( X:&!Y) / G.N
+        p01 = sum(!X:& Y) / G.N
+    }
+    p00 = 1 - (p11 + p10 + p01)
+    p1 = p11 / (p11 + p01)
+    p0 = p10 / (p10 + p00)
+    D.b[i] = p1 / p0
+    if (_ds_sum_omit(D, i)) return
+    if (D.noIF) return
+    h = (1/(p0*(p11+p01))) * (Y:*(X:-p1)) - (p1*(p10+p00)/p10^2) * (!Y:*(X:-p0))
+    ds_set_IF(D, G, i, h / G.W)
 }
 
 end
