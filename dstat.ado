@@ -1,4 +1,4 @@
-*! version 1.3.3  14feb2022  Ben Jann
+*! version 1.3.4  17feb2022  Ben Jann
 
 capt mata: assert(mm_version()>=200)
 if _rc {
@@ -29,6 +29,10 @@ program dstat, eclass properties(svyb svyj)
         Parse_frequency `00'
     }
     else {
+        if "`subcmd'"=="pw" {
+            local pw pw
+            local subcmd summarize
+        }
         capt Parse_subcmd `subcmd' // expands subcmd
         if _rc==1 exit _rc
         if _rc { // try summarize
@@ -71,7 +75,12 @@ program dstat, eclass properties(svyb svyj)
             tempname ecurrent
             _estimates hold `ecurrent', restore nullok
         }
-        Estimate `subcmd' `00'
+        if "`pw'"!="" {
+            Estimate_PW `00'
+        }
+        else {
+            Estimate `subcmd' `00'
+        }
         if c(stata_version)<15 {
             _estimates unhold `ecurrent', not
         }
@@ -424,12 +433,6 @@ program dstat_SVYR, eclass
     eret local command
     eret local V_modelbased "" // remove matrix e(V_modelbased)
 end
-
-program dstat_PW
-    
-    Estimate summarize `00'
-end
-
 
 program Remove_Cov, eclass
     // type of estimates
@@ -1534,19 +1537,75 @@ program _Graph_Get_CI, eclass
     mata: ds_Get_CI("`CI'", `level', "`citype'", `scale')
 end
 
-program Estimate
-    _parse comma lhs 0 : 0
-    syntax [, DECOMPose(passthru) * ]
-    if `"`decompose'"'=="" {
-        _Estimate `lhs' `0'
-        c_local generate_quietly `generate_quietly'
-        exit
+program Estimate_PW, eclass
+    // syntax
+    syntax varlist(numeric) [if] [in] [fw iw pw] [, ///
+        Statistic(str) LOwer UPper DIAGonal Over(str asis) * ]
+    if `"`statistic'"'=="" local statistic corr // default
+    if `"`over'"'!="" {
+        di as err "{bf:over()} not allowed for {bf:dstat pw}"
+        exit 198
     }
-    di as err "{bf:decompose()} not implemented yet..."
-    exit 499
+    if "`lower'"!="" & "`upper'"!="" {
+        local lower
+        local upper
+    }
+    
+    // compile argument for dstat summarize
+    local n: list sizeof varlist
+    if "`diagonal'"=="" {
+        if `n'<2 {
+            di as err "must spefify at least 2 variables"
+            exit 102
+        }
+    }
+    local stat `"`statistic'"'
+    if strpos(`"`stat'"',"(") {
+        local rest = substr(`"`stat'"', strpos(`"`stat'"',"(")+1, .)
+        local rest `",`rest'"'
+        local stat = substr(`"`stat'"', 1, strpos(`"`stat'"',"(")-1)
+    }
+    else local rest ")"
+    local stats
+    local cnames
+    forv i = 1/`n' {
+        local v1: word `i' of `varlist'
+        if      "`lower'"!="" local range `i'/`n'
+        else if "`upper'"!="" local range 1/`i'
+        else                  local range 1/`n'
+        local istats
+        forv j = `range' {
+            if "`diagonal'"=="" {
+                if `i'==`j' continue
+            }
+            local v2: word `j' of `varlist'
+            local istats `istats' `stat'(`v2'`rest'
+            local cnames `cnames' `v2'
+        }
+        if `"`istats'"'!="" {
+            local stats `stats' (`istats') `v1'
+        }
+    }
+    
+    // run dstat summarize and relabel results
+    Estimate summarize `stats' `if' `in' [`weight'`exp'], `options'
+    c_local generate_quietly `generate_quietly'
+    tempname b
+    matrix `b' = e(b)
+    matrix coln `b' = `cnames'
+    eret repost b=`b', rename
+    foreach m in se nobs sumw omit {
+        capt confirm matrix e(`m')
+        if _rc==1 exit _rc
+        if _rc continue
+        mat `b' = e(`m')
+        mat coln `b' = `cnames'
+        eret matrix `m' = `b'
+    }
+    eret local title `"`statistic'"'
 end
 
-program _Estimate, eclass
+program Estimate, eclass
     // syntax
     gettoken subcmd 0 : 0
     local lhs varlist(numeric fv)
@@ -1826,6 +1885,14 @@ program _Estimate, eclass
     else {
         fvexpand `varlist' if `touse'
         local varlist `r(varlist)'
+        if "`subcmd'"=="proportion" & "`nocategorical'"=="" {
+            if `"`r(fvops)'"'=="true" {
+                di as err "{bf:dstat proportion} does not allow " ///
+                    "factor-variable operators unless option " ///
+                    "{bf:nocategorical} is specified"
+                exit 101
+            }
+        }
     }
     
     // check poverty lines

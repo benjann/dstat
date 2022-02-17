@@ -1,5 +1,5 @@
 {smcl}
-{* 16feb2022}{...}
+{* 17feb2022}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -33,6 +33,14 @@ help for {hi:dstat}{...}
     {ifin} {weight} [{cmd:,}  {help dstat##opts:{it:options}} ]
 
 {pmore}
+    Pairwise associations (wrapper for {cmd:dstat summarize})
+
+{p 12 17 2}
+{cmd:dstat} {cmdab:pw} {varlist} {ifin} {weight} [{cmd:,}
+    {cmdab:s:tatistic}{cmd:(}{help dstat##pw:{it:stat}}{cmd:)}
+    {help dstat##opts:{it:options}} ]
+
+{pmore}
     Distribution functions
 
 {p 12 17 2}
@@ -55,7 +63,7 @@ help for {hi:dstat}{...}
 {p2col:{opt tip}}TIP curve{p_end}
 
 {pmore}
-    {it:varlist} may contain factor variables; see {help fvvarlist}.
+    {it:varlist} may contain factor variables (in most cases; an exception is {cmd:dstat pw}); see {help fvvarlist}.
     {p_end}
 {pmore}
     {cmd:fweight}s, {cmd:pweight}s, and {cmd:iweight}s are allowed; see {help weight}.
@@ -91,7 +99,8 @@ help for {hi:dstat}{...}
 {syntab:{help dstat##mainopts:Main}}
 {synopt:{opt nocase:wise}}do not perform casewise deletion of observations
     {p_end}
-{synopt:{cmdab:o:ver(}{help varname:{it:overvar}}[{cmd:,} {it:opts}]{cmd:)}}compute results for subpopulations defined by {it:overvar}
+{synopt:{cmdab:o:ver(}{help varname:{it:overvar}}[{cmd:,} {it:opts}]{cmd:)}}compute
+    results for subpopulations defined by {it:overvar}; not allowed with {cmd:dstat pw}
     {p_end}
 {synopt:{opt tot:al}}include results for total population
     {p_end}
@@ -142,6 +151,16 @@ help for {hi:dstat}{...}
 {synopt:{opt pl:ine(#|varname)}}default poverty line
     {p_end}
 {synopt:{opt pstr:ong}}use "strong" poverty definition
+    {p_end}
+
+{syntab:{help dstat##pw:Subcommand {bf:pw}}}
+{synopt:{opt s:tatistic(stat)}}type of association measure; default is {cmd:statistic(corr)}
+    {p_end}
+{synopt:{opt lo:wer}}lower-triangle elements only
+    {p_end}
+{synopt:{opt up:per}}upper-triangle elements only
+    {p_end}
+{synopt:{opt diag:onal}}include diagonal elements
     {p_end}
 
 {syntab:{help dstat##density:Subcommand {bf:density}}}
@@ -679,7 +698,8 @@ help for {hi:dstat}{...}
     {it:pline} as for {cmd:hci}
     {p_end}
 
-{syntab:Association}
+{marker association}{...}
+{syntab:Association measures}
 {synopt:{opt corr}[{cmd:(}{it:{help varname:by}}{cmd:)}]}correlation coefficient;
     {it:by} specifies the secondary variable; default is as set by option {cmd:by()}
     {p_end}
@@ -689,7 +709,7 @@ help for {hi:dstat}{...}
 {synopt:{opt b}[{cmd:(}{it:{help varname:by}}{cmd:)}]}alias for {cmd:slope}
     {p_end}
 {synopt:{opt covar}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}covariance; {it:df} applies small-sample
-    adjustment; default is {it:df}=1; can also specify {opt cov(df)};
+    adjustment; default is {it:df}=1; can also specify {opt covar(df)};
     {it:by} as for {cmd:corr}
     {p_end}
 {synopt:{opt rsquared}[{cmd:(}{it:{help varname:by}}{cmd:)}]}R squared, equal to {cmd:corr}^2;
@@ -731,6 +751,7 @@ help for {hi:dstat}{...}
     {cmd:renyi} = {cmd:entropy}
     {p_end}
 
+{marker catbivar}{...}
 {syntab:Categorical data (bivariate)}
 {synopt:{opt mindex}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:base}]{cmd:)}]}mutual information index (M index);
     {it:by} specifies the secondary variable; default is as set by option {cmd:by()};
@@ -792,8 +813,8 @@ help for {hi:dstat}{...}
 {phang}
     {cmd:over(}{help varname:{it:overvar}}[{cmd:,} {it:options}]{cmd:)}
     computes results for each subpopulation defined by the values of
-    {it:overvar}. {it:overvar} must be integer and nonnegative. {it:options} are
-    as follows:
+    {it:overvar}. {it:overvar} must be integer and nonnegative. {it:options} 
+    are as follows:
 
 {phang2}
     {opth sel:ect(numlist)} selects (and orders) subpopulations. {it:numlist}
@@ -847,6 +868,9 @@ help for {hi:dstat}{...}
 {phang2}
     {opt accum:ulate} accumulates results across subpopulations
     (running sum). Only one of {cmd:contrast} and {cmd:accumulate} is allowed.
+
+{pmore}
+    Option {cmd:over()} is not supported by {cmd:dstat pw}.
 
 {phang}
     {cmd:total} reports additional results across all subpopulations, including
@@ -1243,6 +1267,43 @@ help for {hi:dstat}{...}
     outcomes equal to the poverty line as non-poor. Specify {cmd:pstrong} to treat
     these cases as poor ("strong" definition). The choice of definition is relevant
     only for some of the poverty measures.
+
+{marker pw}{...}
+{dlgtab:Subcommand pw}
+
+{phang}
+    {opt statistic(stat)} selects the association measure to be 
+    computed. {it:stat} may be any statistic listed under
+    {help dstat##association:Association measures} or 
+    {help dstat##catbivar:Categorical data (bivariate)}
+    in the above table of summary statistics (omitting argument
+    {it:by}). {cmd:statistic(corr)} is the default. Type, for example,
+    {cmd:statistic(taub)} to compute Kendall's tau-b. Arguments other than
+    {it:by} can be provided in parentheses as usual; for example, type
+    {cmd:statistic(mindex(2))} to compute the M index with base 2.
+
+{pmore}
+    Most supported statistics are symmetric in the sense that the upper and
+    lower triangles of the association matrix (i.e. the matrix of pairwise
+    associations among the variables in {it:varlist}) contain the same results
+    (i.e. the association between X and Y is the same as the association beteen
+    Y and X). For asymmetric statistics (e.g. {cmd:slope}) the column
+    (i.e. equation) variable is treated as the dependent variable.
+
+{phang}
+    {opt lower} requests that the lower-triangle elements of the association
+    matrix be computed. The default is to compute both the lower-triangle elements
+    and the upper-triangle elements.
+
+{phang}
+    {opt upper} requests that the upper-triangle elements of the association
+    matrix be computed. The default is to compute both the lower-triangle elements
+    and the upper-triangle elements.
+
+{phang}
+    {opt diagonal} includes the diagonal elements of the association
+    matrix (associations of the variables with themselves). By default,
+    diagonal elements are omitted.
 
 {marker density}{...}
 {dlgtab:Subcommand density}
@@ -2149,12 +2210,14 @@ help for {hi:dstat}{...}
     Online: help for
     {helpb centile},
     {helpb ci},
+    {helpb correlate},
     {helpb cumul},
     {helpb histogram},
     {helpb kdensity},
     {helpb mean},
     {helpb pctile},
     {helpb proportion},
+    {helpb spearman},
     {helpb summarize},
     {helpb table},
     {helpb tabstat},
@@ -2172,6 +2235,7 @@ help for {hi:dstat}{...}
     {helpb ci2},
     {helpb dfl},
     {helpb distplot},
+    {helpb duncan},
     {helpb eqprhistogram},
     {helpb fre},
     {helpb glcurve},
@@ -2186,6 +2250,8 @@ help for {hi:dstat}{...}
     {helpb reldist},
     {helpb rif},
     {helpb robstat},
+    {helpb seg},
+    {helpb somersd},
     {helpb sumdist},
     {helpb svygei:svygei_svyatk},
     {helpb svylorenz}
