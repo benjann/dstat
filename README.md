@@ -42,7 +42,7 @@ Main changes:
     17feb2022 (version 1.3.4)
     - dstat pw added (wrapper for dstat summarize to compute pairwise correlations
       and similar)
-    - informative error message is no displayed if factor variables are used in
+    - informative error message is now displayed if factor variables are used in
       -dstat proportion- without option -nocategorical-
 
     14feb2022 (version 1.3.3)

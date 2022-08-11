@@ -1,4 +1,4 @@
-*! version 1.3.4  17feb2022  Ben Jann
+*! version 1.3.5  11aug2022  Ben Jann
 
 capt mata: assert(mm_version()>=200)
 if _rc {
@@ -2827,12 +2827,12 @@ void ds_parse_stats(`Int' n)
     A = asarray_create()
     // general
     asarray(A, "q"         , ".,0,100") // quantile at #
-    asarray(A, "p"         , ".,0,100") // quantile at #
-    asarray(A, "quantile"  , ".,0,100") // quantile at #
+    asarray(A, "p"         , ".,0,100") // same as q
+    asarray(A, "quantile"  , ".,0,100") // same as q
     asarray(A, "hdquantile", ".,0,100") // Harrell&Davis (1982) quantile at #
     asarray(A, "mquantile" , ".,0,100") // mid-quantile at #
     asarray(A, "d"         , ".")       // kernel density at #
-    asarray(A, "density"   , ".")       // kernel density at #
+    asarray(A, "density"   , ".")       // same as d
     asarray(A, "hist"      , ".:.")     // histogram density within [#,#]
     asarray(A, "cdf"       , ".")       // cdf at #
     asarray(A, "mcdf"      , ".")       // mid cdf at #
@@ -2842,8 +2842,9 @@ void ds_parse_stats(`Int' n)
     asarray(A, "fccdf"     , ".")       // floor ccdf at #
     asarray(A, "prop"      , ".;.z")    // proportion equal to # or within [#,#]
     asarray(A, "pct"       , ".;.z")    // percent equal to # or within [#,#]
-    asarray(A, "f"         , ".;.z")    // frequency equal to # or within [#,#]
-    asarray(A, "freq"      , ".;.z")    // frequency equal to # or within [#,#]
+    asarray(A, "f"         , ".z;.z")   // frequency: overall, equal to #, or within [#,#]
+    asarray(A, "freq"      , ".z;.z")   // same as f
+    asarray(A, "count"     , ".z;.z")   // same as f
     asarray(A, "total"     , ".z;.z")   // overall total or total equal to # or within [#,#]
     asarray(A, "min"       , "")        //
     asarray(A, "max"       , "")        //
@@ -2959,7 +2960,8 @@ void ds_parse_stats(`Int' n)
     asarray(A, "corr"      , "by")      // correlation
     asarray(A, "rsquared"  , "by")      // R squared
     asarray(A, "slope"     , "by")      // slope of linear regression
-    asarray(A, "b"         , "by")      // synonym for slope
+    asarray(A, "b"         , "by")      // same as slope
+    asarray(A, "cohend"    , "by;2")    // Cohen's d
     asarray(A, "covar"     , "by;1")    // covariance
     asarray(A, "spearman"  , "by")      // spearman rank correlation
     asarray(A, "taua"      , "by;0")    // Kendall's tau-a
@@ -7182,15 +7184,27 @@ void ds_sum_freq(`Data' D, `Grp' G, `Int' i, `RR' o)
     _ds_sum_freq(D, G, i, o[1], o[2], 1)
 }
 
+void ds_sum_count(`Data' D, `Grp' G, `Int' i, `RR' o)
+{
+    _ds_sum_freq(D, G, i, o[1], o[2], 1)
+}
+
 void _ds_sum_freq(`Data' D, `Grp' G, `Int' i, `RS' lo, `RS' up, `Bool' tot)
 {
     `RC' z
     
-    if (up==.z) {
+    if (lo==.z) {   // overall count
+        D.b[i] = G.W
+        if (D.noIF) return
+        if (tot) D.IFtot[i] = D.b[i]
+        ds_set_IF(D, G, i, J(G.N,1,0), 0, 1)
+        return
+    }
+    if (up==.z) {   // count x = #
         z = G.X():==lo
         D.b[i] = quadsum(G.w():*z)
     }
-    else {
+    else {          // count x in [lo,up]
         if (lo>up) D.b[i] = .
         else {
             z = G.X():>=lo :& G.X():<=up
@@ -9149,6 +9163,52 @@ void ds_sum_slope(`Data' D, `Grp' G, `Int' i)
     zX = G.X() :- mv[1,1]
     zY = G.Y() :- mv[1,2]
     ds_set_IF(D, G, i, ((zX:*zY :- cov) - cov/VY*(zY:^2 :- VY)) / (VY*G.W))
+}
+
+void ds_sum_cohend(`Data' D, `Grp' G, `Int' i, `RS' df)
+{
+    `RS'    m1, m2, d, v, c, W1, W2
+    `RC'    l, z
+    `BoolC' g1
+    `IntC'  p
+    
+    l = _mm_unique(G.Ys())       // levels of by
+    if (length(l)!=2) D.b[i] = . // set missing if not two levels
+    else {
+        z  = J(G.N, 1, .)
+        g1 = G.Y():==l[1]
+        // level 1
+        p = selectindex(g1)
+        if (length(p)) {
+            m1 = ds_mean(G.X()[p], rows(G.w())==1 ? G.w() : G.w()[p])
+            z[p] = G.X()[p] :- m1
+        }
+        // level 2
+        p = selectindex(!g1)
+        if (length(p)) {
+            m2 = ds_mean(G.X()[p], rows(G.w())==1 ? G.w() : G.w()[p])
+            z[p] = G.X()[p] :- m2
+        }
+        // pooled variance
+        if (df!=0) {
+            if (D.wtype==1) c = G.W / (G.W - df)
+            else            c = G.N / (G.N - df)
+        }
+        else c = 1
+        v = c * quadcross(z, G.w(), z) / G.W
+        // Cohen's d
+        d = m2 - m1
+        D.b[i] = d / sqrt(v)
+    }
+    if (_ds_sum_omit(D, i)) return
+    // compute IF
+    if (D.noIF) return
+    W1 = rows(G.w())==1 ? G.w()*sum(g1) : quadsum(G.w():*g1)
+    W2 = G.W - W1
+    ds_set_IF(D, G, i, (
+          ((z:*!g1) * (G.W/W2) - (z:*g1) * (G.W/W1)) / sqrt(v) // numerator
+        - (c*z:^2 :- v) * ((d / (2*v*sqrt(v))))                // denominator
+        ) / G.W)
 }
 
 void ds_sum_covar(`Data' D, `Grp' G, `Int' i, `RS' df)

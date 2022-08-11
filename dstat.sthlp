@@ -1,5 +1,5 @@
 {smcl}
-{* 17feb2022}{...}
+{* 11aug2022}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -51,10 +51,10 @@ help for {hi:dstat}{...}
 
 {p2colset 15 28 30 2}{...}
 {p2col:{opt d:ensity}}density function{p_end}
-{p2col:{opt pdf}}alias for {cmd:density}{p_end}
+{p2col:{opt pdf}}same as {cmd:density}{p_end}
 {p2col:{opt h:istogram}}histogram{p_end}
 {p2col:{opt p:roportion}}probability distribution{p_end}
-{p2col:{opt freq:uency}}alias for {cmd:proportion} with option {cmd:frequency}{p_end}
+{p2col:{opt freq:uency}}same as {cmd:proportion} with option {cmd:frequency}{p_end}
 {p2col:{opt c:df}}cumulative distribution function{p_end}
 {p2col:{opt cc:df}}complementary CDF/survival function{p_end}
 {p2col:{opt q:uantile}}quantile function{p_end}
@@ -416,7 +416,7 @@ help for {hi:dstat}{...}
 {syntab:Points in the distribution}
 {synopt:{opt quantile}{cmd:(}{it:p}{cmd:)}}{it:p}/100 quantile; {it:p} in [0,100]
     {p_end}
-{synopt:{opt p}{cmd:(}{it:p}{cmd:)}}alias for {cmd:quantile()}
+{synopt:{opt p}{cmd:(}{it:p}{cmd:)}}same as {cmd:quantile()}
     {p_end}
 {synopt:{opt hdquantile}{cmd:(}{it:p}{cmd:)}}{it:p}/100 Harrell/Davis (1982) quantile; {it:p} in [0,100]
     {p_end}
@@ -436,7 +436,9 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt pct}{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}}percent of data equal to {it:x1} or within [{it:x1},{it:x2}]
     {p_end}
-{synopt:{opt freq}{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}}frequency of data equal to {it:x1} or within [{it:x1},{it:x2}]
+{synopt:{opt freq}[{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}]}overall frequency, or frequency of data equal to {it:x1} or within [{it:x1},{it:x2}]
+    {p_end}
+{synopt:{opt count}[{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}]}same as {cmd:freq()}
     {p_end}
 {synopt:{opt total}[{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}]}overall total, or total of data equal to {it:x1} or within [{it:x1},{it:x2}]
     {p_end}
@@ -706,7 +708,12 @@ help for {hi:dstat}{...}
 {synopt:{opt slope}[{cmd:(}{it:{help varname:by}}{cmd:)}]}regression slope 
     (equal to mean difference if {it:by} is dichotomous); {it:by} as for {cmd:corr}
     {p_end}
-{synopt:{opt b}[{cmd:(}{it:{help varname:by}}{cmd:)}]}alias for {cmd:slope}
+{synopt:{opt b}[{cmd:(}{it:{help varname:by}}{cmd:)}]}same as {cmd:slope}
+    {p_end}
+{synopt:{opt cohend}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}Cohen's d
+    (allowing unequal group sizes); {it:df} applies small-sample
+    adjustment; default is {it:df}=2; can also specify {opt cohend(df)};
+    {it:by} is assumed to be dichotomous
     {p_end}
 {synopt:{opt covar}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}covariance; {it:df} applies small-sample
     adjustment; default is {it:df}=1; can also specify {opt covar(df)};
