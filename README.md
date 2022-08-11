@@ -39,6 +39,11 @@ Installation from GitHub:
 
 Main changes:
 
+    11aug2022 (version 1.3.5)
+    - statistic -cohend- added
+    - statistic -freq- without argument can now be used to obtain
+      overall frequence/sum of weights; can also type -count- 
+
     17feb2022 (version 1.3.4)
     - dstat pw added (wrapper for dstat summarize to compute pairwise correlations
       and similar)
