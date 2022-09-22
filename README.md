@@ -39,6 +39,10 @@ Installation from GitHub:
 
 Main changes:
 
+    22sep2022 (version 1.3.6)
+    - dstat returned error if histogram method -scott- was specified; this is fixed
+    - now using errprintf() to display errors in Mata
+
     11aug2022 (version 1.3.5)
     - statistic -cohend- added
     - statistic -freq- without argument can now be used to obtain

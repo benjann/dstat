@@ -1,4 +1,4 @@
-*! version 1.3.5  11aug2022  Ben Jann
+*! version 1.3.6  22sep2022  Ben Jann
 
 capt mata: assert(mm_version()>=200)
 if _rc {
@@ -3062,8 +3062,8 @@ void _ds_parse_stats(`T' A, `SC' list, `Stats' S, `SR' stats)
 
 void _ds_parse_stats_err(`SS' s, | `SS' msg)
 {
-    if (args()<2) ds_errtxt(sprintf("{bf:%s} invalid", s))
-    else ds_errtxt(sprintf("{bf:%s} invalid; %s", s, msg))
+    if (args()<2) errprintf("{bf:%s} invalid\n", s)
+    else errprintf("{bf:%s} invalid; %s\n", s, msg)
     exit(198)
 }
 
@@ -3598,11 +3598,6 @@ void ds_graph_select(`SS' list, `SS' select)
     y = J(N, 1, x0)
     y[p] = x
     return(y)
-}
-
-void ds_errtxt(`SS' s)
-{   // display error message even if -quietly-
-    stata("di as err " + "`" + `"""' + s + `"""' + "'")
 }
 
 `RS' ds_mean(`RC' X, `RC' w, | `RS' W)
@@ -4841,8 +4836,8 @@ void dstat()
     if (D.noIF) return
     if (hasmissing(D.IF)) {
         D.IF[.,.] = editmissing(D.IF, 0)
-        ds_errtxt("warning: influence function(s) contain missing;" +
-            " missing reset to zero")
+        errprintf("warning: influence function(s) contain missing;" +
+            " missing reset to zero\n")
     }
     ds_recenter_IF(D)
     if (D.nose) return
@@ -5285,13 +5280,13 @@ void _ds_get_levels(`Data' D)
         //D.AT[j] = &(__ds_get_levels(D.X[,j]))
         if (!D.cat) continue
         if (any(*D.AT[j]:<0)) {
-            ds_errtxt(sprintf("{bf:%s} has negative values; specify " + 
-                "option {bf:nocategorical} to allow negative values", D.xvars[j]))
+            errprintf("{bf:%s} has negative values; specify option " + 
+                "{bf:nocategorical} to allow negative values\n", D.xvars[j])
             exit(452)
         }
         if (any(*D.AT[j]:!=trunc(*D.AT[j]))) {
-            ds_errtxt(sprintf("{bf:%s} has noninteger values; specify " + 
-                "option {bf:nocategorical} to allow noninteger values", D.xvars[j]))
+            errprintf("{bf:%s} has noninteger values; specify option " + 
+                "{bf:nocategorical} to allow noninteger values\n", D.xvars[j])
             exit(452)
         }
     }
@@ -5518,10 +5513,10 @@ void ds_recenter_IF(`Data' D)
     m   = quadcross(D.w, D.IF) - D.IFtot'
     mrd = mreldif(m+D.b', D.b')
     if (mrd<=tol) return
-    ds_errtxt("warning: total of influence function(s) deviates from zero")
-    ds_errtxt(sprintf("         maximum relative error = %g", mrd))
+    errprintf("warning: total of influence function(s) deviates from zero\n")
+    errprintf("         maximum relative error = %g\n", mrd)
     D.IF[.,.] = D.IF :- m/D.W
-    ds_errtxt("         influence function(s) recentered at zero")
+    errprintf("         influence function(s) recentered at zero\n")
 }
 
 void ds_set_cstripe(`Data' D, `Int' i, `Int' j, `Int' a, `Int' b, `SC' coefs)
@@ -5684,13 +5679,13 @@ void ds_set_density(`Data' D, `Grp' G, | `Bool' nosort)
         // mm_density() does not check support if sort==1
         if (D.S.lb()<.) {
             if (G.Xs()[1]<D.S.lb()) {
-                ds_errtxt("{err}{it:X} contains values out of support")
+                errprintf("{it:X} contains values out of support\n")
                 exit(3300)
             }
         }
         if (D.S.ub()<.) {
             if (G.Xs()[G.N]>D.S.ub()) {
-                ds_errtxt("{err}{it:X} contains values out of support")
+                errprintf("{it:X} contains values out of support\n")
                 exit(3300)
             }
         }
@@ -5911,7 +5906,7 @@ void ds_balance_eb(`Data' D, `Bal' bal, `Level' L)
     L.wb = L.w // backup base weights
     L.w  = mm_ebal_W(S)
     if (hasmissing(L.w)) {
-        ds_errtxt("unexpected error; balancing weights contain missing values")
+        errprintf("unexpected error; balancing weights contain missing values\n")
         exit(499)
     }
 
@@ -6865,7 +6860,7 @@ void _dstat_sum(`Data' D, `Grp' G, `Int' j, `Int' i, `SS' s)
     // compute statistic
     f = findexternal("ds_sum_"+stat+"()")
     if (f==NULL) {
-        ds_errtxt("function ds_sum_"+stat+"() not found")
+        errprintf("function ds_sum_%s() not found\n", stat)
         exit(499)
     }
     if (l) (*f)(D, G, i, o)
@@ -6887,8 +6882,8 @@ void _dstat_sum(`Data' D, `Grp' G, `Int' j, `Int' i, `SS' s)
         printf("{txt}(%s)\n", t)
     }
     else {
-        ds_errtxt(t)
-        ds_errtxt("specify option {bf:relax} to use valid observations only")
+        errprintf(t+"\n")
+        errprintf("specify option {bf:relax} to use valid observations only\n")
         exit(459)
     }
     return(z :< .) // tag valid observations
@@ -7438,7 +7433,7 @@ void ds_sum_variance(`Data' D, `Grp' G, `Int' i, `RS' df)
 {    // replaces m
     `RC' v
     
-    if (args()<4) df = 1
+    if (args()<5) df = 1
     m = ds_mean(X, w, W)
     v = quadcrossdev(X,m, w, X,m) / W
     if (df) {
