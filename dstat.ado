@@ -1,4 +1,4 @@
-*! version 1.3.6  22sep2022  Ben Jann
+*! version 1.3.7  20oct2022  Ben Jann
 
 capt mata: assert(mm_version()>=200)
 if _rc {
@@ -6904,7 +6904,7 @@ void _dstat_sum(`Data' D, `Grp' G, `Int' j, `Int' i, `SS' s)
 void _ds_sum_fixed(`Data' D, `Int' i, `RS' b)
 {
     D.b[i] = b
-    if (D.noIF) return(1)
+    if (D.noIF) return
     D.IF[,i] = J(D.N, 1, 0)
 }
 

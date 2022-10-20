@@ -39,6 +39,10 @@ Installation from GitHub:
 
 Main changes:
 
+    20oct2022 (version 1.3.7)
+    - dstat returned error if option -nose- was applied with statistics that set
+      standard errors to zero (e.g. min and max); this is fixed
+    
     22sep2022 (version 1.3.6)
     - dstat returned error if histogram method -scott- was specified; this is fixed
     - now using errprintf() to display errors in Mata
