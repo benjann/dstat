@@ -1,5 +1,5 @@
 {smcl}
-{* 11aug2022}{...}
+{* 19nov2022}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -167,6 +167,8 @@ help for {hi:dstat}{...}
 {synopt:{opt n(#)}}size of evaluation grid; default is {cmd:n(99)}
     {p_end}
 {synopt:{opt com:mon}}use common evaluation points across subpopulations
+    {p_end}
+{synopt:[{cmd:l}|{cmd:r}]{cmd:tight}}use tight evaluation grid
     {p_end}
 {synopt:{opt range(a b)}}use grid from {it:a} to {it:b}; default is to determine
     grid range from data
@@ -1326,6 +1328,16 @@ help for {hi:dstat}{...}
     all subpopulations. The default is to determine the evaluation points based on
     the data range within subpopulation. If {cmd:common} is specified, the
     evaluation points will be based on the data range in the total population.
+
+{phang}
+    [{cmd:l}|{cmd:r}]{cmd:tight} omits padding when determining the evaluation
+    grid. Specify {cmd:tight} to omit padding on both sides, that is, to use a grid
+    from the observed minimum to the observed maximum of the data. Specify
+    {cmd:ltight} to omit padding only on the left, that is, to use the observed
+    minimum as the lower bound of the grid. Specify {cmd:rtight} to omit padding
+    only on the right, that is, to use the observed maximum as the upper bound
+    of the grid. Option {cmd:tight} has no effect if {cmd:range()} or {cmd:at()}
+    is specified.
 
 {phang}
     {opt range(a b)} specifies the range of the evaluation grid. The default is

@@ -39,6 +39,9 @@ Installation from GitHub:
 
 Main changes:
 
+    21nov2022 (version 1.3.8)
+    - dstat density: option [l|r]tight added; requires newest update of moremata
+
     20oct2022 (version 1.3.7)
     - dstat returned error if option -nose- was applied with statistics that set
       standard errors to zero (e.g. min and max); this is fixed

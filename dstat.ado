@@ -1,8 +1,8 @@
-*! version 1.3.7  20oct2022  Ben Jann
+*! version 1.3.8  21nov2022  Ben Jann
 
-capt mata: assert(mm_version()>=200)
+capt mata: assert(mm_version()>=201)
 if _rc {
-    di as error "{bf:moremata} version 2.0.0 or newer is required; " _c
+    di as error "{bf:moremata} version 2.0.1 or newer is required; " _c
     di as error "type {stata ssc install moremata, replace}"
     error 499
 }
@@ -1611,7 +1611,7 @@ program Estimate, eclass
     local lhs varlist(numeric fv)
     if "`subcmd'"=="density" {
         local opts n(numlist int >=1 max=1) COMmon at(str)/*
-            */ range(numlist min=2 max=2) /*
+            */ range(numlist min=2 max=2) tight ltight rtight /*
             */ UNConditional
     }
     else if "`subcmd'"=="histogram" {
@@ -1705,6 +1705,10 @@ program Estimate, eclass
     }
     if "`subcmd'"=="density" {
         if `"`at'`n'"'=="" local n 99
+        if "`tight'"!="" {
+            local ltight ltight
+            local rtight rtight
+        }
     }
     else if "`subcmd'"=="histogram" {
         if `"`at'"'=="" Parse_hist_n, `n' `ep'
@@ -4591,8 +4595,10 @@ struct `DATA' {
     `RM'    at         // vector of evaluation points (if relevant)
     `Bool'  hasdens    // whether density estimation has been employed
     `PDF'   S          // density estimation object (density, quantile, summarize)
-    `Bool'  exact      // use exact density estimator (density, quantile, summarize)
-    `RR'    bwidth     // container for bandwidth matrix (density, quantile, summarize)
+    `Bool'  exact      // use exact density estimator
+    `Bool'  ltight     // use tight lower bound for density evaluation grid
+    `Bool'  rtight     // use tight upper bound for density evaluation grid
+    `RR'    bwidth     // container for density-estimation bandwidth matrix
     `PR'    AT         // pointer rowvector of sets of evaluation points
     `Bool'  ipolate    // interpolate ECDF (cdf/ccdf)
     `Bool'  mid        // midpoint adjustment (cdf/ccdf)
@@ -4727,6 +4733,8 @@ void dstat()
             st_local("bwrd")!="")
         D.S.n(strtoreal(st_local("napprox")), strtoreal(st_local("pad")))
         D.exact = st_local("exact")!=""
+        D.ltight = (st_local("ltight")!="" ? .z : .)
+        D.rtight = (st_local("rtight")!="" ? .z : .)
         if (st_local("bwidth")!="") {
             if (st_local("bwmat")!="") D.bwidth = st_matrix(st_local("bwidth"))[1,]
             else D.bwidth = strtoreal(tokens(st_local("bwidth")))
@@ -5299,8 +5307,8 @@ void _ds_get_at_dens(`Data' D)
     `RR'  bw, range, minmax
     `RC'  X
     
-    // if lb() and ub() specified: no bandwidth required
-    if (D.S.lb()<. & D.S.ub()<.) {
+    // if lb() and ub() specified
+    if (D.S.lb()<. & D.S.ub()<. & D.ltight!=.z & D.rtight!=.z) {
         D.AT = &(rangen(D.S.lb(), D.S.ub(), D.n))
         return
     }
@@ -5325,19 +5333,26 @@ void _ds_get_at_dens(`Data' D)
             }
         }
         else X = D.X[,j]
-        if (bw[j]>=.) {
-            D.S.data(X, D.w, D.wtype>=2, 0)
-            bw[j] = D.S.h()
-            if (bw[j]>=.) bw[j] = epsilon(1)
-        }
         // mimic grid definition from mm_density()
-        range = (D.S.lb(), D.S.ub())
+        range = J(1,2,.)
         minmax = minmax(X)
-        tau = mm_diff(minmax) * D.S.pad()
-        tau = min((tau, bw[j] * (D.S.kernel()=="epanechnikov" ? sqrt(5) : 
-            (D.S.kernel()=="cosine" ? .5 : (D.S.kernel()=="gaussian" ? 3 : 1)))))
-        if (range[1]>=.) range[1] = minmax[1] - tau
-        if (range[2]>=.) range[2] = minmax[2] + tau
+        if (D.ltight==.z)    range[1] = minmax[1]
+        else if (D.S.lb()<.) range[1] = D.S.lb()
+        if (D.rtight==.z)    range[2] = minmax[2]
+        else if (D.S.ub()<.) range[2] = D.S.ub()
+        if (missing(range)) {
+            if (bw[j]>=.) {
+                D.S.data(X, D.w, D.wtype>=2, 0)
+                bw[j] = D.S.h()
+                if (bw[j]>=.) bw[j] = epsilon(1)
+            }
+            tau = mm_diff(minmax) * D.S.pad()
+            tau = min((tau, bw[j] * (D.S.kernel()=="epanechnikov" ? sqrt(5) : 
+                (D.S.kernel()=="cosine" ? .5 : 
+                (D.S.kernel()=="gaussian" ? 3 : 1)))))
+            if (range[1]>=.) range[1] = minmax[1] - tau
+            if (range[2]>=.) range[2] = minmax[2] + tau
+        }
         D.AT[j] = &(rangen(range[1], range[2], D.n)) 
     }
     if (D.total) { // store bandwidth to avoid double work
@@ -5961,11 +5976,11 @@ void dstat_density(`Data' D)
             if (D.AT[D.k]==NULL) {
                 b = a + D.n - 1
                 if (G.N) {
-                    D.b[|a \ b|] = D.S.d(D.n, ., ., D.exact)
+                    D.b[|a \ b|] = D.S.d(D.n, D.ltight, D.rtight, D.exact)
                     AT = D.S.at()
                 }
                 else {
-                    if (D.S.lb()<. & D.S.ub()<.) {
+                    if (D.S.lb()<. & D.S.ub()<. & D.ltight!=.z & D.rtight!=.z) {
                         AT = rangen(D.S.lb(), D.S.ub(), D.n)
                     }
                     else AT = J(D.n, 1, .z)
