@@ -932,7 +932,7 @@ program _Replay, rclass
                 }
                 else local cimatrix cimatrix(e(ci))
                 if `"`e(citype)'"'!="normal" {
-                    local citi: word 1 of `e(citype)'
+                    local citi `"`e(citype)'"'
                     if      `"`citi'"'=="agresti"  local citi "Agresti-Coull"
                     else if `"`citi'"'=="exact"    local citi "Clopper–Pearson"
                     else if `"`citi'"'=="jeffreys" local citi "Jeffreys"
