@@ -1,4 +1,4 @@
-*! version 1.3.8  21nov2022  Ben Jann
+*! version 1.3.9  05dec2022  Ben Jann
 
 capt mata: assert(mm_version()>=201)
 if _rc {
@@ -90,7 +90,10 @@ program dstat, eclass properties(svyb svyj)
     Replay, `diopts'
     if `"`e(generate)'"'!="" {
         if `"`generate_quietly'"'=="" {
+            tempname rcurrent
+            _return hold `rcurrent'
             describe `e(generate)'
+            _return restore `rcurrent'
         }
     }
 end
@@ -512,6 +515,8 @@ program Predict
         di as err "last dstat results not found"
         exit 301
     }
+    tempname rcurrent
+    _return hold `rcurrent'
     syntax [anything] [if] [in], [ SCores RIF COMpact QUIetly ]
     _score_spec `anything', scores `bmat'
     local vlist `s(varlist)'
@@ -527,6 +532,7 @@ program Predict
     if "`quietly'"=="" {
         describe `vlist'
     }
+    _return restore `rcurrent'
 end
 
 program Predict_compute_IFs
@@ -765,13 +771,15 @@ program Set_CI, eclass
 end
 
 program Parse_citype
-    capt n syntax [, normal logit probit atanh log ]
+    capt n syntax [, NORMal logit probit atanh log ///
+        AGRESti exact JEFFreys wilson ]
     if _rc==1 exit _rc
     if _rc {
         di as error "error in option {bf:citype()}"
         exit 198
     }
-    local citype `normal' `logit' `probit' `atanh' `log'
+    local citype `normal' `logit' `probit' `atanh' `log' `agresti' `exact'/*
+        */ `jeffreys' `wilson'
     if `:list sizeof citype'>1 {
         di ar error "only one {it:method} allowed in {bf:citype()}"
         exit 198
@@ -794,15 +802,16 @@ program Replay
     }
     local options `level' `citype' `options'
     Set_CI, `level' `citype'
-    if c(noisily) {
-        _Replay, `graph' `options'
-    }
+    _Replay, `graph' `options'
     if "`graph'"!="" {
+        tempname rcurrent
+        _return hold `rcurrent'
         Graph, `graph2'
+        _return restore `rcurrent'
     }
 end
 
-program _Replay
+program _Replay, rclass
     local subcmd `"`e(subcmd)'"'
     syntax [, citype(passthru) noHeader NOTABle TABle ///
         NOPValues PValues cref GRaph vsquish * ]
@@ -923,7 +932,13 @@ program _Replay
                 }
                 else local cimatrix cimatrix(e(ci))
                 if `"`e(citype)'"'!="normal" {
-                    local cimatrix `cimatrix' cititle(`e(citype)' transformed)
+                    local citi: word 1 of `e(citype)'
+                    if      `"`citi'"'=="agresti"  local citi "Agresti-Coull"
+                    else if `"`citi'"'=="exact"    local citi "Clopper–Pearson"
+                    else if `"`citi'"'=="jeffreys" local citi "Jeffreys"
+                    else if `"`citi'"'=="wilson"   local citi "Wilson"
+                    else local citi `"`citi' transformed"'
+                    local cimatrix `cimatrix' cititle(`citi')
                 }
             }
         }
@@ -935,6 +950,7 @@ program _Replay
             if "`CI'"!="" mata: ds_drop_cref("`CI'", 0, 1)
         }
         _Replay_table "`B'" "`V'" `nopvalues' `vmatrix' `cimatrix' `options'
+        return add
         if c(stata_version)<15 {
             if `"`citype'"'!="" /// user specified citype()
                 & `"`e(citype)'"'!="normal" {
@@ -945,8 +961,8 @@ program _Replay
                     if _rc==1 exit _rc
                 }
                 if _rc==0 {
-                    di as txt "(table displays untransformed CIs; Stata 15 or" /*
-                        */ " newer required for transformed CIs in output table)"
+                    di as txt "(table displays normal CIs; Stata 15 or" /*
+                        */ " newer required for other CI types in output table)"
                 }
             }
         }
@@ -1014,9 +1030,10 @@ program Graph
     
     // syntax
     syntax [, Level(passthru) citype(passthru) VERTical HORizontal ///
-        MERge flip BYStats BYStats2(str) NOSTEP STEP NOREFline REFline(str) ///
-        SELect(str) GSELect(str) PSELect(str) cref ///
+        MERge OVERLay flip BYStats BYStats2(str) NOSTEP STEP ///
+        NOREFline REFline(str) SELect(str) GSELect(str) PSELect(str) cref ///
         BYOPTs(str) PLOTLabels(str asis) * ]
+    if "`overlay'"!="" local merge merge
     _Graph_parse_select "" `"`select'"'
     _Graph_parse_select g `"`gselect'"'
     _Graph_parse_select p `"`pselect'"'
@@ -1635,12 +1652,12 @@ program Estimate, eclass
         local opts n(numlist int >=1 max=1) at(str) /*
             */ range(numlist min=2 max=2 >=0 <=1) /*
             */ gap sum GENERALized ABSolute PERcent /*
-            */ BYvar(varname) Zvar(varname) // zvar() is old syntax
+            */ BYvar(varname numeric) Zvar(varname numeric) // zvar() is old syntax
     }
     else if "`subcmd'"=="share" {
         local opts n(numlist int >=1 max=1) at(str) /*
             */ PROPortion PERcent sum AVErage GENERALized /*
-            */ BYvar(varname) Zvar(varname) // zvar() is old syntax
+            */ BYvar(varname numeric) Zvar(varname numeric) // zvar() is old syntax
     }
     else if "`subcmd'"=="tip" {
         local opts n(numlist int >=1 max=1) at(str) /*
@@ -1649,7 +1666,8 @@ program Estimate, eclass
     }
     else if "`subcmd'"=="summarize" {
         local lhs anything(id="varlist")
-        local opts relax BYvar(varname) Zvar(varname) /* zvar() is old syntax
+        local opts relax /*
+            */ BYvar(varname numeric) Zvar(varname numeric) /* zvar() is old syntax
             */ PLine(passthru) PSTRong
     }
     else exit 499
@@ -2069,7 +2087,6 @@ program Estimate, eclass
     if "`nose'"=="" {
         eret local vcetype "`vcetype'"
         eret local vce "`vce'"
-        eret local vcesvy "`vcesvy'"
         eret scalar df_r = `df_r'
         if "`vce'"=="cluster" {
             eret local clustvar "`clustvar'"
@@ -2902,6 +2919,7 @@ void ds_parse_stats(`Int' n)
     asarray(A, "cv"        , "1")       // coefficient of variation
     asarray(A, "lvar"      , "1")       // logarithmic variance
     asarray(A, "vlog"      , "1")       // variance of logarithm
+    asarray(A, "sdlog"     , "1")      // standard deviation of logarithm
     asarray(A, "top"       , "10,0,100") // top share
     asarray(A, "bottom"    , "40,0,100") // bottom share
     asarray(A, "mid"       , "40,0,100:90,0,100") // mid share
@@ -3076,7 +3094,7 @@ void _ds_parse_stats_k(`Stats' S, `Int' k, `SS' s0, `SS' s, `SS' o0, `SS' mask)
     // s expanded name
     // o arguments as specified (including parentheses)
     `Bool' br
-    `Int'  i, n, j, nj, yj
+    `Int'  i, n, j, nj
     `SS'   o, y
     `RS'   mi
     `SR'   args, opts
@@ -3116,12 +3134,8 @@ void _ds_parse_stats_k(`Stats' S, `Int' k, `SS' s0, `SS' s, `SS' o0, `SS' mask)
             else {
                 if (strtoreal(args[j])<.) y = S.yvar 
                 else {
-                    y = args[j]
-                    yj = _st_varindex(y, st_global("c(varabbrev)")=="on")
-                    if (yj>=.) _ds_parse_stats_err(s0+o0,
-                               sprintf("variable {bf:%s} not found", y))
-                    y = st_varname(yj)
-                    j++     // [move to next argument only of by is provided!]
+                    y = _ds_parse_stats_getvar(args[j], s0, o0)
+                    j++  // [move to next argument only of by is provided!]
                 }
             }
             if (y=="") _ds_parse_stats_err(s0+o0, 
@@ -3156,11 +3170,7 @@ void _ds_parse_stats_k(`Stats' S, `Int' k, `SS' s0, `SS' s, `SS' o0, `SS' mask)
                 opts[i] = "pl" + args[j]
             }
             else {
-                y = args[j]
-                yj = _st_varindex(y, st_global("c(varabbrev)")=="on")
-                if (yj>=.) _ds_parse_stats_err(s0+o0, 
-                           sprintf("variable {bf:%s} not found", y))
-                y = st_varname(yj)
+                y = _ds_parse_stats_getvar(args[j], s0, o0)
                 if (!anyof(S.yvars, y)) {
                     S.yvars  = (S.yvars, y)
                     S.plvars = (S.plvars, y)
@@ -3191,6 +3201,21 @@ void _ds_parse_stats_k(`Stats' S, `Int' k, `SS' s0, `SS' s, `SS' o0, `SS' mask)
     if (nj>=j) _ds_parse_stats_err(s0+o0, "too many arguments")
     S.stats[,k] = s0 + _ds_parse_stats_brace(o, br) \ 
                   s  + "(" + invtokens(opts, ",") + ")"
+}
+
+`SS' _ds_parse_stats_getvar(`SS' y, `SS' s0, `SS' o0)
+{
+    `Int' j
+    
+    j = _st_varindex(y, st_global("c(varabbrev)")=="on")
+    if (j>=.) {
+        _ds_parse_stats_err(s0+o0, sprintf("variable {bf:%s} not found", y))
+    }
+    if (!st_isnumvar(j)) {
+        _ds_parse_stats_err(s0+o0, sprintf("string variables not allowed" +
+            "; {bf:%s} is a string variable", y))
+    }
+    return(st_varname(j))
 }
 
 `RM' _ds_parse_stats_mask(`SS' mask)
@@ -3380,79 +3405,209 @@ void ds_svylbl_b_undo()
 // computation of transformed CIs
 // --------------------------------------------------------------------------
 
-void ds_Get_CI(`SS' cimat, `RS' level0, `SS' citype, `RC' scale)
+void ds_Get_CI(`SS' cimat, `RS' level, `SS' citype, `RC' scale)
 {
-    `Int' i, r 
-    `RS'  level
-    `RR'  b, df, se, z
-    `RM'  CI
-    `SM'  cstripe
+    `RS'   p
+    `RR'   b, df, se
+    `RM'   CI
+    `SM'   cstripe
     
     // obtain b and se
     b = st_matrix("e(b)")
     cstripe = st_matrixcolstripe("e(b)")
     se = sqrt(diagonal(st_matrix("e(V)")))'
     if (length(se)==0) se = st_matrix("e(se)")
-    r = length(b)
-    // obtain critical value
-    level = 1 - (1 - level0/100)/2
+    // obtain df
     df = .
     if (st_global("e(mi)")=="mi") {
         if      (st_matrix("e(df_mi)")!=J(0,0,.))   df = st_matrix("e(df_mi)")
         else if (st_numscalar("e(df_r)")!=J(0,0,.)) df = st_numscalar("e(df_r)")
     }
     else if (st_numscalar("e(df_r)")!=J(0,0,.))     df = st_numscalar("e(df_r)")
-    if (length(df)==1) z = df>2e17 ? invnormal(level) : invttail(df, 1-level)
-    else {
-        z = J(1, r, .)
-        for (i=1; i<=r; i++) {
-            z[i] = df[i]>2e17 ? invnormal(level) : invttail(df[i], 1-level)
-        }
-    }
+    // alpha / 2
+    p = (100 - level)/200
     // compute ci
-    if (citype=="normal") {
-        CI = (b :- z:*se \ b :+ z:*se)
-    }
+    if (citype=="normal") CI = _ds_Get_CI_normal(b, se, df, p)
     else {
         if (scale!=1) {
             b = b / scale
             se = se / scale
         }
-        if (citype=="logit") { // logit
-            z = z :* se :/ (b:* (1 :- b))
-            CI = invlogit(logit(b) :- z \ logit(b) :+ z)
-            if (hasmissing(CI)) {
-                _ds_Get_CI_editif(CI, b, 0)
-                _ds_Get_CI_editif(CI, b, 1)
-            }
-        }
-        else if (citype=="probit") { // probit
-            z = z :* se :/ normalden(invnormal(b))
-            CI = normal(invnormal(b) :- z \ invnormal(b) :+ z)
-            if (hasmissing(CI)) {
-                _ds_Get_CI_editif(CI, b, 0)
-                _ds_Get_CI_editif(CI, b, 1)
-            }
-        }
-        else if (citype=="atanh") { // atanh
-            z = z :* se :/ (1 :- b:^2)
-            CI = tanh(atanh(b) :- z \ atanh(b) :+ z)
-            if (hasmissing(CI)) {
-                _ds_Get_CI_editif(CI, b, -1)
-                _ds_Get_CI_editif(CI, b,  1)
-            }
-        }
-        else if (citype=="log") { // log
-            z = z :* se :/ b
-            CI = exp(ln(b) :- z \ ln(b) :+ z)
-            if (hasmissing(CI)) _ds_Get_CI_editif(CI, b, 0)
-        }
+        if      (citype=="logit")    CI = _ds_Get_CI_logit(b, se, df, p)
+        else if (citype=="probit")   CI = _ds_Get_CI_probit(b, se, df, p)
+        else if (citype=="atanh")    CI = _ds_Get_CI_atanh(b, se, df, p)
+        else if (citype=="log")      CI = _ds_Get_CI_log(b, se, df, p)
+        else if (citype=="agresti")  CI = _ds_Get_CI_agresti(b, se, df, p)
+        else if (citype=="exact")    CI = _ds_Get_CI_exact(b, se, df, p)
+        else if (citype=="jeffreys") CI = _ds_Get_CI_jeffreys(b, se, df, p)
+        else if (citype=="wilson")   CI = _ds_Get_CI_wilson(b, se, df, p)
         else exit(499)
         if (scale!=1) CI = CI * scale
     }
     // return result
     st_matrix(cimat, CI)
     st_matrixcolstripe(cimat, cstripe)
+}
+
+`RM' _ds_Get_CI_normal(`RR' b, `RR' se, `RV' df, `RS' p)
+{
+    `RR' z
+    `RM' CI
+    
+    z  = _ds_Get_CI_t(df, p)
+    CI = b :- z:*se \ b :+ z:*se
+    return(CI)
+}
+
+`RM' _ds_Get_CI_logit(`RR' b, `RR' se, `RV' df, `RS' p)
+{
+    `RR' z
+    `RM' CI
+    
+    z  = _ds_Get_CI_t(df, p) :* se :/ (b:* (1 :- b))
+    CI = invlogit(logit(b) :- z \ logit(b) :+ z)
+    _ds_Get_CI_edit01(CI, b)
+    return(CI)
+}
+
+`RM' _ds_Get_CI_probit(`RR' b, `RR' se, `RV' df, `RS' p)
+{
+    `RR' z
+    `RM' CI
+    
+    z  = _ds_Get_CI_t(df, p) :* se :/ normalden(invnormal(b))
+    CI = normal(invnormal(b) :- z \ invnormal(b) :+ z)
+    _ds_Get_CI_edit01(CI, b)
+    return(CI)
+}
+
+`RM' _ds_Get_CI_atanh(`RR' b, `RR' se, `RV' df, `RS' p)
+{
+    `RR' z
+    `RM' CI
+    
+    z  = _ds_Get_CI_t(df, p) :* se :/ (1 :- b:^2)
+    CI = tanh(atanh(b) :- z \ atanh(b) :+ z)
+    if (hasmissing(CI)) {
+        _ds_Get_CI_editif(CI, b, -1)
+        _ds_Get_CI_editif(CI, b,  1)
+    }
+    return(CI)
+}
+
+`RM' _ds_Get_CI_log(`RR' b, `RR' se, `RV' df, `RS' p)
+{
+    `RR' z
+    `RM' CI
+    
+    z  = _ds_Get_CI_t(df, p) :* se :/ b
+    CI = exp(ln(b) :- z \ ln(b) :+ z)
+    if (hasmissing(CI)) _ds_Get_CI_editif(CI, b, 0)
+    return(CI)
+}
+
+`RM' _ds_Get_CI_agresti(`RR' b, `RR' se, `RV' df, `RS' p)
+{
+    `RR' n, k, pr, z
+    `RM' CI
+    
+    n  = _ds_Get_CI_n(b, se, df, p)
+    k  = n :* b
+    z  = invnormal(1-p)
+    n  = n :+ z^2
+    k  = k :+ z^2/2
+    pr = k :/ n
+    z  = z * sqrt((pr :* (1 :- pr)) :/ n)
+    CI = pr - z \ pr + z
+    _ds_Get_CI_edit01(CI, b)
+    return(CI)
+}
+
+`RM' _ds_Get_CI_exact(`RR' b, `RR' se, `RV' df, `RS' p)
+{
+    `RR' n, k, v1, v2, v3, v4, Fa, Fb
+    `RM' CI
+    
+    n  = _ds_Get_CI_n(b, se, df, p)
+    k  = n :* b
+    v1 = 2 * k
+    v2 = 2 * (n :- k :+ 1)
+    v3 = 2 * (k :+ 1)
+    v4 = 2 * (n - k)
+    Fa = v1 :* invF(v1, v2, p)
+    Fb = v3 :* invF(v3, v4, 1-p)
+    CI = Fa :/ (v2 :+ Fa) \ Fb :/ (v4 :+ Fb)
+    _ds_Get_CI_edit01(CI, b)
+    return(CI)
+}
+
+`RM' _ds_Get_CI_jeffreys(`RR' b, `RR' se, `RV' df, `RS' p)
+{
+    `RR' n, k, a1, b1
+    `RM' CI
+    
+    n  = _ds_Get_CI_n(b, se, df, p)
+    k  = n :* b
+    a1 = k :+ 0.5
+    b1 = n :- k :+ 0.5
+    CI = invibeta(a1, b1, p) \ invibetatail(a1, b1, p)
+    _ds_Get_CI_edit01(CI, b)
+    return(CI)
+}
+
+`RM' _ds_Get_CI_wilson(`RR' b, `RR' se, `RV' df, `RS' p)
+{
+    `RS' z
+    `RR' n, n1, n2, d
+    `RM' CI
+    
+    n  = _ds_Get_CI_n(b, se, df, p)
+    z  = invnormal(1-p)
+    n1 = b + z^2 :/ (2 :* n)
+    n2 = z * sqrt((b :* (1 :- b)) :/ n :+ (z :/ (2 :* n)):^2)
+    d  = 1 :+ z^2 :/ n
+    CI = (n1 - n2) :/ d \ (n1 + n2) :/ d
+    _ds_Get_CI_edit01(CI, b)
+    return(CI)
+}
+
+`RR' _ds_Get_CI_t(`RV' df, `RS' p)
+{
+    `Int' i
+    `RR'  z
+    
+    i = length(df)
+    if (i==1) {
+        return(df>2e17 ? invnormal(1-p) : invttail(df, p))
+    }
+    z = J(1, i, .)
+    for (; i; i--) {
+        z[i] = df[i]>2e17 ? invnormal(1-p) : invttail(df[i], p)
+    }
+    return(z)
+}
+
+`RR' _ds_Get_CI_n(`RR' b, `RR' se, `RV' df, `RS' p)
+{
+    `RR' n
+    
+    if      (st_global("e(wtype)")=="fweight") n = st_matrix("e(sumw)")
+    else if (st_global("e(wtype)")=="iweight") n = st_matrix("e(sumw)")
+    else                                       n = st_matrix("e(nobs)")
+    if (st_global("e(vce)")=="analytic") {
+        if (st_global("e(wtype)")!="pweight") return(n)
+    }
+    n = (b:* (1 :- b)) :/ se:^2
+    n = n :* (invnormal(1-p) :/ _ds_Get_CI_t(df, p)):^2
+    return(n)
+}
+
+void _ds_Get_CI_edit01(`RM' CI, `RR' b)
+{
+    if (hasmissing(CI)) {
+        _ds_Get_CI_editif(CI, b, 0)
+        _ds_Get_CI_editif(CI, b, 1)
+    }
 }
 
 void _ds_Get_CI_editif(`RM' CI, `RR' b, `RS' v)
@@ -8614,6 +8769,21 @@ void __ds_sum_vlog(`Bool' btw, `Data' D, `Grp' G, `Int' i, `RS' df)
     else {
         ds_set_IF(D, G, i, (c*z:^2 :- D.b[i]) / G.W)
     }
+}
+
+void ds_sum_sdlog(`Data' D, `Grp' G, `Int' i, `RS' df)
+{
+    ds_sum_vlog(D, G, i, df)
+    if (D.b[i]==0) return
+    D.b[i] = sqrt(D.b[i])
+    if (D.noIF) return
+    D.IF[,i] = D.IF[,i] / (2 * D.b[i])
+}
+
+`BoolC' _ds_sum_sdlog_invalid(`Data' D, `Int' j, `RC' X, `RS' df)
+{
+    pragma unused df
+    return(_ds_sum_invalid(D, j, "sdlog", ln(X)))
 }
 
 void ds_sum_top(`Data' D, `Grp' G, `Int' i, `RS' p)

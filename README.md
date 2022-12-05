@@ -39,6 +39,23 @@ Installation from GitHub:
 
 Main changes:
 
+    05dec2022 (version 1.3.9)
+    - statistic -sdlog- added
+    - new methods in citype() for proportions: agresti, exact, jeffreys, wilson
+    - citype(normal) can now be abbreviated as citype(norm)
+    - reorganized code for computation of CIs
+    - dstat graph: overlay can now be specified as a synonym for merge
+    - r() from -dstat- is now preserved if option -graph- is specified; this ensures
+      that r(table) will be available after running -dstat- with both the -graph-
+      option and the -table- option; furthermore, r() from dstat is now also
+      preserved if option -generate()- or -rif()- is applied
+    - the display routine is now executed even if -quietly- is applied to -dstat-,
+      so that r(table) will created even if -quietly- is applied
+    - the display routine will now clear preexisting r() even if -notable- is applied
+    - -dstat predict- no longer modified r()
+    - an informative error message is now displayed if a string variable is
+      specified in by(), pline(), or as an argument to a statistic
+
     21nov2022 (version 1.3.8)
     - dstat density: option [l|r]tight added; requires newest update of moremata
 

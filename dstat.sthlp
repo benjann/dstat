@@ -1,5 +1,5 @@
 {smcl}
-{* 19nov2022}{...}
+{* 05dec2022}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -306,6 +306,8 @@ help for {hi:dstat}{...}
 {synoptline}
 {synopt:{cmdab:mer:ge}}merge results into a single subgraph
     {p_end}
+{synopt:{cmdab:overl:ay}}synonym for {cmd:merge}
+    {p_end}
 {synopt:{cmd:flip}}change how results are allocated to plots and subgraphs
     {p_end}
 {synopt:[{ul:{cmd:g}}|{ul:{cmd:p}}]{opt sel:ect(spec)}}select and order plots and subgraphs
@@ -564,6 +566,8 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt vlog}[{cmd:(}{it:df}{cmd:)}]}variance of logarithm; default is {it:df}=1
     {p_end}
+{synopt:{opt sdlog}[{cmd:(}{it:df}{cmd:)}]}standard deviation of logarithm; default is {it:df}=1
+    {p_end}
 {synopt:{opt top}[{cmd:(}{it:p}{cmd:)}]}outcome share of top {it:p} percent; default
     is {it:p}=10
     {p_end}
@@ -592,52 +596,34 @@ help for {hi:dstat}{...}
     {p_end}
 
 {syntab:Inequality decomposition}
-{synopt:{opt gw_gini}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}weighted
-    average of group-specific Gini coefficients; {it:by} specifies the group
+{synopt:{it:d}{cmd:_gini}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}where
+    {it:d} is {cmd:b} for the between-group Gini coefficient, or {cmd:gw} for the
+    weighted average of group-specific Gini coefficients; {it:by} specifies the group
     variable; default is as set by option {cmd:by()}; {it:df} applies
     small-sample adjustment; default is {it:df}=0;
-    can also specify {opt gw_gini(df)}
+    can also specify {it:d}{opt _gini(df)}
     {p_end}
-{synopt:{opt gw_mld}[{cmd:(}{it:{help varname:by}}{cmd:)}]}weighted
-    average of group-specific MLDs; {it:by} as for {cmd:gw_gini}
+{synopt:{it:d}{cmd:_mld}[{cmd:(}{it:{help varname:by}}{cmd:)}]}where {it:d} is
+    {cmd:b} for the between-group MLD, {cmd:w} for the within-group MLD, or
+    {cmd:gw} for the weighted average of group-specific MLDs ({cmd:gw_mld} is
+    equivalent to {cmd:w_mld}); {it:by} as for {it:d}{cmd:_gini}
     {p_end}
-{synopt:{opt gw_theil}[{cmd:(}{it:{help varname:by}}{cmd:)}]}weighted
-    average of group-specific Theil indices; {it:by} as for {cmd:gw_gini}
+{synopt:{it:d}{cmd:_theil}[{cmd:(}{it:{help varname:by}}{cmd:)}]}where {it:d}
+    is {cmd:b} for the between-group Theil index, {cmd:w} for the
+    within-group Theil index, or {cmd:gw} for the weighted average of
+    group-specific Theil indices; {it:by} as for {it:d}{cmd:_gini}
     {p_end}
-{synopt:{opt gw_ge}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:alpha}]{cmd:)}]}weighted
-    average of group-specific generalized entropy; {it:by} as for {cmd:gw_gini};
-    can also specify {opt gw_ge(alpha)}
+{synopt:{it:d}{cmd:_ge}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:alpha}]{cmd:)}]}where
+    {it:d} is {cmd:b} for the between-group generalized entropy, {cmd:w} for the
+    within-group generalized entropy, or {cmd:gw} for the weighted
+    average of group-specific generalized entropy; {it:by} as for {it:d}{cmd:_gini};
+    can also specify {it:d}{opt _ge(alpha)}
     {p_end}
-{synopt:{opt gw_vlog}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}weighted
-    average of group-specific variance of logarithm; {it:by} as for {cmd:gw_gini};
-    can also specify {opt gw_vlog(df)}
-    {p_end}
-{synopt:{opt w_mld}[{cmd:(}{it:{help varname:by}}{cmd:)}]}within-group MLD (equivalent to {cmd:gw_mld});
-    {it:by} as for {cmd:gw_gini}
-    {p_end}
-{synopt:{opt w_theil}[{cmd:(}{it:{help varname:by}}{cmd:)}]}within-group Theil index;
-    {it:by} as for {cmd:gw_gini}
-    {p_end}
-{synopt:{opt w_ge}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:alpha}]{cmd:)}]}within-group generalized entropy;
-    {it:by} as for {cmd:gw_gini}; can also specify {opt w_ge(alpha)}
-    {p_end}
-{synopt:{opt w_vlog}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}within-group variance of logarithm;
-    {it:by} as for {cmd:gw_gini}; can also specify {opt w_vlog(df)}; {cmd:w_vlog}={cmd:gw_vlog} if {it:df}=0
-    {p_end}
-{synopt:{opt b_gini}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}between-group Gini;
-    {it:by} and {it:df} as for {cmd:gw_gini}
-    {p_end}
-{synopt:{opt b_mld}[{cmd:(}{it:{help varname:by}}{cmd:)}]}between-group MLD;
-    {it:by} as for {cmd:gw_gini}
-    {p_end}
-{synopt:{opt b_theil}[{cmd:(}{it:{help varname:by}}{cmd:)}]}between-group Theil index;
-    {it:by} as for {cmd:gw_gini}
-    {p_end}
-{synopt:{opt b_ge}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:alpha}]{cmd:)}]}between-group generalized entropy;
-    {it:by} as for {cmd:gw_gini}; can also specify {opt b_ge(alpha)}
-    {p_end}
-{synopt:{opt b_vlog}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}between-group variance of logarithm;
-    {it:by} as for {cmd:gw_gini}; can also specify {opt b_vlog(df)}
+{synopt:{it:d}{cmd:_vlog}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}where
+    {it:d} is {cmd:b} for the between-group variance of logarithm, {cmd:w} for the
+    within-group variance of logarithm, or {cmd:gw} for the weighted average of
+    group-specific variance of logarithm; {it:by} as for {it:d}{cmd:_gini};
+    can also specify {it:d}{opt _vlog(df)}
     {p_end}
 
 {syntab:Concentration measures}
@@ -948,13 +934,32 @@ help for {hi:dstat}{...}
 
 {phang2}
     {opt citype(type)} specifies the method for the computation of the
-    confidence interval limits. {it:type} can be
-    {cmd:normal} (no transformation), {cmd:logit} or {cmd:probit}
-    (logit or probit transformation; useful for statistics in [0,1]),
-    {cmd:atanh} (inverse hyperbolic tangent transformation;
-    useful for statistics in [-1,1]), or {cmd:log} (logarithmic transformation;
-    useful for statistics >=0). The default depends on subcommand
-    and options. Use {cmd:citype()} to override the default.
+    confidence interval limits. {it:type} can be:
+
+{p2colset 17 28 30 2}{...}
+{p2col:{cmdab:norm:al}}normal CIs
+    {p_end}
+{p2col:{cmd:logit}}logit transformed CIs; useful for statistics in [0,1]
+    {p_end}
+{p2col:{cmd:probit}}probit transformed CIs; useful for statistics in [0,1]
+    {p_end}
+{p2col:{cmd:atanh}}inverse hyperbolic tangent transformed CIs; useful for statistics in [-1,1]
+    {p_end}
+{p2col:{cmd:log}}log transformed CIs; useful for statistics > 0
+    {p_end}
+{p2col:{cmdab:agres:ti}}Agresti-Coull CIs; useful for proportions
+    {p_end}
+{p2col:{cmd:exact}}exact (Clopper-Pearson) CIs; useful for proportions
+    {p_end}
+{p2col:{cmdab:jeff:reys}}Jeffreys CIs; useful for proportions
+    {p_end}
+{p2col:{cmd:wilson}}Wilson CIs; useful for proportions
+    {p_end}
+
+{pmore2}
+    The default depends on subcommand and options. Use {cmd:citype()} to 
+    override the default. For details on {cmd:agresti}, {cmd:exact},
+    {cmd:jeffreys}, and {cmd:wilson} see the documentation of {helpb proportion}.
 
 {pmore2}
     {cmd:dstat} will store the confidence limits given {cmd:level()} and
@@ -1656,6 +1661,9 @@ help for {hi:dstat}{...}
     equations are two-dimensional (subpopulations and variables).
 
 {phang}
+    {cmd:overlay} is a synonym for {cmd:merge}.
+
+{phang}
     {cmd:flip} changes how results are allocated to plots and subgraphs. This is
     only relevant if the results contain multiple equations. If the equations
     are two-dimensional (subpopulations and variables), the default is to
@@ -2039,7 +2047,6 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(clustvar)}}name of cluster variable{p_end}
 {synopt:{cmd:e(vce)}}{it:vcetype} specified in {cmd:vce()}{p_end}
 {synopt:{cmd:e(vcetype)}}title used to label Std. Err.{p_end}
-{synopt:{cmd:e(vcesvy)}}{cmd:svy} or empty{p_end}
 {synopt:{cmd:e(citype)}}type confidence interval stored in {cmd:e(ci)}{p_end}
 {synopt:{cmd:e(wtype)}}weight type{p_end}
 {synopt:{cmd:e(wexp)}}weight expression{p_end}
