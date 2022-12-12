@@ -1,4 +1,4 @@
-*! version 1.3.9  05dec2022  Ben Jann
+*! version 1.4.0  12dec2022  Ben Jann
 
 capt mata: assert(mm_version()>=201)
 if _rc {
@@ -28,11 +28,7 @@ program dstat, eclass properties(svyb svyj)
         local subcmd proportion
         Parse_frequency `00'
     }
-    else {
-        if "`subcmd'"=="pw" {
-            local pw pw
-            local subcmd summarize
-        }
+    else if "`subcmd'"!="pw" {
         capt Parse_subcmd `subcmd' // expands subcmd
         if _rc==1 exit _rc
         if _rc { // try summarize
@@ -46,7 +42,7 @@ program dstat, eclass properties(svyb svyj)
     Get_diopts `subcmd' `00' // returns 00, diopts, dioptshaslevel
     tempname BW AT
     Check_vce "`BW' `AT'" `subcmd' `00'
-    if "`vcetype'"=="svyr" {
+    if "`vcetype'"=="svyr" { // svy linearized
         if `"`svylevel'"'!="" {
             if `dioptshaslevel'==0 {
                 local diopts `svylevel' `diopts'
@@ -55,8 +51,11 @@ program dstat, eclass properties(svyb svyj)
         `version' dstat_SVYR `"`svyopts'"' `subcmd' `00'
         if "`vcenocov'"!="" Remove_Cov
     }
-    else if "`vcetype'"=="svy" {
+    else if "`vcetype'"=="svy" { // svy brr etc.
+        tempvar touse
+        SVY_esample `touse' `"`svyopts'"' `subcmd' `00' // updates touse and 00
         `version' svy `svytype', noheader notable `svyopts': dstat `subcmd' `00'
+        SVY_cleanup
         if "`vcenocov'"!="" Remove_Cov
     }
     else if "`vcetype'"!="" { // bootstrap/jackknife
@@ -75,12 +74,8 @@ program dstat, eclass properties(svyb svyj)
             tempname ecurrent
             _estimates hold `ecurrent', restore nullok
         }
-        if "`pw'"!="" {
-            Estimate_PW `00'
-        }
-        else {
-            Estimate `subcmd' `00'
-        }
+        Estimate `subcmd' `00'
+        if `"`markesample'"'!="" exit
         if c(stata_version)<15 {
             _estimates unhold `ecurrent', not
         }
@@ -198,7 +193,7 @@ program Check_vce
         di as err "{bf:vce()}: only one of {bf:cov} and {bf:nocov} allowed"
         exit 198
     }
-    if `"`subcmd'"'!="summarize" & "`cov'"=="" local nocov nocov
+    if !inlist(`"`subcmd'"',"summarize","pw") & "`cov'"=="" local nocov nocov
     c_local vcenocov `nocov'
     // svy linearized
     if "`vcetype'"=="svyr" {
@@ -328,6 +323,7 @@ program Obtain_bwat   // returns bwidth, bwadjust, n, at
     if "`subcmd'"=="lorenz" exit
     if "`subcmd'"=="share" exit
     if "`subcmd'"=="tip" exit
+    if "`subcmd'"=="pw" exit
     if "`subcmd'"=="summarize" local bwopt bwidth(str)
     else {
         if "`subcmd'"=="density" local bwopt bwidth(str)
@@ -390,7 +386,7 @@ program Obtain_bwat   // returns bwidth, bwadjust, n, at
         loca wgt [`weight'`exp']
         markout `touse' `_vcevars', strok
     }
-    qui Estimate `subcmd' `anything' if `touse' `wgt', `options'
+    qui _Estimate `subcmd' `anything' if `touse' `wgt', `options'
     if `getat' { 
         matrix `AT' = e(at)
         c_local at at(`AT')
@@ -401,6 +397,44 @@ program Obtain_bwat   // returns bwidth, bwadjust, n, at
         c_local bwidth bwidth(`BW')
         c_local bwadjust
     }
+end
+
+program SVY_esample
+    // mark estimation sample so that svy will return correct N and N_pop;
+    // the if qualifier is modified such that observations within the selected
+    // subpopulation that are excluded by dstat due to missing values will be
+    // removed; observation outside of the selected subpopulation will be kept
+    // even if they would be excluded by dstat due to missing values; this
+    // mimics the behavior of svy with official commands
+    gettoken touse 0 : 0
+    gettoken svyopts 0 : 0
+    gettoken subcmd 0 : 0
+    syntax [anything] [if] [in] [fw iw pw] [, * ]
+    if `"`weight'"'!="" {
+        di as err "weights not allowed with {bf:vce(svy)}"
+        exit 198
+    }
+    SVY_esample_subpopopt, `svyopts' // returns subpop
+    marksample svytouse
+    tempvar svysub wvar
+    _svy_setup `svytouse' `svysub' `wvar', svy `subpop'
+    local wgt [pw = `wvar']
+    Estimate `subcmd' `anything' if `svytouse' & `svysub' `wgt', /*
+        */ markesample(`touse') `options'
+    qui replace `svytouse' = 0 if `svysub'==1 & `touse'==0
+    drop `touse'
+    rename `svytouse' `touse'
+    c_local 00 `anything' if `touse', `options'
+end
+
+program SVY_esample_subpopopt
+    syntax [, SUBpop(passthru) * ]
+    c_local subpop `"`subpop'"'
+end
+
+program SVY_cleanup, eclass
+    eret local cmdname ""
+    eret local command ""
 end
 
 program dstat_SVYR, eclass
@@ -432,9 +466,8 @@ program dstat_SVYR, eclass
     ereturn repost b=`b', rename
     eret scalar k_eq = `k_eq'
     eret local cmd "dstat"
-    eret local cmdname ""
-    eret local command
     eret local V_modelbased "" // remove matrix e(V_modelbased)
+    SVY_cleanup
 end
 
 program Remove_Cov, eclass
@@ -1554,7 +1587,19 @@ program _Graph_Get_CI, eclass
     mata: ds_Get_CI("`CI'", `level', "`citype'", `scale')
 end
 
-program Estimate_PW, eclass
+program Estimate
+    gettoken subcmd 0 : 0
+    if "`subcmd'"=="pw" {
+        _Estimate_PW `0'
+    }
+    else {
+        _Estimate `subcmd' `0'
+    }
+    c_local generate_quietly `generate_quietly'
+    c_local markesample `markesample'
+end
+
+program _Estimate_PW, eclass
     // syntax
     syntax varlist(numeric) [if] [in] [fw iw pw] [, ///
         Statistic(str) LOwer UPper DIAGonal Over(str asis) * ]
@@ -1604,9 +1649,15 @@ program Estimate_PW, eclass
         }
     }
     
-    // run dstat summarize and relabel results
-    Estimate summarize `stats' `if' `in' [`weight'`exp'], `options'
+    // run dstat summarize 
+    _Estimate summarize `stats' `if' `in' [`weight'`exp'], `options'
     c_local generate_quietly `generate_quietly'
+    if `"`markesample'"'!="" {
+        c_local markesample `markesample'
+        exit
+    }
+    
+    // relabel results
     tempname b
     matrix `b' = e(b)
     matrix coln `b' = `cnames'
@@ -1622,7 +1673,7 @@ program Estimate_PW, eclass
     eret local title `"`statistic'"'
 end
 
-program Estimate, eclass
+program _Estimate, eclass
     // syntax
     gettoken subcmd 0 : 0
     local lhs varlist(numeric fv)
@@ -1667,7 +1718,7 @@ program Estimate, eclass
     else if "`subcmd'"=="summarize" {
         local lhs anything(id="varlist")
         local opts relax /*
-            */ BYvar(varname numeric) Zvar(varname numeric) /* zvar() is old syntax
+            */ BYvar(varname) Zvar(varname) /* zvar() is old syntax
             */ PLine(passthru) PSTRong
     }
     else exit 499
@@ -1678,6 +1729,7 @@ program Estimate, eclass
             Over(str) TOTal BALance(str) ///
             vce(str) NOSE Level(cilevel) ///
             Generate(passthru) rif(str) Replace ///
+            markesample(name) /// undocumented: mark estimation sample and exit
             `opts' * ]
     if "`byvar'"=="" local byvar `zvar' // support for old syntax
     Parse_over `over'
@@ -1866,12 +1918,24 @@ program Estimate, eclass
     // sample and weights
     if "`nocasewise'"=="" {
         marksample touse
-        markout `touse' `yvars'
+        if "`yvars'"!="" {
+            markout `touse' `yvars', strok
+        }
     }
     else marksample touse, novarlist
-    markout `touse' `over' `bal_varlist'
+    if "`over'"!="" {
+        markout `touse' `over'
+    }
+    if "`bal_varlist'"!="" {
+        markout `touse' `bal_varlist'
+    }
     if "`clustvar'"!="" {
         markout `touse' `clustvar', strok
+    }
+    if `"`markesample'"'!="" {
+        rename `touse' `markesample'
+        c_local markesample `markesample'
+        exit
     }
     if "`weight'"!="" {
         capt confirm variable `exp'
@@ -2937,20 +3001,20 @@ void ds_parse_stats(`Int' n)
     asarray(A, "gshare"    , ".,0,100;.,0,100") // percentile share (generalized)
     asarray(A, "ashare"    , ".,0,100;.,0,100") // percentile share (average)
     // inequality decomposition
-    asarray(A, "gw_gini"   , "by;0")    // weighted avg of within-group Gini
-    asarray(A, "b_gini"    , "by;0")    // between Gini coefficient
-    asarray(A, "gw_mld"    , "by")      // weighted avg of within-group MLD
-    asarray(A, "w_mld"     , "by")      // within MLD
-    asarray(A, "b_mld"     , "by")      // between MLD
-    asarray(A, "gw_theil"  , "by")      // weighted avg of within-group Theil
-    asarray(A, "w_theil"   , "by")      // within Theil index
-    asarray(A, "b_theil"   , "by")      // between Theil index
-    asarray(A, "gw_ge"     , "by;1")    // weighted avg of within-group GE
-    asarray(A, "w_ge"      , "by;1")    // within generalized entropy
-    asarray(A, "b_ge"      , "by;1")    // between generalized entropy
-    asarray(A, "gw_vlog"   , "by;1")    // weighted avg of within-group vlog
-    asarray(A, "w_vlog"    , "by;1")    // within vlog
-    asarray(A, "b_vlog"    , "by;1")    // between vlog
+    asarray(A, "gw_gini"   , "bys;0")   // weighted avg of within-group Gini
+    asarray(A, "b_gini"    , "bys;0")   // between Gini coefficient
+    asarray(A, "gw_mld"    , "bys")     // weighted avg of within-group MLD
+    asarray(A, "w_mld"     , "bys")     // within MLD
+    asarray(A, "b_mld"     , "bys")     // between MLD
+    asarray(A, "gw_theil"  , "bys")     // weighted avg of within-group Theil
+    asarray(A, "w_theil"   , "bys")     // within Theil index
+    asarray(A, "b_theil"   , "bys")     // between Theil index
+    asarray(A, "gw_ge"     , "bys;1")   // weighted avg of within-group GE
+    asarray(A, "w_ge"      , "bys;1")   // within generalized entropy
+    asarray(A, "b_ge"      , "bys;1")   // between generalized entropy
+    asarray(A, "gw_vlog"   , "bys;1")   // weighted avg of within-group vlog
+    asarray(A, "w_vlog"    , "bys;1")   // within vlog
+    asarray(A, "b_vlog"    , "bys;1")   // between vlog
     // concentration
     asarray(A, "gci"       , "by;0")    // Gini concentration index
     asarray(A, "aci"       , "by;0")    // absolute Gini concentration index
@@ -2983,7 +3047,7 @@ void ds_parse_stats(`Int' n)
     asarray(A, "rsquared"  , "by")      // R squared
     asarray(A, "slope"     , "by")      // slope of linear regression
     asarray(A, "b"         , "by")      // same as slope
-    asarray(A, "cohend"    , "by;2")    // Cohen's d
+    asarray(A, "cohend"    , "bys;2")   // Cohen's d
     asarray(A, "covar"     , "by;1")    // covariance
     asarray(A, "spearman"  , "by")      // spearman rank correlation
     asarray(A, "taua"      , "by;0")    // Kendall's tau-a
@@ -2998,12 +3062,12 @@ void ds_parse_stats(`Int' n)
     asarray(A, "entropy"   , "0,0,.")   // Shannon entropy
     asarray(A, "hill"      , "1,0,.")   // Hill number
     asarray(A, "renyi"     , "1,0,.")   // Rényi entropy
-    asarray(A, "mindex"    , "by;0,0,.") // mutual information
-    asarray(A, "uc"        , "by")      // uncertainty coefficient (symmetric)
-    asarray(A, "ucl"       , "by")      // uncertainty coefficient (left)
-    asarray(A, "ucr"       , "by")      // uncertainty coefficient (right)
-    asarray(A, "cramersv"  , "by;0,0,.") // Cramér's V
-    asarray(A, "dissim"    , "by")      // (generalized) dissimilarity index
+    asarray(A, "mindex"    , "bys;0,0,.") // mutual information
+    asarray(A, "uc"        , "bys")     // uncertainty coefficient (symmetric)
+    asarray(A, "ucl"       , "bys")     // uncertainty coefficient (left)
+    asarray(A, "ucr"       , "bys")     // uncertainty coefficient (right)
+    asarray(A, "cramersv"  , "bys;0,0,.") // Cramér's V
+    asarray(A, "dissim"    , "bys")     // (generalized) dissimilarity index
     asarray(A, "or"        , "by")      // odds ratio (for 2x2 table)
     asarray(A, "rr"        , "by")      // risk ratio (for 2x2 table)
     return(A)
@@ -3129,7 +3193,7 @@ void _ds_parse_stats_k(`Stats' S, `Int' k, `SS' s0, `SS' s, `SS' o0, `SS' mask)
         }
         mi = M[i,1]
         // by
-        if (mi==.a) {
+        if (mi==.a | mi==.b) {
             if (j>nj) y = S.yvar
             else {
                 if (strtoreal(args[j])<.) y = S.yvar 
@@ -3140,12 +3204,13 @@ void _ds_parse_stats_k(`Stats' S, `Int' k, `SS' s0, `SS' s, `SS' o0, `SS' mask)
             }
             if (y=="") _ds_parse_stats_err(s0+o0, 
                        "{it:by} or {bf:by()} required")
+            _ds_parse_stats_isnumvar(y, s0, o0, mi==.b)
             if (!anyof(S.yvars, y)) S.yvars = (S.yvars, y)
             opts[i] = "by" + strofreal(selectindex(S.yvars:==y))
             continue
         }
         // pline (use negative index if plvar)
-        if (mi==.b) {
+        if (mi==.c) {
             if (j>nj) {
                 if (S.plvar=="") {
                     if (S.pline=="") _ds_parse_stats_err(s0+o0,
@@ -3171,6 +3236,7 @@ void _ds_parse_stats_k(`Stats' S, `Int' k, `SS' s0, `SS' s, `SS' o0, `SS' mask)
             }
             else {
                 y = _ds_parse_stats_getvar(args[j], s0, o0)
+                _ds_parse_stats_isnumvar(y, s0, o0)
                 if (!anyof(S.yvars, y)) {
                     S.yvars  = (S.yvars, y)
                     S.plvars = (S.plvars, y)
@@ -3211,11 +3277,15 @@ void _ds_parse_stats_k(`Stats' S, `Int' k, `SS' s0, `SS' s, `SS' o0, `SS' mask)
     if (j>=.) {
         _ds_parse_stats_err(s0+o0, sprintf("variable {bf:%s} not found", y))
     }
-    if (!st_isnumvar(j)) {
-        _ds_parse_stats_err(s0+o0, sprintf("string variables not allowed" +
-            "; {bf:%s} is a string variable", y))
-    }
     return(st_varname(j))
+}
+
+void _ds_parse_stats_isnumvar(`SS' y, `SS' s0, `SS' o0, | `Bool' strok)
+{
+    if (strok==`TRUE')  return
+    if (st_isnumvar(y)) return
+    _ds_parse_stats_err(s0+o0, sprintf("string variables not allowed" +
+            "; {bf:%s} is a string variable", y))
 }
 
 `RM' _ds_parse_stats_mask(`SS' mask)
@@ -3223,7 +3293,8 @@ void _ds_parse_stats_k(`Stats' S, `Int' k, `SS' s0, `SS' s, `SS' o0, `SS' mask)
     // with grp# = arg1:arg2:...      (group of tied arguments)
     // with arg# = value[,min[,max]]  (min=. mean no min)
     // with value = "by"   (optional byvar)  => will be coded as .a
-    //            = "pl"   (pl)              => will be coded as .b
+    //            = "bys"  (strvar allowed)  => will be coded as .b
+    //            = "pl"   (pl)              => will be coded as .c
     //            = .      (required numeric argument)
     //            = #      (optional argument; # serves as default)
     //            = .z     (optional argument; no default)
@@ -3256,8 +3327,9 @@ void _ds_parse_stats_k(`Stats' S, `Int' k, `SS' s0, `SS' s, `SS' o0, `SS' mask)
     `Int' n
     `SR'  args
     
-    if (arg=="by") return((.a, ., .))    // byvar
-    if (arg=="pl") return((.b, ., .))    // pline
+    if (arg=="by")  return((.a, ., .))    // byvar
+    if (arg=="bys") return((.b, ., .))    // byvar (str ok)
+    if (arg=="pl")  return((.c, ., .))    // pline
     args = tokens(subinstr(arg,","," ")) // #,#,# (assuming 0 to 3 elements)
     n = length(args)
     if (n==0) return((.,.,.))
@@ -4841,7 +4913,7 @@ void dstat()
         if (D.noIF==0) D.mvj = J(1, D.nvars, NULL)
     }
     st_numscalar(st_local("W"), D.W)
-    if (st_local("yvars")!="") st_view(D.Y, ., st_local("yvars"), D.touse)
+    ds_view(D.Y, tokens(st_local("yvars")), D.touse)
     
     // over
     D.ovar = st_local("over")
@@ -5005,6 +5077,32 @@ void dstat()
     ds_recenter_IF(D)
     if (D.nose) return
     ds_vce(D, st_local("clustvar"), st_local("vcenocov")!="")
+}
+
+void ds_view(`RM' Y, `SR' yvars, `Int' touse)
+{
+    `Int' i
+    
+    i = length(yvars)
+    if (i==0) return
+    for (;i;i--) {
+        if (st_isstrvar(yvars[i])) {
+            // replace string variable with numeric tempvar containing
+            // group IDs
+            yvars[i] = _ds_view_destring(yvars[i], touse)
+        }
+    }
+    st_view(Y, ., yvars, touse)
+}
+
+`SS' _ds_view_destring(`SS' yvar0, `Int' touse)
+{
+    `SS' yvar
+    
+    yvar = st_tempname()
+    st_store(., st_addvar("double", yvar), touse,
+        mm_group(st_sdata(., yvar0, touse)))
+    return(yvar)
 }
 
 void ds_store_eqvec(`Data' D, `RR' vec, `SS' nm)

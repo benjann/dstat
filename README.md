@@ -39,6 +39,15 @@ Installation from GitHub:
 
 Main changes:
 
+    12dec2022 (version 1.4.0)
+    - dstat pw did not work with vce() set to bootstrap, jackknife, or svy; this is
+      fixed
+    - the returned information on sample and population size included observations
+      that were excluded from estimation due to missing values if vce(svy) with
+      replication-based variance estimation was specified; this is fixed
+    - the secondary variable (-by-) can now be string for inequality decomposition
+      measures as well as for cohend, mindex, uc[l|r], cramersv, and dissim
+
     05dec2022 (version 1.3.9)
     - statistic -sdlog- added
     - new methods in citype() for proportions: agresti, exact, jeffreys, wilson

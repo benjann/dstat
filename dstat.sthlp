@@ -1,5 +1,5 @@
 {smcl}
-{* 05dec2022}{...}
+{* 12dec2022}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -599,7 +599,7 @@ help for {hi:dstat}{...}
 {synopt:{it:d}{cmd:_gini}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}where
     {it:d} is {cmd:b} for the between-group Gini coefficient, or {cmd:gw} for the
     weighted average of group-specific Gini coefficients; {it:by} specifies the group
-    variable; default is as set by option {cmd:by()}; {it:df} applies
+    variable (string allowed); default is as set by option {cmd:by()}; {it:df} applies
     small-sample adjustment; default is {it:df}=0;
     can also specify {it:d}{opt _gini(df)}
     {p_end}
@@ -701,7 +701,7 @@ help for {hi:dstat}{...}
 {synopt:{opt cohend}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}Cohen's d
     (allowing unequal group sizes); {it:df} applies small-sample
     adjustment; default is {it:df}=2; can also specify {opt cohend(df)};
-    {it:by} is assumed to be dichotomous
+    {it:by} is assumed to be dichotomous (string allowed)
     {p_end}
 {synopt:{opt covar}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}covariance; {it:df} applies small-sample
     adjustment; default is {it:df}=1; can also specify {opt covar(df)};
@@ -749,7 +749,7 @@ help for {hi:dstat}{...}
 {marker catbivar}{...}
 {syntab:Categorical data (bivariate)}
 {synopt:{opt mindex}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:base}]{cmd:)}]}mutual information index (M index);
-    {it:by} specifies the secondary variable; default is as set by option {cmd:by()};
+    {it:by} specifies the secondary variable (string allowed); default is as set by option {cmd:by()};
     {it:base} specifies the base of the logarithm (default is natural logarithm);
     can also specify {opt mindex(base)}
     {p_end}
@@ -1268,7 +1268,7 @@ help for {hi:dstat}{...}
 
 {phang}
     {opth by(varname)} specifies a default secondary variable for
-    association measures and concentration measures.
+    inequality desomposition, concentration indices, and association measures.
 
 {phang}
     {opt pline(#|varname)} specifies a default poverty line for poverty
