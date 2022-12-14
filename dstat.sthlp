@@ -1,5 +1,5 @@
 {smcl}
-{* 12dec2022}{...}
+{* 14dec2022}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -121,6 +121,11 @@ help for {hi:dstat}{...}
     or {cmdab:jack:knife}
     {p_end}
 {synopt:{cmd:nose}}alias for {cmd:vce(none)}
+    {p_end}
+{synopt:[{cmd:no}]{cmd:cov}}whether to store the full variance matrix or only the
+    standard errors
+    {p_end}
+{synopt:{opt nobwfix:ed}}do not keep density bandwidth fixed across replications
     {p_end}
 {synopt:{cmdab:g:enerate(}{it:names}[{cmd:,} {it:opts}]{cmd:)}}store influence functions
     {p_end}
@@ -329,6 +334,8 @@ help for {hi:dstat}{...}
 {marker predict_opts}{col 5}{help dstat##predict_options:{it:predict_options}}{col 33}Description
 {synoptline}
 {synopt:{opt rif}}store recentered influence functions
+    {p_end}
+{synopt:{cmdab:sca:ling(}{cmdab:t:otal}|{cmdab:m:ean}{cmd:)}}set the scaling of the influence functions
     {p_end}
 {synopt:{opt com:pact}}store influence functions in compact form; not allowed with {cmd:balance()} or {cmd:unconditional}
     {p_end}
@@ -693,7 +700,7 @@ help for {hi:dstat}{...}
 {synopt:{opt corr}[{cmd:(}{it:{help varname:by}}{cmd:)}]}correlation coefficient;
     {it:by} specifies the secondary variable; default is as set by option {cmd:by()}
     {p_end}
-{synopt:{opt slope}[{cmd:(}{it:{help varname:by}}{cmd:)}]}regression slope 
+{synopt:{opt slope}[{cmd:(}{it:{help varname:by}}{cmd:)}]}regression slope
     (equal to mean difference if {it:by} is dichotomous); {it:by} as for {cmd:corr}
     {p_end}
 {synopt:{opt b}[{cmd:(}{it:{help varname:by}}{cmd:)}]}same as {cmd:slope}
@@ -808,7 +815,7 @@ help for {hi:dstat}{...}
 {phang}
     {cmd:over(}{help varname:{it:overvar}}[{cmd:,} {it:options}]{cmd:)}
     computes results for each subpopulation defined by the values of
-    {it:overvar}. {it:overvar} must be integer and nonnegative. {it:options} 
+    {it:overvar}. {it:overvar} must be integer and nonnegative. {it:options}
     are as follows:
 
 {phang2}
@@ -957,7 +964,7 @@ help for {hi:dstat}{...}
     {p_end}
 
 {pmore2}
-    The default depends on subcommand and options. Use {cmd:citype()} to 
+    The default depends on subcommand and options. Use {cmd:citype()} to
     override the default. For details on {cmd:agresti}, {cmd:exact},
     {cmd:jeffreys}, and {cmd:wilson} see the documentation of {helpb proportion}.
 
@@ -1025,11 +1032,11 @@ help for {hi:dstat}{...}
     {opt vce(vcetype)} determines how standard errors are computed. {it:vcetype} may be:
 
             {opt none}
-            [{opt a:nalytic}] [{cmd:,} [{cmd:no}]{cmd:cov} ]
-            {opt cl:uster} {it:clustvar} [{cmd:,} [{cmd:no}]{cmd:cov} ]
-            {opt svy} [{help svy##svy_vcetype:{it:svy_vcetype}}] [{cmd:,} [{cmd:no}]{cmd:cov} {help svy##svy_options:{it:svy_options}} ]
-            {opt boot:strap} [{cmd:,} [{cmd:no}]{cmd:cov} {help bootstrap:{it:bootstrap_options}} ]
-            {opt jack:knife} [{cmd:,} [{cmd:no}]{cmd:cov} {help jackknife:{it:jackknife_options}} ]
+            {opt a:nalytic}
+            {opt cl:uster} {it:clustvar}
+            {opt svy} [{help svy##svy_vcetype:{it:svy_vcetype}}] [{cmd:,} {help svy##svy_options:{it:svy_options}} ]
+            {opt boot:strap} [{cmd:,} {help bootstrap:{it:bootstrap_options}} ]
+            {opt jack:knife} [{cmd:,} {help jackknife:{it:jackknife_options}} ]
 
 {pmore}
     {cmd:vce(none)} omits the computation of standard errors. This saves computer
@@ -1037,10 +1044,12 @@ help for {hi:dstat}{...}
 
 {pmore}
     {cmd:vce(analytic)}, the default, computes standard errors based on
-    influence functions. Likewise, {bind:{cmd:vce(cluster} {it:clustvar}{cmd:)}}
-    computes standard errors based on influence functions allowing for intragroup
-    correlation, where {it:clustvar} specifies to which group each observation
-    belongs.
+    influence functions.
+
+{pmore}
+    {bind:{cmd:vce(cluster} {it:clustvar}{cmd:)}} computes standard errors based
+    on influence functions allowing for intragroup correlation, where
+    {it:clustvar} specifies to which group each observation belongs.
 
 {pmore}
     {cmd:vce(svy)} computes standard errors taking the survey design as set by
@@ -1052,48 +1061,54 @@ help for {hi:dstat}{...}
     {cmd:vce(bootstrap)} and {cmd:vce(jackknife)} compute standard errors using
     {helpb bootstrap} or {helpb jackknife}, respectively; see help {it:{help vce_option}}.
 
-{pmore}
-   For all {it:vcetypes}, option {cmd:cov} requests that the full variance-covariance matrix
-   is stored in {cmd:e(V)}, whereas option {cmd:nocov} requests that only the
-   standard errors are stored in vector {cmd:e(se)}. The default is
-   {cmd:cov} for subcommand {cmd:summarize} and {cmd:nocov} for all other
-   subcommands. {cmd:nocov} saves memory if the number of evaluation points
-   is large (for example, if you estimate the density using 400 points across two
-   subpopulations, the covariance matrix has 800 x 800 = 640'000 elements; the vector
-   of standard errors has only 800 elements). For {cmd:vce(analytic)} and
-   {cmd:vce(cluster)}, option {cmd:nocov} also saves computer time (since the
-   computation of covariances is skipped; in the other cases,
-   covariances are removed after estimation). For {cmd:vce(svy)}, option {cmd:nocov}
-   also removes auxiliary variance matrices such as {cmd:e(V_srs)}. Note that
-   post-estimation commands that rely on covariances (or on
-   auxiliary variance matrices in case of {cmd:svy}) will not work after
-   {cmd:nocov} has been applied; specify option {cmd:cov} if you intend to use
-   such post-estimation commands (e.g., {helpb test} or {helpb lincom}) after
-   subcommands other than {cmd:summarize}.
-
-{pmore}
-    If a replication technique is used for standard error estimation,
-    i.e. {cmd:vce(bootstrap)}, {cmd:vce(jackknife)}, {cmd:vce(svy)} with
-    {help svy##svy_vcetype:{it:svy_vcetype}} other than {cmd:linearized},
-    the bandwidth used for density estimation will be held fixed across
-    replications (that is, if relevant, the bandwidth will be determined upfront
-    and then held constant). If you want to repeat bandwidth
-    search in each replication, use {helpb bootstrap}, {helpb jackknife}, or {helpb svy}
-    as a prefix command.
-
 {phang}
     {cmd:nose} is an alias for {cmd:vce(none)}. {cmd:nose} overrides {cmd:vce(analytic)} and
     {cmd:vce(cluster)}, but has no effect if specified together with
     {cmd:vce(svy)}, {cmd:vce(bootstrap)}, or {cmd:vce(jackknife)}.
 
+{phang}
+    [{cmd:no}]{cmd:cov} determines wether the full variance-covariance matrix
+    of the estimates is stored in {cmd:e(V)}, or whether only the standard
+    errors are stored in vector {cmd:e(se)}. The default is {cmd:cov} (full
+    variance matrix) for subcommands {cmd:summarize} and {cmd:pw}, and
+    {cmd:nocov} (standard errors only) for all other subcommands. {cmd:nocov}
+    saves memory if the number of evaluation points is large (for example, if
+    you estimate the density using 400 points across two subpopulations, the
+    covariance matrix has 800 x 800 = 640'000 elements; the vector of standard
+    errors has only 800 elements). For {cmd:vce(analytic)} and
+    {cmd:vce(cluster)}, option {cmd:nocov} also saves computer time (since the
+    computation of covariances is skipped; in the other cases, covariances are
+    removed after estimation). For {cmd:vce(svy)}, option {cmd:nocov} also
+    removes auxiliary variance matrices such as {cmd:e(V_srs)}. Note that
+    post-estimation commands that rely on covariances (or on auxiliary variance
+    matrices in case of {cmd:svy}) will not work after {cmd:nocov} has been
+    applied; specify option {cmd:cov} if you intend to use such post-estimation
+    commands (e.g., {helpb test} or {helpb lincom}) after subcommands other than
+    {cmd:summarize} or {cmd:pw}.
+
+{phang}
+    {cmd:nobwfixed} allows the bandwidth(s) for density estimation to vary
+    across replications. This is only relevant if density estimation is
+    requested (subcommand {cmd:density} or {cmd:pdf}; subcommand
+    {cmd:summarize} with at least one {cmd:density()} statistic), if the
+    bandwidth is not set to a specific value (or a list of specific values)
+    using option {cmd:bwidth()}, and if a replication technique is used for
+    standard error estimation, i.e. {cmd:vce(bootstrap)}, {cmd:vce(jackknife)},
+    or {cmd:vce(svy)} with {help svy##svy_vcetype:{it:svy_vcetype}} other than
+    {cmd:linearized}. The default is to hold the bandwidth(s) fixed across
+    replications.
+
 {marker generate}{...}
 {phang}
-    {cmd:generate(}{it:names}[{cmd:,} {it:options}]{cmd:)} stores the influence functions that were used
-    to compute the standard errors, where {it:names} is either a list of (new) variable names
-    or {help newvarlist##stub*:{it:stub}}{cmd:*} to create names {it:stub}{cmd:1},
-    {it:stub}{cmd:2}, etc. {it:options} are {cmd:rif} to store RIFs, {cmdab:com:pact}
-    to merge the influence functions across subpopulations, and {cmdab:qui:etly}
-    to suppress output; see {it:{help dstat##predict_options:predict_options}} below.
+    {cmd:generate(}{it:names}[{cmd:,} {it:options}]{cmd:)} stores the influence
+    functions that were used to compute the standard errors, where {it:names}
+    is either a list of (new) variable names or
+    {help newvarlist##stub*:{it:stub}}{cmd:*} to create names {it:stub}{cmd:1},
+    {it:stub}{cmd:2}, etc. {it:options} are {cmd:rif} to store RIFs,
+    {cmdab:sca:ling(}{cmdab:t:otal}{cmd:)} or {cmdab:sca:ling(}{cmdab:m:ean}{cmd:)}
+    to determine the scaling, {cmdab:com:pact} to merge the influence functions
+    across subpopulations, and {cmdab:qui:etly} to suppress output; see
+    {it:{help dstat##predict_options:predict_options}} below.
 
 {phang}
     {cmd:rif(}{it:names}[{cmd:,} {it:options}]{cmd:)} is an alias for
@@ -1110,7 +1125,7 @@ help for {hi:dstat}{...}
     quantiles, with {it:#} in {c -(}0,...,11{c )-}. The default is
     {cmd:qdef(2)} (same as, e.g. {helpb summarize}). Definitions 1-9 are as
     described in Hyndman and Fan (1996), definition 0 is the "high" quantile,
-    definition 10 is the Harrell-Davis quantile (Harrell and Davis 1982), 
+    definition 10 is the Harrell-Davis quantile (Harrell and Davis 1982),
     definition 11 is the mid-quantile (Ma et al. 2011); see
     {helpb mf_mm_quantile:mm_quantile()} for more information. Apart from the
     {cmd:dstat quantile} and statistic {cmd:quantile()}, option {cmd:qdef()} affects
@@ -1128,14 +1143,14 @@ help for {hi:dstat}{...}
 {phang}
     {opt hdtrim}[{cmd:(}{it:width}{cmd:)}] applies trimming to the Harrell-Davis
     quantile estimator as suggested by Akinshin (2021). If {cmd:hdtrim} is specified without
-    argument, the width of evaluation interval is set to 1/sqrt(n), where n 
+    argument, the width of evaluation interval is set to 1/sqrt(n), where n
     is the effective sample size. Alternatively, specify a custom {it:width}. Sensible values
-    for {it:width} lie between 0 and 1 ({it:width}>=1 uses the untrimmed estimator; 
+    for {it:width} lie between 0 and 1 ({it:width}>=1 uses the untrimmed estimator;
     {it:width}<=0 sets the width to 1/sqrt(n)).
 
 {phang}
-    {opt mquantile} is a synonym for {cmd:qdef(11)} (mid-quantiles). Only one 
-    of {opt hdquantile}, {opt mquantile}, and {opt qdef()} is allowed. The 
+    {opt mquantile} is a synonym for {cmd:qdef(11)} (mid-quantiles). Only one
+    of {opt hdquantile}, {opt mquantile}, and {opt qdef()} is allowed. The
     mid-quantile estimator typically leads to smoother quantile
     functions than classical quantile definitions. Ma et al. (2011) suggest
     using the mid-quantile estimator for discrete data.
@@ -1146,16 +1161,16 @@ help for {hi:dstat}{...}
 
 {phang2}
     {opt us:mooth(#)}, with {it:#}<1, sets the degree of undersmoothing that is
-    applied when determining the sparsity function via density estimation. 
-    The default is {cmd:usmooth(0.2)}. The undersmoothing factor is computed as 
+    applied when determining the sparsity function via density estimation.
+    The default is {cmd:usmooth(0.2)}. The undersmoothing factor is computed as
     n^(1/5) / n^(1/(5*(1-#)), where n is the effective sample size. Set # to 0
-    to omit undersmoothing; #<0 leads to oversmoothing. Note that 
+    to omit undersmoothing; #<0 leads to oversmoothing. Note that
     {help densopts:{it:density_options}} have no effect on density estimation
     for mid-quantiles.
 
 {phang2}
     {cmd:cdf}[{cmd:(}{it:#}{cmd:})], with {it:#}>=0, determines the sparsity
-    function by differencing the ECDF instead of employing density 
+    function by differencing the ECDF instead of employing density
     estimation. This may lead to somewhat more valid results in discrete data (i.e. data
     with relatively few distinct levels), but results may be unreliable in
     continuous data. Optional argument {it:#} sets the width of the integration
@@ -1163,14 +1178,14 @@ help for {hi:dstat}{...}
     the probability scale; for example, a value of 0.01 is equivalent to a
     window covering 1 percent of data mass). The default is {it:#} = 1 /
     ceil(2 * n^(2/5)), where n is the effective sample size. Set {it:#}=0 to
-    omit integration (this corresponds to the formulas given in Ma et al. 2011; 
+    omit integration (this corresponds to the formulas given in Ma et al. 2011;
     the sparsity function will have sharp jumps).
 
 {marker densopts}{...}
 {phang}
     {it:density_options} set the details of density
     estimation. These settings are relevant for command
-    {cmd:dstat density} and statistic {cmd:density()} as well as for
+    {cmd:dstat density}/{cmd:pdf} and statistic {cmd:density()} as well as for
     the computation of influence functions that involve density
     estimation (e.g., the influence function of a quantile). For more information
     on density estimation see {helpb mf_mm_density:mm_density()},
@@ -1179,8 +1194,8 @@ help for {hi:dstat}{...}
 
 {phang2}
     {cmdab:bw:idth(}{it:method}[{cmd:,} {opt adj:ust(#)} {cmd:rd}]{cmd:)}
-    specifies how the bandwidth of the kernel is determined. Possible choices
-    for {it:method} are:
+    specifies the type of automatic bandwidth selector for kernel density
+    estimation. Possible choices for {it:method} are:
 
 {p2colset 17 32 34 2}{...}
 {p2col:{cmdab:s:ilverman}}optimal of Silverman
@@ -1203,9 +1218,9 @@ help for {hi:dstat}{...}
     used to adjust the automatic bandwidth by factor {it:#}. Suboption {cmd:rd}
     applies relative-data correction to the automatic bandwidth (Cwik and Mielniczuk 1993).
 
-{pmore2}
-    Instead of using an automatic bandwidth selector, specify {opth bwidth(numlist)}
-    to set the bandwidth to a specific value. If {it:numlist} contains multiple values,
+{phang2}
+    {opth bw:idth(numlist)} is an alternative to {opt bwidth(method)} and sets
+    the bandwidth to a specific value. If {it:numlist} contains multiple values,
     the values are used one after the other across the variables and
     subpopulations (recycling values if needed). The specified values must be larger
     than zero.
@@ -1286,9 +1301,9 @@ help for {hi:dstat}{...}
 {dlgtab:Subcommand pw}
 
 {phang}
-    {opt statistic(stat)} selects the association measure to be 
+    {opt statistic(stat)} selects the association measure to be
     computed. {it:stat} may be any statistic listed under
-    {help dstat##association:Association measures} or 
+    {help dstat##association:Association measures} or
     {help dstat##catbivar:Categorical data (bivariate)}
     in the above table of summary statistics (omitting argument
     {it:by}). {cmd:statistic(corr)} is the default. Type, for example,
@@ -1761,6 +1776,14 @@ help for {hi:dstat}{...}
     statistic.
 
 {phang}
+    {opt scaling(spec)} determines the scaling of the generated
+    influence functions. {it:spec} can be {cmdab:t:otal} (scaling for
+    analysis by {helpb total}) or {cmdab:m:ean} (scaling for analysis by
+    {helpb mean}). The default is {cmd:scaling(total)} for regular influence
+    functions and {cmd:scaling(mean)} for recentered influence functions
+    (i.e. if option {cmd:rif} is specified).
+
+{phang}
     {opt compact} generates influence functions in compact form. {cmd:compact}
     only has an effect if {cmd:over()} has been specified and is not allowed
     with {cmd:balance()}, {cmd:unconditional}, {cmd:over(, contrast)}, or
@@ -2085,7 +2108,7 @@ help for {hi:dstat}{...}
 
 {phang}
     Akinshin, A. (2021). Trimmed Harrell-Davis quantile estimator based on the
-    highest density interval of the given 
+    highest density interval of the given
     width. {browse "http://arxiv.org/abs/2111.11776":arXiv:2111.11776} [stat.ME].
     {p_end}
 {phang}

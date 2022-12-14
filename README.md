@@ -39,6 +39,15 @@ Installation from GitHub:
 
 Main changes:
 
+    14dec2022 (version 1.4.1)
+    - [no]cov is no longer a suboption within vce(); it is now a regular option
+    - dstat predict now has option scaling() to determine the scaling of the
+      generated influence functions
+    - option nobwfixed added; code to obtain grid and bandwidth in case of
+      replication estimators revised
+    - revised implementation of vce(svy)
+    - revised implementation of predict
+
     12dec2022 (version 1.4.0)
     - dstat pw did not work with vce() set to bootstrap, jackknife, or svy; this is
       fixed
