@@ -39,6 +39,12 @@ Installation from GitHub:
 
 Main changes:
 
+    15dec2022 (version 1.4.2)
+    - modified dstat_svyr such that replication-based svy estimators no longer
+      apply checks for omitted coefficients; this prevents the estimators from
+      failing on results that have zero variance (e.g. a zero-frequency histogram
+      bar)
+
     14dec2022 (version 1.4.1)
     - [no]cov is no longer a suboption within vce(); it is now a regular option
     - dstat predict now has option scaling() to determine the scaling of the

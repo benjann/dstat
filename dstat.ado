@@ -1,4 +1,4 @@
-*! version 1.4.1  14dec2022  Ben Jann
+*! version 1.4.2  15dec2022  Ben Jann
 
 capt mata: assert(mm_version()>=201)
 if _rc {
@@ -429,6 +429,7 @@ end
 program SVY_cleanup, eclass
     args nocov
     eret local cmd "dstat"
+    eret local cmd0 ""
     eret local cmdname ""
     eret local command ""
     eret local V_modelbased "" // remove matrix e(V_modelbased)
@@ -502,9 +503,11 @@ program Predict
     // set to zero for obs outside e(sample) but within -if/in-)
     version 14
     local version : di "version " string(_caller()) ":"
-    if !inlist(`"`e(cmd)'"',"dstat","dstat_svyr") {
-        di as err "last dstat results not found"
-        exit 301
+    if `"`e(cmd)'"'!="dstat" {
+        if `"`e(cmd0)'"'!="dstat_svyr" {
+            di as err "last dstat results not found"
+            exit 301
+        }
     }
     tempname rcurrent
     _return hold `rcurrent'
