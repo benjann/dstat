@@ -39,6 +39,12 @@ Installation from GitHub:
 
 Main changes:
 
+    28dec2022 (version 1.4.3)
+    - command -dstat (somersd) Y, by(X)- computed D(X|Y) rather than D(Y|X); I now
+      changed this so that D(Y|X) is computed, which is more intuitive (and more in
+      line with how other asymmetric statistics are computed by dstat); thanks to
+      Maurizio Pisati for pointing out this inconsistency
+
     15dec2022 (version 1.4.2)
     - modified dstat_svyr such that replication-based svy estimators no longer
       apply checks for omitted coefficients; this prevents the estimators from

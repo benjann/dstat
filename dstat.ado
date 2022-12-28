@@ -1,4 +1,4 @@
-*! version 1.4.2  15dec2022  Ben Jann
+*! version 1.4.3  28dec2022  Ben Jann
 
 capt mata: assert(mm_version()>=201)
 if _rc {
@@ -9429,19 +9429,19 @@ void ds_sum_taub(`Data' D, `Grp' G, `Int' i, `Bool' naive)
 
 void ds_sum_somersd(`Data' D, `Grp' G, `Int' i, `Bool' naive)
 {
-    `RS' K, S, T, Q
+    `RS' K, S, U, Q
     `RC' h
     
     G.cd_fast(naive)
     S = G.cd_S()
     K = G.cd_K()
-    T = G.cd_T()
-    Q = K - T
+    U = G.cd_U()
+    Q = K - U
     D.b[i] = S / Q
     if (_ds_sum_omit(D, i)) return
     // compute IF
     if (D.noIF) return
-    h = (1/Q)*(G.cd_s() :- S) - (S/Q^2)*((G.cd_k() - G.cd_t()) :- Q)
+    h = (1/Q)*(G.cd_s() :- S) - (S/Q^2)*((G.cd_k() - G.cd_u()) :- Q)
     ds_set_IF(D, G, i, h * (2/G.W))
 }
 

@@ -1,5 +1,5 @@
 {smcl}
-{* 14dec2022}{...}
+{* 18dec2022}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -746,7 +746,8 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt hill}[{cmd:(}{it:q}{cmd:)}]}Hill number (true diversity,
     effective number of species); {it:q} specifies the order of the diversity;
-    default is {it:q}=1 such that {cmd:hill} = exp({cmd:entropy})
+    default is {it:q}=1 such that {cmd:hill} = exp({cmd:entropy}); if {it:q}=0,
+    {cmd:hill} is equal to the observed number of categories
     {p_end}
 {synopt:{opt renyi}[{cmd:(}{it:q}{cmd:)}]}Rényi entropy;
     equal to ln({cmd:hill(}{it:q}{cmd:)}); default is {it:q}=1 such that
