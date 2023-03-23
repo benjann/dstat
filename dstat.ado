@@ -1,4 +1,4 @@
-*! version 1.4.3  28dec2022  Ben Jann
+*! version 1.4.4  24mar2023  Ben Jann
 
 capt mata: assert(mm_version()>=201)
 if _rc {
@@ -5123,10 +5123,10 @@ void ds_lnratio(`Data' D)
         if (any(D.IFtot)) {
             // recenter IFs of unnormalized statistics at zero
             shift = `TRUE'
-            D.IF = D.IF :- (D.IFtot'/D.W)
+            D.IF[.,.] = D.IF :- (D.IFtot'/D.W)
             D.IFtot = J(D.K, 1, 0)
         }
-        D.IF = (1:/D.b)' :* D.IF
+        D.IF[.,.] = (1:/D.b)' :* D.IF
     }
     D.b = ln(D.b)
     ds_contrast(D)
