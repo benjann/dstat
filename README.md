@@ -39,6 +39,13 @@ Installation from GitHub:
 
 Main changes:
 
+    24mar2023 (version 1.4.4)
+    - generate() stored the influence functions of the raw statistics rather than the
+      influence functions of the transformed statistics if suboption -lnratio- was
+      specified in over(); this also implied that vce(svy) reported the standard errors
+      of the raw statistics rather than standard errors of the transformed statistics
+      if suboption -lnratio- was specified in over(); this is fixed
+
     28dec2022 (version 1.4.3)
     - command -dstat (somersd) Y, by(X)- computed D(X|Y) rather than D(Y|X); I now
       changed this so that D(Y|X) is computed, which is more intuitive (and more in
