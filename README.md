@@ -39,6 +39,11 @@ Installation from GitHub:
 
 Main changes:
 
+    04apr2025 (version 1.4.5)
+    - return e(sinfo) added (undocumented)
+    - -dstat summarize- now has undocumented option -noclean- to retain duplicate
+      statistics
+
     24mar2023 (version 1.4.4)
     - generate() stored the influence functions of the raw statistics rather than the
       influence functions of the transformed statistics if suboption -lnratio- was

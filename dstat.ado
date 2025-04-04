@@ -1,4 +1,4 @@
-*! version 1.4.4  24mar2023  Ben Jann
+*! version 1.4.5  04apr2025  Ben Jann
 
 capt mata: assert(mm_version()>=201)
 if _rc {
@@ -772,7 +772,7 @@ program _Replay, rclass
         if "`header'"=="" {
             if `"`e(over)'"'!="" {
                 if "`subcmd'"=="summarize" {
-                    if !(`e(N_stats)'==1 & `e(N_vars)'==1) _svy_summarize_legend
+                    if !(e(sinfo)==0 & e(N_vars)==1) _svy_summarize_legend
                     else di ""
                 }
                 else _svy_summarize_legend
@@ -780,7 +780,7 @@ program _Replay, rclass
             else di ""
         }
         if "`subcmd'"=="summarize" {
-            if e(N_stats)>1 local vsquish vsquish
+            if e(sinfo) local vsquish vsquish
             local options `vsquish' `options'
         }
         if "`cref'"!="" local contrast
@@ -987,7 +987,7 @@ program Graph
     }
     if `"`subcmd'"'=="summarize" {
         if `"`e(over)'"'!="" {
-            if e(N_stats)==1 {
+            if e(sinfo)==0 {
                 if e(N_vars)>1 local overeq 1
             }
             else local overeq 1
@@ -1568,7 +1568,8 @@ program _Estimate, eclass
     }
     else if "`subcmd'"=="summarize" {
         local lhs anything(id="varlist")
-        local opts relax /*
+        local opts NOCLEAN /* undocumented; do not remove stat-var duplicates
+            */ relax /*
             */ BYvar(varname) Zvar(varname) /* zvar() is old syntax
             */ PLine(passthru) PSTRong
     }
@@ -1824,7 +1825,7 @@ program _Estimate, eclass
     
     // expand factor variables (and process slist)
     if "`subcmd'"=="summarize" {
-        mata: ds_slist_expand() // returns varlist, slist, slist2
+        mata: ds_slist_expand("`noclean'"!="") // returns varlist, slist, slist2
         local varlist: list uniq varlist
     }
     else {
@@ -2191,11 +2192,12 @@ program _Estimate, eclass
         // eret matrix pgi = `PGI'
     }
     else if "`subcmd'"=="summarize" {
+        eret scalar sinfo = `sinfo'
         eret local slist `"`slist'"'
         eret local stats "`stats'"
         eret scalar N_stats = `N_stats'
-        if `N_stats'==1 & ("`over'"!="" | `N_vars'>1) local title "`stats'"
-        else local title "Summary statistics"
+        if `sinfo' local title "Summary statistics"
+        else       local title "`stats'"
     }
     if "`over_accumulate'`over_contrast'"!="" {
         if substr("`title'",2,1)==strlower(substr("`title'",2,1)) {
@@ -3263,7 +3265,7 @@ void ds_parse_stats_hasdens(`Int' n)
     return(0)
 }
 
-void ds_slist_expand()
+void ds_slist_expand(`Bool' keepdup)
 {
     `Int' i, n, rc
     `SR'  V, v
@@ -3282,20 +3284,20 @@ void ds_slist_expand()
     }
     V = invtokens(V)
     S = invtokens(S[1,]) \ invtokens(S[2,])
-    S = _ds_slist_clean((tokens(V)', tokens(S[1])', tokens(S[2])'))
+    S = _ds_slist_clean((tokens(V)', tokens(S[1])', tokens(S[2])'), keepdup)
     st_local("varlist", V)
     st_local("slist",   S[1]) // (stats) varname (stats) varname ...
     st_local("slist2",  S[2]) // (stats) (stats) ...
 }
 
-`SC' _ds_slist_clean(`SM' S)
+`SC' _ds_slist_clean(`SM' S,`Bool' keepdup)
 {
     `Int' i, j, k, n
 
     // step 1: sort groups (keeping original order within groups)
     S = S[_ds_order_sgrp(S[,1]),]
     // step 2: remove duplicates (keeping original order)
-    S = mm_uniqrows(S, 1)
+    if (!keepdup) S = mm_uniqrows(S, 1)
     // step 3: recompile
     n = rows(S)
     k = 0
@@ -4870,8 +4872,10 @@ void dstat()
         stats = mm_unique(D.cstripe[,2], 1) // uniq list of statistics
         st_local("stats", invtokens(stats'))
         st_local("N_stats", strofreal(length(stats)))
+        st_local("sinfo", "1")
         if (length(D.eqs)>1 & length(D.eqs)==rows(D.cstripe)) {
             if (length(stats)==1) {
+                st_local("sinfo", "0")
                 if (D.ovar!="" & D.nvars>1) {
                     D.cstripe = 
                         substr(D.cstripe[,1], 1, strpos(D.cstripe[,1],"~"):-1),
