@@ -1,5 +1,5 @@
 {smcl}
-{* 18dec2022}{...}
+{* 25apr2025}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -497,7 +497,7 @@ help for {hi:dstat}{...}
 {synopt:{opt mse}[{cmd:(}{it:x}[{cmd:,}{it:df}]{cmd:)}]}mean squared deviation from value
     {it:x} (mean squared error); default is {it:x}=0 and {it:df}=0
     {p_end}
-{synopt:{opt smse}[{cmd:(}{it:x}[{cmd:,}{it:df}]{cmd:)}]}square-root of mean
+{synopt:{opt rmse}[{cmd:(}{it:x}[{cmd:,}{it:df}]{cmd:)}]}root mean
     squared deviation from value {it:x}; default is {it:x}=0 and {it:df}=0
     {p_end}
 {synopt:{opt iqr}[{cmd:n}][{cmd:(}{it:p1}{cmd:,}{it:p2}{cmd:)}]}interquantile range; default

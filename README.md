@@ -39,6 +39,15 @@ Installation from GitHub:
 
 Main changes:
 
+    25apr2025 (version 1.4.6)
+    - statistic -smse- in -dstat summarize- has been renamed to -rmse- (root mean
+      squared error)
+    - -dstat summarize- could be unnecessary slow on small datasets due to
+      unfavourable use of Mata's findexternal(); this is fixed
+    - inequality statistic [gw_|w_|b_]ge(alpha) in -dstat summarize- did not
+      correctly diagnose out-of-support observations if alpha was 0 or 1; this is
+      fixed
+
     04apr2025 (version 1.4.5)
     - return e(sinfo) added (undocumented)
     - -dstat summarize- now has undocumented option -noclean- to retain duplicate

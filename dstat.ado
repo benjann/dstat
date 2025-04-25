@@ -1,4 +1,4 @@
-*! version 1.4.5  04apr2025  Ben Jann
+*! version 1.4.6  25apr2025  Ben Jann
 
 capt mata: assert(mm_version()>=201)
 if _rc {
@@ -2834,7 +2834,7 @@ void ds_parse_stats(`Int' n)
     asarray(A, "sd"        , "1")       // standard deviation
     asarray(A, "variance"  , "1")       // variance
     asarray(A, "mse"       , "0;0")     // mean squared error
-    asarray(A, "smse"      , "0;0")     // square-root of MSE
+    asarray(A, "rmse"      , "0;0")     // root mean squared error
     asarray(A, "iqr"       , "25,0,100:75,0,100") // inter quantile range
     asarray(A, "iqrn"      , "25,0,100:75,0,100") // normalized inter quantile range
     asarray(A, "mad"       , "0;0")     // median (or mean) absolute deviation
@@ -6920,7 +6920,10 @@ void dstat_sum(`Data' D)
     `Int' i, j, a, b, ii, nn
     `SM'  AT
     `Grp' G
+    `T'   I
     
+    I = _ds_sum_invalid_dict(("mld", "theil", "ge", "vlog"),
+        ("gmean", "atkinson", "lvar", "sdlog", "chu", "watts"))
     D.k = b = 0
     for (i=1; i<=D.nover; i++) {
         ds_init_L(D, i)
@@ -6933,7 +6936,7 @@ void dstat_sum(`Data' D)
             b = a + nn - 1
             ds_set_cstripe(D, i, j, a, b, AT[,2]) // use stats as specified
             for (ii=1; ii<=nn; ii++) {
-                _dstat_sum(D, G, j, a, AT[ii,1])
+                _dstat_sum(D, G, j, a, AT[ii,1], I)
                 ds_set_nobs_sumw(D, G, a)
                 a++
             }
@@ -6941,7 +6944,7 @@ void dstat_sum(`Data' D)
     }
 }
 
-void _dstat_sum(`Data' D, `Grp' G, `Int' j, `Int' i, `SS' s)
+void _dstat_sum(`Data' D, `Grp' G, `Int' j, `Int' i, `SS' s, `T' I)
 {
     `SS'  stat, arg
     `SR'  args
@@ -6979,8 +6982,7 @@ void _dstat_sum(`Data' D, `Grp' G, `Int' j, `Int' i, `SS' s)
         l = 0
     }
     // setup sample etc.
-    f = findexternal("_ds_sum_"+stat+"_invalid()")
-    ds_init_G(G, D, D.L, j, y, pl, f, o)
+    ds_init_G(G, D, D.L, j, y, pl, _ds_sum_invalid_f(I, stat), o)
     if (G.N==0) {
         ds_noobs(D, i)
         return
@@ -7015,6 +7017,29 @@ void _dstat_sum(`Data' D, `Grp' G, `Int' j, `Int' i, `SS' s)
         exit(459)
     }
     return(z :< .) // tag valid observations
+}
+
+`T' _ds_sum_invalid_dict(`SR' S1, `SR' S2)
+{
+    `Int' i
+    `T'   A
+    
+    A = asarray_create()
+    asarray_notfound(A, 0)
+    for (i=length(S1);i;i--) {
+        asarray(A,       S1[i], 1)
+        asarray(A, "gw_"+S1[i], 1)
+        asarray(A, "w_" +S1[i], 1)
+        asarray(A, "b_" +S1[i], 1)
+    }
+    for (i=length(S2);i;i--) asarray(A, S2[i], 1)
+    return(A)
+}
+
+`PS' _ds_sum_invalid_f(`T' A, `SS' s)
+{
+    if (asarray(A, s)) return(findexternal("_ds_sum_"+s+"_invalid()"))
+    return(NULL)
 }
 
 `Bool' _ds_sum_omit(`Data' D, `Int' i)
@@ -7398,7 +7423,7 @@ void ds_sum_gmean(`Data' D, `Grp' G, `Int' i)
 }
 
 `BoolC' _ds_sum_gmean_invalid(`Data' D, `Int' j, `RC' X)
-{
+{   // registered in _ds_sum_invalid_dict()
     return(_ds_sum_invalid(D, j, "gmean", ln(X)))
 }
 
@@ -7591,7 +7616,7 @@ void ds_sum_mse(`Data' D, `Grp' G, `Int' i, `RR' o)
     ds_set_IF(D, G, i, (c*(G.X() :- m):^2 :- D.b[i]) / G.W)
 }
 
-void ds_sum_smse(`Data' D, `Grp' G, `Int' i, `RR' o)
+void ds_sum_rmse(`Data' D, `Grp' G, `Int' i, `RR' o)
 {
     ds_sum_mse(D, G, i, o)
     if (D.b[i]==0) return // too few observations
@@ -8283,7 +8308,7 @@ void ds_sum_mld(`Data' D, `Grp' G, `Int' i)
 }
 
 `BoolC' _ds_sum_mld_invalid(`Data' D, `Int' j, `RC' X)
-{
+{   // registered in _ds_sum_invalid_dict()
     return(_ds_sum_invalid(D, j, "mld", ln(X)))
 }
 
@@ -8293,7 +8318,7 @@ void ds_sum_gw_mld(`Data' D, `Grp' G, `Int' i)
 }
 
 `BoolC' _ds_sum_gw_mld_invalid(`Data' D, `Int' j, `RC' X)
-{
+{   // registered in _ds_sum_invalid_dict()
     return(_ds_sum_invalid(D, j, "gw_mld", ln(X)))
 }
 
@@ -8327,7 +8352,7 @@ void ds_sum_w_mld(`Data' D, `Grp' G, `Int' i)
 }
 
 `BoolC' _ds_sum_w_mld_invalid(`Data' D, `Int' j, `RC' X)
-{
+{   // registered in _ds_sum_invalid_dict()
     return(_ds_sum_invalid(D, j, "w_mld", ln(X)))
 }
 
@@ -8347,7 +8372,7 @@ void ds_sum_b_mld(`Data' D, `Grp' G, `Int' i)
 }
 
 `BoolC' _ds_sum_b_mld_invalid(`Data' D, `Int' j, `RC' X)
-{
+{   // registered in _ds_sum_invalid_dict()
     return(_ds_sum_invalid(D, j, "b_mld", ln(X)))
 }
 
@@ -8362,7 +8387,7 @@ void ds_sum_theil(`Data' D, `Grp' G, `Int' i)
 }
 
 `BoolC' _ds_sum_theil_invalid(`Data' D, `Int' j, `RC' X)
-{
+{   // registered in _ds_sum_invalid_dict()
     return(_ds_sum_invalid(D, j, "theil", ln(X)))
 }
 
@@ -8372,7 +8397,7 @@ void ds_sum_gw_theil(`Data' D, `Grp' G, `Int' i)
 }
 
 `BoolC' _ds_sum_gw_theil_invalid(`Data' D, `Int' j, `RC' X)
-{
+{   // registered in _ds_sum_invalid_dict()
     return(_ds_sum_invalid(D, j, "gw_theil", ln(X)))
 }
 
@@ -8411,7 +8436,7 @@ void ds_sum_w_theil(`Data' D, `Grp' G, `Int' i)
 }
 
 `BoolC' _ds_sum_w_theil_invalid(`Data' D, `Int' j, `RC' X)
-{
+{   // registered in _ds_sum_invalid_dict()
     return(_ds_sum_invalid(D, j, "w_theil", ln(X)))
 }
 
@@ -8434,7 +8459,7 @@ void ds_sum_b_theil(`Data' D, `Grp' G, `Int' i)
 }
 
 `BoolC' _ds_sum_b_theil_invalid(`Data' D, `Int' j, `RC' X)
-{
+{   // registered in _ds_sum_invalid_dict()
     return(_ds_sum_invalid(D, j, "b_theil", ln(X)))
 }
 
@@ -8451,7 +8476,9 @@ void ds_sum_ge(`Data' D, `Grp' G, `Int' i, `RS' a)
 }
 
 `BoolC' _ds_sum_ge_invalid(`Data' D, `Int' j, `RC' X, `RS' a)
-{
+{   // registered in _ds_sum_invalid_dict()
+    if (a==0) return(_ds_sum_invalid(D, j, "ge(0)", ln(X)))
+    if (a==1) return(_ds_sum_invalid(D, j, "ge(1)", ln(X)))
     return(_ds_sum_invalid(D, j, "ge("+strofreal(a)+")", X:^a))
 }
 
@@ -8463,7 +8490,9 @@ void ds_sum_gw_ge(`Data' D, `Grp' G, `Int' i, `RS' a)
 }
 
 `BoolC' _ds_sum_gw_ge_invalid(`Data' D, `Int' j, `RC' X, `RS' a)
-{
+{   // registered in _ds_sum_invalid_dict()
+    if (a==0) return(_ds_sum_invalid(D, j, "gw_ge(0)", ln(X)))
+    if (a==1) return(_ds_sum_invalid(D, j, "gw_ge(1)", ln(X)))
     return(_ds_sum_invalid(D, j, "gw_ge("+strofreal(a)+")", X:^a))
 }
 
@@ -8508,7 +8537,9 @@ void ds_sum_w_ge(`Data' D, `Grp' G, `Int' i, `RS' a)
 }
 
 `BoolC' _ds_sum_w_ge_invalid(`Data' D, `Int' j, `RC' X, `RS' a)
-{
+{   // registered in _ds_sum_invalid_dict()
+    if (a==0) return(_ds_sum_invalid(D, j, "w_ge(0)", ln(X)))
+    if (a==1) return(_ds_sum_invalid(D, j, "w_ge(1)", ln(X)))
     return(_ds_sum_invalid(D, j, "w_ge("+strofreal(a)+")", X:^a))
 }
 
@@ -8534,7 +8565,9 @@ void ds_sum_b_ge(`Data' D, `Grp' G, `Int' i, `RS' a)
 }
 
 `BoolC' _ds_sum_b_ge_invalid(`Data' D, `Int' j, `RC' X, `RS' a)
-{
+{   // registered in _ds_sum_invalid_dict()
+    if (a==0) return(_ds_sum_invalid(D, j, "b_ge(0)", ln(X)))
+    if (a==1) return(_ds_sum_invalid(D, j, "b_ge(1)", ln(X)))
     return(_ds_sum_invalid(D, j, "b_ge("+strofreal(a)+")", X:^a))
 }
 
@@ -8545,7 +8578,7 @@ void ds_sum_atkinson(`Data' D, `Grp' G, `Int' i, `RS' e)
 }
 
 `BoolC' _ds_sum_atkinson_invalid(`Data' D, `Int' j, `RC' X, `RS' e)
-{
+{   // registered in _ds_sum_invalid_dict()
     if (e==1) return(_ds_sum_invalid(D, j, "atkinson(1)", ln(X)))
     return(_ds_sum_invalid(D, j, "atkinson("+strofreal(e)+")", X:^(1-e)))
 }
@@ -8620,7 +8653,7 @@ void ds_sum_lvar(`Data' D, `Grp' G, `Int' i, `RS' df)
 }
 
 `BoolC' _ds_sum_lvar_invalid(`Data' D, `Int' j, `RC' X, `RS' df)
-{
+{   // registered in _ds_sum_invalid_dict()
     pragma unused df
     return(_ds_sum_invalid(D, j, "lvar", ln(X)))
 }
@@ -8636,7 +8669,7 @@ void ds_sum_vlog(`Data' D, `Grp' G, `Int' i, `RS' df)
 }
 
 `BoolC' _ds_sum_vlog_invalid(`Data' D, `Int' j, `RC' X, `RS' df)
-{
+{   // registered in _ds_sum_invalid_dict()
     pragma unused df
     return(_ds_sum_invalid(D, j, "vlog", ln(X)))
 }
@@ -8647,7 +8680,7 @@ void ds_sum_gw_vlog(`Data' D, `Grp' G, `Int' i, `RS' df)
 }
 
 `BoolC' _ds_sum_gw_vlog_invalid(`Data' D, `Int' j, `RC' X, `RS' df)
-{
+{   // registered in _ds_sum_invalid_dict()
     pragma unused df
     return(_ds_sum_invalid(D, j, "gw_vlog", ln(X)))
 }
@@ -8679,7 +8712,7 @@ void ds_sum_w_vlog(`Data' D, `Grp' G, `Int' i, `RS' df)
 }
 
 `BoolC' _ds_sum_w_vlog_invalid(`Data' D, `Int' j, `RC' X, `RS' df)
-{
+{   // registered in _ds_sum_invalid_dict()
     pragma unused df
     return(_ds_sum_invalid(D, j, "w_vlog", ln(X)))
 }
@@ -8690,7 +8723,7 @@ void ds_sum_b_vlog(`Data' D, `Grp' G, `Int' i, `RS' df)
 }
 
 `BoolC' _ds_sum_b_vlog_invalid(`Data' D, `Int' j, `RC' X, `RS' df)
-{
+{   // registered in _ds_sum_invalid_dict()
     pragma unused df
     return(_ds_sum_invalid(D, j, "b_vlog", ln(X)))
 }
@@ -8739,7 +8772,7 @@ void ds_sum_sdlog(`Data' D, `Grp' G, `Int' i, `RS' df)
 }
 
 `BoolC' _ds_sum_sdlog_invalid(`Data' D, `Int' j, `RC' X, `RS' df)
-{
+{   // registered in _ds_sum_invalid_dict()
     pragma unused df
     return(_ds_sum_invalid(D, j, "sdlog", ln(X)))
 }
@@ -9114,7 +9147,7 @@ void ds_sum_chu(`Data' D, `Grp' G, `Int' i, `RS' a0)
 }
 
 `BoolC' _ds_sum_chu_invalid(`Data' D, `Int' j, `RC' X, `RS' a)
-{
+{   // registered in _ds_sum_invalid_dict()
     if (a==0) return(_ds_sum_invalid(D, j, "chu(0)", ln(X)))
     return(_ds_sum_invalid(D, j, "chu("+strofreal(a)+")", X:^(a/100)))
 }
@@ -9131,7 +9164,7 @@ void ds_sum_watts(`Data' D, `Grp' G, `Int' i)
 }
 
 `BoolC' _ds_sum_watts_invalid(`Data' D, `Int' j, `RC' X)
-{
+{   // registered in _ds_sum_invalid_dict()
     return(_ds_sum_invalid(D, j, "watts", ln(X)))
 }
 
