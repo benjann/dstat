@@ -1,4 +1,4 @@
-*! version 1.4.6  25apr2025  Ben Jann
+*! version 1.4.7  04jun2025  Ben Jann
 
 capt mata: assert(mm_version()>=201)
 if _rc {
@@ -966,7 +966,6 @@ program Graph
                 tempname BCI ATCI
                 mat `BCI' = `B'
                 mat `ATCI' = `AT'[2,1...] // bin midpoints
-                if `"`contrast'"'!="" mata: ds_drop_cref("`ATCI'", 0, 1)
                 mata: ds_graph_droplast(("`BCI'", "`CI'", "`ATCI'"))
                 local bci matrix(`BCI')
                 local atci at(`ATCI')
