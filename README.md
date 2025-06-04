@@ -42,6 +42,10 @@ Main changes:
     04jun2025 (version 1.4.7)
     - -dstat graph- failed after -dstat histogram- and -dstat share- in case of
       over() with suboption -contrast-; this is fixed
+    - -dstat graph- after -dstat histogram-, -dstat proportion-, or -dstat share-
+      now leaves the margin of the plotregion unchanged in case of over() with
+      suboption -contrast-; furthermore, base() is now set to 1 (rather than 0)
+      in case of over() with suboption -ratio-
 
     25apr2025 (version 1.4.6)
     - statistic -smse- in -dstat summarize- has been renamed to -rmse- (root mean
