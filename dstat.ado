@@ -1,8 +1,8 @@
-*! version 1.4.7  04jun2025  Ben Jann
+*! version 1.4.8  16jun2025  Ben Jann
 
-capt mata: assert(mm_version()>=201)
+capt mata: assert(mm_version()>=205)
 if _rc {
-    di as error "{bf:moremata} version 2.0.1 or newer is required; " _c
+    di as error "{bf:moremata} version 2.0.5 or newer is required; " _c
     di as error "type {stata ssc install moremata, replace}"
     error 499
 }
@@ -4166,25 +4166,20 @@ void _ds_mq_mcdf(`RC' X, `RC' w, `RC' x, `RC' F)
 
 `RC' `GRP'::EX()
 {   // estimates E(X|Y=q) using local linear regression on a 100-point grid
-    // (using default lpoly settings for kernel and bandwidth); this will 
+    // (using same defaults as lpoly for kernel and bandwidth); this will 
     // be used for the IFs of concentration curve ordinates
     `RS'   bw
+    `SS'   kern
     `IntC' p
-    pragma unset bw
 
     if (rows(xytmp.EX)) return(xytmp.EX)
-    if (wtype==1) {
-        // first compute bandwidth using rounded fweights
-        if (wsY()!=ceil(wsY())) {
-            (void) _ds_lpoly(XsY(), Ys(), round(wsY()), 0, 1, bw)
-        }
-    }
-    // lpoly fit
-    xytmp.EXat = rangen(min(Ys()), max(Ys()), 100)
-    xytmp.EX   = _ds_lpoly(XsY(), Ys(), wsY(), xytmp.EXat, wtype==1, bw)
+    kern       = "epanechnikov"
+    xytmp.EXat = rangen(Ys()[1], Ys()[N], 100)
+    bw         = mm_loclin_bw(X(), Y(), w(), kern, wtype==1)
+    xytmp.EX   = mm_loclin(X(), Y(), w(), xytmp.EXat, bw, kern)
     if (hasmissing(xytmp.EX)) { // restrict grid to nonmissing points
         p = selectindex(xytmp.EX:<.)
-        assert(length(p)) // lpoly failed
+        assert(length(p)) // mm_loclin() failed
         xytmp.EXat = xytmp.EXat[p]
         xytmp.EX   = xytmp.EX[p]
     }
@@ -4196,53 +4191,6 @@ void _ds_mq_mcdf(`RC' X, `RC' w, `RC' x, `RC' F)
     if (rows(xytmp.EXat)) return(xytmp.EXat)
     (void) EX()
     return(xytmp.EXat)
-}
-
-`RC' _ds_lpoly(`RC' X, `RC' Y, `RC' W, `RC' AT, `Bool' fw, `RS' bw)
-{   // obtain local linear fit using default settings; bw will be replaced
-    `Int'  n, r, N
-    `Bool' preserve
-    `SS'   x, y, w, at, ex, cmd
-    `RC'   EX
-
-    // write data
-    n = rows(X)
-    r = rows(AT)
-    N = max((n, r))
-    preserve = (st_nobs()<N)
-    if (preserve) {
-        stata("preserve")
-        stata("quietly set obs "+strofreal(N,"%18.0g"))
-    }
-    (void) st_addvar("double", x  = st_tempname()); st_store((1,n), x, X)
-    (void) st_addvar("double", y  = st_tempname()); st_store((1,n), y, Y)
-    (void) st_addvar("double", at = st_tempname()); st_store((1,r), at, AT)
-    // set weights (note: fweights are relevant only for bandwidth estimation)
-    if (rows(W)==1) {
-        if (fw & bw>=.) w = "[fw = "+strofreal(W)+"]"
-        else            w = ""
-    }
-    else {
-        (void) st_addvar("double", w  = st_tempname()); st_store((1,n), w, W)
-        if (fw & bw>=.) w = sprintf("[fw = %s]", w)
-        else            w = sprintf("[aw = %s]", w)
-    }
-    // run lpoly
-    ex = st_tempname()
-    cmd = sprintf("lpoly %s %s %s in 1/"+strofreal(n,"%18.0g"), x, y, w) +
-          sprintf(", nograph degree(1) at(%s) generate(%s)", at, ex) +
-          (bw<. ? (" bwidth("+strofreal(bw)+")") : "")
-    (void) _stata(cmd)
-    if (_st_varindex(ex)<.) {
-        EX = st_data((1,r), ex)
-        bw = st_numscalar("r(bwidth)")
-    }
-    else {
-        EX = J(r, 1, .)
-        bw = .
-    }
-    if (preserve) stata("restore")
-    return(EX)
 }
 
 `RC' `GRP'::tagX()

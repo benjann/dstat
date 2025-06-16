@@ -3,7 +3,7 @@ d dstat: Stata module to compute summary statistics and distribution functions i
 d 
 d Author: Ben Jann, University of Bern, ben.jann@unibe.ch
 d
-d Distribution-Date: 20250604
+d Distribution-Date: 20250616
 f dstat.ado
 f dstat.sthlp
 f dstat_svyr.ado

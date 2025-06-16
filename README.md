@@ -39,6 +39,11 @@ Installation from GitHub:
 
 Main changes:
 
+    16jun2025 (version 1.4.8)
+    - when computing IFs of concentration curves, -dstat- now uses mm_loclin()
+      rather than -lpoly- to obtain the required local linear fit; this implies
+      that moremata version 2.0.5 is required
+
     04jun2025 (version 1.4.7)
     - -dstat graph- failed after -dstat histogram- and -dstat share- in case of
       over() with suboption -contrast-; this is fixed
