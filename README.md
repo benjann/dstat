@@ -39,6 +39,18 @@ Installation from GitHub:
 
 Main changes:
 
+    21sep2025 (version 1.4.9)
+    - dstat summarize: renamed some statistics (hist -> histogram,
+        prop -> proportion, freq -> frequency, corr -> correlation,
+        covar -> covariance)
+    - dstat pw:
+      o repeated variables caused error; this is fixed (repeated variables
+        are now removed)
+      o -pvalues- rather than -nopvalues- is now the default
+      o e(subcmd) is now set to "pw"
+    - vce(): added suboptions -normal- and -minus()-
+    - saved results: sum of weights now saved in e(sum_w); e(W) now hidden
+
     16jun2025 (version 1.4.8)
     - when computing IFs of concentration curves, -dstat- now uses mm_loclin()
       rather than -lpoly- to obtain the required local linear fit; this implies

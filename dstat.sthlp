@@ -1,5 +1,5 @@
 {smcl}
-{* 25apr2025}{...}
+{* 21sep2025}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -115,7 +115,7 @@ help for {hi:dstat}{...}
     {p_end}
 
 {syntab:{help dstat##vce:SE/VCE}}
-{synopt:{cmd:vce(}{it:vcetype}{cmd:)}}variance estimation method;
+{synopt:{cmd:vce(}{it:{help dstat##vce:vcetype}}{cmd:)}}variance estimation method;
     {it:vcetype} may be {cmd:none} (skip variance estimation),
     {cmdab:a:nalytic}, {cmdab:cl:uster} {it:clustvar}, {cmdab:svy}, {cmdab:boot:strap},
     or {cmdab:jack:knife}
@@ -985,7 +985,8 @@ help for {hi:dstat}{...}
 {phang2}
     [{ul:{cmd:no}}]{opt pv:alues} decides whether p-values and their test
     statistics are reported in the coefficient table or not. The default is
-    {cmd:nopvalues} unless {cmd:over(, contrast())} has been specified.
+    {cmd:nopvalues} unless {cmd:over(, contrast())} has been specified or if
+    {it:subcmd} is {cmd:pw}.
 
 {phang2}
     {opt cref} causes the estimates from the reference (sub)population to be
@@ -1033,8 +1034,8 @@ help for {hi:dstat}{...}
     {opt vce(vcetype)} determines how standard errors are computed. {it:vcetype} may be:
 
             {opt none}
-            {opt a:nalytic}
-            {opt cl:uster} {it:clustvar}
+            {opt a:nalytic} [{cmd:,} {opt norm:al} {opt minus(#)} ]
+            {opt cl:uster} {it:clustvar} [{cmd:,} {opt norm:al} {opt minus(#)} ]
             {opt svy} [{help svy##svy_vcetype:{it:svy_vcetype}}] [{cmd:,} {help svy##svy_options:{it:svy_options}} ]
             {opt boot:strap} [{cmd:,} {help bootstrap:{it:bootstrap_options}} ]
             {opt jack:knife} [{cmd:,} {help jackknife:{it:jackknife_options}} ]
@@ -1045,12 +1046,18 @@ help for {hi:dstat}{...}
 
 {pmore}
     {cmd:vce(analytic)}, the default, computes standard errors based on
-    influence functions.
+    influence functions. Suboption {cmd:normal} omits {cmd:e(df_r)} from the
+    saved results so that the normal distribution will be used for tests and
+    confidence intervals rather than the t-distribution. Suboption
+    {opt minus(#)} sets k={it:#} for the multiplier n/(n-k) of the variance
+    matrix; the default is {cmd:minus(1)}.
 
 {pmore}
     {bind:{cmd:vce(cluster} {it:clustvar}{cmd:)}} computes standard errors based
     on influence functions allowing for intragroup correlation, where
-    {it:clustvar} specifies to which group each observation belongs.
+    {it:clustvar} specifies to which group each observation belongs. Suboptios
+    {cmd:normal} and {cmd:minus()} are as for {cmd:vce(analytic)}, with n as the
+    number of clusters.
 
 {pmore}
     {cmd:vce(svy)} computes standard errors taking the survey design as set by
@@ -2010,6 +2017,7 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(k_eq)}}number of equations in {cmd:e(b)}{p_end}
 {synopt:{cmd:e(k_omit)}}number of omitted estimates{p_end}
 {synopt:{cmd:e(df_r)}}sample degrees of freedom{p_end}
+{synopt:{cmd:e(vce_minus)}}value of k in VCE multiplier n/(n-k){p_end}
 {synopt:{cmd:e(qdef)}}quantile definition{p_end}
 {synopt:{cmd:e(adaptive)}}number of iterations of adaptive density estimator{p_end}
 {synopt:{cmd:e(napprox)}}size of density estimation grid{p_end}
@@ -2021,7 +2029,9 @@ help for {hi:dstat}{...}
 {synoptset 20 tabbed}{...}
 {p2col 5 20 24 2: Macros}{p_end}
 {synopt:{cmd:e(cmd)}}{cmd:dstat}{p_end}
-{synopt:{cmd:e(subcmd)}}{cmd:summarize}, {cmd:density}, {cmd:histogram}, {cmd:proportion}, {cmd:cdf}, {cmd:ccdf}, {cmd:quantile}, {cmd:lorenz}, or {cmd:share}{p_end}
+{synopt:{cmd:e(subcmd)}}{cmd:summarize}, {cmd:pw}, {cmd:density},
+    {cmd:histogram}, {cmd:proportion}, {cmd:cdf}, {cmd:ccdf}, {cmd:quantile},
+    {cmd:lorenz}, or {cmd:share}{p_end}
 {synopt:{cmd:e(predict)}}{cmd:dstat predict}{p_end}
 {synopt:{cmd:e(cmdline)}}command as typed{p_end}
 {synopt:{cmd:e(depvar)}}name(s) of analyzed variable(s){p_end}

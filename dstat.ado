@@ -1,4 +1,4 @@
-*! version 1.4.8  16jun2025  Ben Jann
+*! version 1.4.9  21sep2025  Ben Jann
 
 capt mata: assert(mm_version()>=205)
 if _rc {
@@ -700,7 +700,8 @@ program _Replay, rclass
     syntax [, citype(passthru) noHeader NOTABle TABle ///
         NOPValues PValues cref GRaph vsquish * ]
     local contrast `"`e(over_contrast)'"'
-    if (`"`contrast'"'=="" | `"`e(over_ratio)'"'=="ratio") & "`pvalues'"=="" {
+    if (`"`contrast'"'=="" | `"`e(over_ratio)'"'=="ratio") & "`subcmd'"!="pw"/*
+        */ & "`pvalues'"=="" {
         local nopvalues nopvalues
     }
     if "`header'"=="" {
@@ -781,8 +782,8 @@ program _Replay, rclass
         }
         if "`subcmd'"=="summarize" {
             if e(sinfo) local vsquish vsquish
-            local options `vsquish' `options'
         }
+        local options `vsquish' `options'
         if "`cref'"!="" local contrast
         local vmatrix
         capt confirm matrix e(V)
@@ -940,8 +941,9 @@ program Graph
     matrix `B' = e(b)
     if `"`contrast'"'!="" mata: ds_drop_cref("`B'", 0, 1)
     local b matrix(`B')
-    if `"`subcmd'"'!="summarize" {
-        if !(`"`subcmd'"'=="proportion" & `"`e(novalues)'"'=="" & `"`e(categorical)'"'!="") {
+    if !inlist(`"`subcmd'"',"summarize","pw") {
+        if !(`"`subcmd'"'=="proportion" & `"`e(novalues)'"'==""/*
+            */ & `"`e(categorical)'"'!="") {
             tempname AT
             matrix `AT' = e(at)
             if `"`contrast'"'!="" mata: ds_drop_cref("`AT'", 0, 1)
@@ -984,7 +986,7 @@ program Graph
     if (`"`e(over)'"'!="") {
         if `"`subcmd'"'!="summarize" local overeq 1
     }
-    if `"`subcmd'"'=="summarize" {
+    if inlist(`"`subcmd'"',"summarize","pw") {
         if `"`e(over)'"'!="" {
             if e(sinfo)==0 {
                 if e(N_vars)>1 local overeq 1
@@ -1463,7 +1465,7 @@ program _Estimate_PW, eclass
     // syntax
     syntax varlist(numeric) [if] [in] [fw iw pw] [, ///
         Statistic(str) LOwer UPper DIAGonal Over(str asis) * ]
-    if `"`statistic'"'=="" local statistic corr // default
+    if `"`statistic'"'=="" local statistic correlation // default
     if `"`over'"'!="" {
         di as err "{bf:over()} not allowed for {bf:dstat pw}"
         exit 198
@@ -1474,10 +1476,11 @@ program _Estimate_PW, eclass
     }
     
     // compile argument for dstat summarize
+    local varlist: list uniq varlist
     local n: list sizeof varlist
     if "`diagonal'"=="" {
         if `n'<2 {
-            di as err "must spefify at least 2 variables"
+            di as err "must specify at least 2 variables"
             exit 102
         }
     }
@@ -1509,7 +1512,7 @@ program _Estimate_PW, eclass
         }
     }
     
-    // run dstat summarize 
+    // run dstat summarize
     _Estimate summarize `stats' `if' `in' [`weight'`exp'], `options'
     c_local generate_quietly `generate_quietly'
     if `"`markesample'"'!="" {
@@ -1530,7 +1533,23 @@ program _Estimate_PW, eclass
         mat coln `b' = `cnames'
         eret matrix `m' = `b'
     }
-    eret local title `"`statistic'"'
+    eret local subcmd "pw"
+    eret local title  `"Pairwise `statistic'"'
+    eret local stats  `"`statistic'"'
+    eret scalar N_stats = 1
+    eret local sinfo "" // remove scalar e(sinfo)
+    
+    // fix variable labels of influence functions
+    if `"`e(generate)'"'!="" {
+        local cnames: colfullnames e(b)
+        foreach IF in `e(generate)' {
+            gettoken cname cnames : cnames
+            local lbl: var lab `IF'
+            local lbl = substr(`"`lbl'"',1,strpos(`"`lbl'"',"_b[")-1) +/*
+                */ `"_b[`cname']"'
+            lab var `IF' `"`lbl'"'
+        }
+    }
 end
 
 program _Estimate, eclass
@@ -1584,15 +1603,15 @@ program _Estimate, eclass
     }
     else exit 499
     syntax `lhs' [if] [in] [fw iw pw/], [ ///
-            NOVALues VFormat(str) NOCASEwise ///
-            qdef(numlist max=1 int >=0 <=11) ///
-            HDQuantile HDTrim HDTrim2(numlist max=1) MQuantile MQOPTs(str) ///
-            Over(str) TOTal BALance(str) ///
-            vce(str) NOSE NOCOV COV Level(cilevel) ///
-            Generate(passthru) rif(str) Replace ///
-            noBWFIXed /// does nothing at this point
-            markesample(name) /// undocumented: mark estimation sample and exit
-            `opts' * ]
+        NOVALues VFormat(str) NOCASEwise ///
+        qdef(numlist max=1 int >=0 <=11) ///
+        HDQuantile HDTrim HDTrim2(numlist max=1) MQuantile MQOPTs(str) ///
+        Over(str) TOTal BALance(str) ///
+        vce(str) NOSE NOCOV COV Level(cilevel) ///
+        Generate(passthru) rif(str) Replace ///
+        noBWFIXed /// does nothing at this point
+        markesample(name) /// undocumented: mark estimation sample and exit
+        `opts' * ]
     if "`byvar'"=="" local byvar `zvar' // support for old syntax
     Parse_over `over'
     if "`over_accumulate'"!="" local common common
@@ -2041,7 +2060,8 @@ program _Estimate, eclass
     if "`nose'"=="" {
         eret local vcetype "`vcetype'"
         eret local vce "`vce'"
-        eret scalar df_r = `df_r'
+        if "`vce_normal'"=="" eret scalar df_r = `df_r'
+        eret scalar vce_minus = `vce_minus'
         if "`vce'"=="cluster" {
             eret local clustvar "`clustvar'"
             eret scalar N_clust = `N_clust'
@@ -2050,7 +2070,8 @@ program _Estimate, eclass
             eret matrix se = `SE'
         }
     }
-    eret scalar W = `W'
+    eret            scalar sum_w = `W' // renamed in v1.4.9
+    eret historical scalar W     = `W'
     eret scalar k_eq = `k_eq'
     eret scalar k_eform = `k_eq'
     eret scalar k_omit = `k_omit'
@@ -2487,12 +2508,31 @@ program Parse_sum_tokenize
 end
 
 program Parse_vce
-    local vce `0'
+    // options
+    _parse comma vce 0 : 0
+    capt n syntax [, minus(int 1) NORMal ]
+    if _rc==1 exit 1
+    if _rc {
+        di as err "error in option {bf:vce()}"
+        exit _rc
+    }
+    c_local vce_minus `minus'
+    c_local vce_normal `normal'
+    // vce: none
+    if `"`vce'"'=="none" {
+        c_local nose "nose"
+        c_local vce
+        c_local vcetype
+        c_local clustvar
+        c_local vce_minus
+        c_local vce_normal
+        exit
+    }
     // vce type
-    if `"`vce'"'==substr("analytic", 1, strlen(`"`vce'"')) {
+    if `"`vce'"'==substr("analytic", 1, strlen(`"`vce'"')) { // includes ""
         local vce "analytic"
     }
-    else if `"`vce'"'!="none" {
+    else {
         gettoken vce arg : vce
         if `"`vce'"'==substr("cluster", 1, max(2,strlen(`"`vce'"'))) {
             local vce "cluster"
@@ -2502,17 +2542,8 @@ program Parse_vce
             exit 198
         }
     }
-    // vce: none
-    if `"`vce'"'=="none" {
-        c_local nose "nose"
-        c_local vce
-        c_local vcetype
-        c_local clustvar
-        exit
-    }
-    // vce: other
     c_local vce `vce'
-    // cluster
+    // clustvar
     if "`vce'"=="cluster" {
         local 0 `"`arg'"'
         capt n syntax varname
@@ -2805,165 +2836,165 @@ void ds_parse_stats(`Int' n)
     
     A = asarray_create()
     // general
-    asarray(A, "q"         , ".,0,100") // quantile at #
-    asarray(A, "p"         , ".,0,100") // same as q
-    asarray(A, "quantile"  , ".,0,100") // same as q
-    asarray(A, "hdquantile", ".,0,100") // Harrell&Davis (1982) quantile at #
-    asarray(A, "mquantile" , ".,0,100") // mid-quantile at #
-    asarray(A, "d"         , ".")       // kernel density at #
-    asarray(A, "density"   , ".")       // same as d
-    asarray(A, "hist"      , ".:.")     // histogram density within [#,#]
-    asarray(A, "cdf"       , ".")       // cdf at #
-    asarray(A, "mcdf"      , ".")       // mid cdf at #
-    asarray(A, "fcdf"      , ".")       // floor cdf at #
-    asarray(A, "ccdf"      , ".")       // complementary cdf at #
-    asarray(A, "mccdf"     , ".")       // mid ccdf at #
-    asarray(A, "fccdf"     , ".")       // floor ccdf at #
-    asarray(A, "prop"      , ".;.z")    // proportion equal to # or within [#,#]
-    asarray(A, "pct"       , ".;.z")    // percent equal to # or within [#,#]
-    asarray(A, "f"         , ".z;.z")   // frequency: overall, equal to #, or within [#,#]
-    asarray(A, "freq"      , ".z;.z")   // same as f
-    asarray(A, "count"     , ".z;.z")   // same as f
-    asarray(A, "total"     , ".z;.z")   // overall total or total equal to # or within [#,#]
-    asarray(A, "min"       , "")        //
-    asarray(A, "max"       , "")        //
-    asarray(A, "range"     , "")        //
-    asarray(A, "midrange"  , "")        // (max+min)/2
+    asarray(A, "q"          , ".,0,100") // quantile at #
+    asarray(A, "p"          , ".,0,100") // same as q
+    asarray(A, "quantile"   , ".,0,100") // same as q
+    asarray(A, "hdquantile" , ".,0,100") // Harrell&Davis (1982) quantile at #
+    asarray(A, "mquantile"  , ".,0,100") // mid-quantile at #
+    asarray(A, "d"          , ".")       // kernel density at #
+    asarray(A, "density"    , ".")       // same as d
+    asarray(A, "histogram"  , ".:.")     // histogram density within [#,#]
+    asarray(A, "cdf"        , ".")       // cdf at #
+    asarray(A, "mcdf"       , ".")       // mid cdf at #
+    asarray(A, "fcdf"       , ".")       // floor cdf at #
+    asarray(A, "ccdf"       , ".")       // complementary cdf at #
+    asarray(A, "mccdf"      , ".")       // mid ccdf at #
+    asarray(A, "fccdf"      , ".")       // floor ccdf at #
+    asarray(A, "proportion" , ".;.z")    // proportion equal to # or within [#,#]
+    asarray(A, "pct"        , ".;.z")    // percent equal to # or within [#,#]
+    asarray(A, "f"          , ".z;.z")   // frequency: overall, equal to #, or within [#,#]
+    asarray(A, "frequency"  , ".z;.z")   // same as f
+    asarray(A, "count"      , ".z;.z")   // same as f
+    asarray(A, "total"      , ".z;.z")   // overall total or total equal to # or within [#,#]
+    asarray(A, "min"        , "")        //
+    asarray(A, "max"        , "")        //
+    asarray(A, "range"      , "")        //
+    asarray(A, "midrange"   , "")        // (max+min)/2
     // location
-    asarray(A, "mean"      , "")        // arithmetic mean
-    asarray(A, "gmean"     , "")        // geometric mean
-    asarray(A, "hmean"     , "")        // harmonic mean
-    asarray(A, "trim"      , "25,0,50;.z,0,50") // trimmed mean
-    asarray(A, "winsor"    , "25,0,50;.z,0,50") // winsorized mean
-    asarray(A, "median"    , "")        // median
-    asarray(A, "huber"     , "95,63.7,99.9") // huber m-estimate of location
-    asarray(A, "biweight"  , "95,0.1,99.9")  // biweight m-estimate of location
-    asarray(A, "hl"        , "")        // Hodges-Lehmann estimator
+    asarray(A, "mean"       , "")        // arithmetic mean
+    asarray(A, "gmean"      , "")        // geometric mean
+    asarray(A, "hmean"      , "")        // harmonic mean
+    asarray(A, "trim"       , "25,0,50;.z,0,50") // trimmed mean
+    asarray(A, "winsor"     , "25,0,50;.z,0,50") // winsorized mean
+    asarray(A, "median"     , "")        // median
+    asarray(A, "huber"      , "95,63.7,99.9") // huber m-estimate of location
+    asarray(A, "biweight"   , "95,0.1,99.9")  // biweight m-estimate of location
+    asarray(A, "hl"         , "")        // Hodges-Lehmann estimator
     // scale
-    asarray(A, "sd"        , "1")       // standard deviation
-    asarray(A, "variance"  , "1")       // variance
-    asarray(A, "mse"       , "0;0")     // mean squared error
-    asarray(A, "rmse"      , "0;0")     // root mean squared error
-    asarray(A, "iqr"       , "25,0,100:75,0,100") // inter quantile range
-    asarray(A, "iqrn"      , "25,0,100:75,0,100") // normalized inter quantile range
-    asarray(A, "mad"       , "0;0")     // median (or mean) absolute deviation
-    asarray(A, "madn"      , "0;0")     // normalized MAD
-    asarray(A, "mae"       , "0;0")     // median (or mean) absolute error
-    asarray(A, "maen"      , "0;0")     // normalized MAE
-    asarray(A, "md"        , "")        // mean absolute pairwise difference
-    asarray(A, "mdn"       , "")        // normalized mean absolute pairwise difference
-    asarray(A, "mscale"    , "50,1,50") // m-estimate of scale
-    asarray(A, "qn"        , "")        // Qn coefficient
+    asarray(A, "sd"         , "1")       // standard deviation
+    asarray(A, "variance"   , "1")       // variance
+    asarray(A, "mse"        , "0;0")     // mean squared error
+    asarray(A, "rmse"       , "0;0")     // root mean squared error
+    asarray(A, "iqr"        , "25,0,100:75,0,100") // inter quantile range
+    asarray(A, "iqrn"       , "25,0,100:75,0,100") // normalized inter quantile range
+    asarray(A, "mad"        , "0;0")     // median (or mean) absolute deviation
+    asarray(A, "madn"       , "0;0")     // normalized MAD
+    asarray(A, "mae"        , "0;0")     // median (or mean) absolute error
+    asarray(A, "maen"       , "0;0")     // normalized MAE
+    asarray(A, "md"         , "")        // mean absolute pairwise difference
+    asarray(A, "mdn"        , "")        // normalized mean absolute pairwise difference
+    asarray(A, "mscale"     , "50,1,50") // m-estimate of scale
+    asarray(A, "qn"         , "")        // Qn coefficient
     // skewness
-    asarray(A, "skewness"  , "")        // classical skewness
-    asarray(A, "qskew"     , "25,0,50") // quantile skewness measure
-    asarray(A, "mc"        , "")        // medcouple
+    asarray(A, "skewness"   , "")        // classical skewness
+    asarray(A, "qskew"      , "25,0,50") // quantile skewness measure
+    asarray(A, "mc"         , "")        // medcouple
     // kurtosis
-    asarray(A, "kurtosis"  , "")        // classical kurtosis
-    asarray(A, "ekurtosis" , "")        // excess kurtosis (kurtosis - 3)
-    asarray(A, "qw"        , "25,0,50") // quantile tail weight
-    asarray(A, "lqw"       , "25,0,50") // left quantile tail weight
-    asarray(A, "rqw"       , "25,0,50") // right quantile tail weight
-    asarray(A, "lmc"       , "")        // left medcouple tail weight
-    asarray(A, "rmc"       , "")        // right medcouple tail weight
+    asarray(A, "kurtosis"   , "")        // classical kurtosis
+    asarray(A, "ekurtosis"  , "")        // excess kurtosis (kurtosis - 3)
+    asarray(A, "qw"         , "25,0,50") // quantile tail weight
+    asarray(A, "lqw"        , "25,0,50") // left quantile tail weight
+    asarray(A, "rqw"        , "25,0,50") // right quantile tail weight
+    asarray(A, "lmc"        , "")        // left medcouple tail weight
+    asarray(A, "rmc"        , "")        // right medcouple tail weight
     // inequality
-    asarray(A, "hoover"    , "")        // Hoover index
-    asarray(A, "gini"      , "0")       // Gini coefficient
-    asarray(A, "agini"     , "0")       // absolute Gini coefficient
-    asarray(A, "mld"       , "")        // mean log deviation (MLD)
-    asarray(A, "theil"     , "")        // Theil index
-    asarray(A, "ge"        , "1")       // generalized entropy
-    asarray(A, "atkinson"  , "1,0,.")   // Atkinson inequality measure
-    asarray(A, "cv"        , "1")       // coefficient of variation
-    asarray(A, "lvar"      , "1")       // logarithmic variance
-    asarray(A, "vlog"      , "1")       // variance of logarithm
-    asarray(A, "sdlog"     , "1")      // standard deviation of logarithm
-    asarray(A, "top"       , "10,0,100") // top share
-    asarray(A, "bottom"    , "40,0,100") // bottom share
-    asarray(A, "mid"       , "40,0,100:90,0,100") // mid share
-    asarray(A, "palma"     , "")        // palma ratio
-    asarray(A, "qratio"    , "10,0,100:90,0,100") // quantile ratio
-    asarray(A, "sratio"    , ".z,0,100:.z,0,100;.z,0,100:.z,0,100") // percentile share ratio
-    asarray(A, "lorenz"    , ".,0,100") // lorenz ordinate
-    asarray(A, "tlorenz"   , ".,0,100") // total (sum) lorenz ordinate
-    asarray(A, "glorenz"   , ".,0,100") // generalized lorenz ordinate
-    asarray(A, "alorenz"   , ".,0,100") // absolute lorenz ordinate
-    asarray(A, "elorenz"   , ".,0,100") // equality gap lorenz ordinate
-    asarray(A, "share"     , ".,0,100;.,0,100") // percentile share (proportion)
-    asarray(A, "dshare"    , ".,0,100;.,0,100") // percentile share (density)
-    asarray(A, "tshare"    , ".,0,100;.,0,100") // percentile share (total/sum)
-    asarray(A, "gshare"    , ".,0,100;.,0,100") // percentile share (generalized)
-    asarray(A, "ashare"    , ".,0,100;.,0,100") // percentile share (average)
+    asarray(A, "hoover"     , "")        // Hoover index
+    asarray(A, "gini"       , "0")       // Gini coefficient
+    asarray(A, "agini"      , "0")       // absolute Gini coefficient
+    asarray(A, "mld"        , "")        // mean log deviation (MLD)
+    asarray(A, "theil"      , "")        // Theil index
+    asarray(A, "ge"         , "1")       // generalized entropy
+    asarray(A, "atkinson"   , "1,0,.")   // Atkinson inequality measure
+    asarray(A, "cv"         , "1")       // coefficient of variation
+    asarray(A, "lvar"       , "1")       // logarithmic variance
+    asarray(A, "vlog"       , "1")       // variance of logarithm
+    asarray(A, "sdlog"      , "1")      // standard deviation of logarithm
+    asarray(A, "top"        , "10,0,100") // top share
+    asarray(A, "bottom"     , "40,0,100") // bottom share
+    asarray(A, "mid"        , "40,0,100:90,0,100") // mid share
+    asarray(A, "palma"      , "")        // palma ratio
+    asarray(A, "qratio"     , "10,0,100:90,0,100") // quantile ratio
+    asarray(A, "sratio"     , ".z,0,100:.z,0,100;.z,0,100:.z,0,100") // percentile share ratio
+    asarray(A, "lorenz"     , ".,0,100") // lorenz ordinate
+    asarray(A, "tlorenz"    , ".,0,100") // total (sum) lorenz ordinate
+    asarray(A, "glorenz"    , ".,0,100") // generalized lorenz ordinate
+    asarray(A, "alorenz"    , ".,0,100") // absolute lorenz ordinate
+    asarray(A, "elorenz"    , ".,0,100") // equality gap lorenz ordinate
+    asarray(A, "share"      , ".,0,100;.,0,100") // percentile share (proportion)
+    asarray(A, "dshare"     , ".,0,100;.,0,100") // percentile share (density)
+    asarray(A, "tshare"     , ".,0,100;.,0,100") // percentile share (total/sum)
+    asarray(A, "gshare"     , ".,0,100;.,0,100") // percentile share (generalized)
+    asarray(A, "ashare"     , ".,0,100;.,0,100") // percentile share (average)
     // inequality decomposition
-    asarray(A, "gw_gini"   , "bys;0")   // weighted avg of within-group Gini
-    asarray(A, "b_gini"    , "bys;0")   // between Gini coefficient
-    asarray(A, "gw_mld"    , "bys")     // weighted avg of within-group MLD
-    asarray(A, "w_mld"     , "bys")     // within MLD
-    asarray(A, "b_mld"     , "bys")     // between MLD
-    asarray(A, "gw_theil"  , "bys")     // weighted avg of within-group Theil
-    asarray(A, "w_theil"   , "bys")     // within Theil index
-    asarray(A, "b_theil"   , "bys")     // between Theil index
-    asarray(A, "gw_ge"     , "bys;1")   // weighted avg of within-group GE
-    asarray(A, "w_ge"      , "bys;1")   // within generalized entropy
-    asarray(A, "b_ge"      , "bys;1")   // between generalized entropy
-    asarray(A, "gw_vlog"   , "bys;1")   // weighted avg of within-group vlog
-    asarray(A, "w_vlog"    , "bys;1")   // within vlog
-    asarray(A, "b_vlog"    , "bys;1")   // between vlog
+    asarray(A, "gw_gini"    , "bys;0")   // weighted avg of within-group Gini
+    asarray(A, "b_gini"     , "bys;0")   // between Gini coefficient
+    asarray(A, "gw_mld"     , "bys")     // weighted avg of within-group MLD
+    asarray(A, "w_mld"      , "bys")     // within MLD
+    asarray(A, "b_mld"      , "bys")     // between MLD
+    asarray(A, "gw_theil"   , "bys")     // weighted avg of within-group Theil
+    asarray(A, "w_theil"    , "bys")     // within Theil index
+    asarray(A, "b_theil"    , "bys")     // between Theil index
+    asarray(A, "gw_ge"      , "bys;1")   // weighted avg of within-group GE
+    asarray(A, "w_ge"       , "bys;1")   // within generalized entropy
+    asarray(A, "b_ge"       , "bys;1")   // between generalized entropy
+    asarray(A, "gw_vlog"    , "bys;1")   // weighted avg of within-group vlog
+    asarray(A, "w_vlog"     , "bys;1")   // within vlog
+    asarray(A, "b_vlog"     , "bys;1")   // between vlog
     // concentration
-    asarray(A, "gci"       , "by;0")    // Gini concentration index
-    asarray(A, "aci"       , "by;0")    // absolute Gini concentration index
-    asarray(A, "ccurve"    , ".,0,100;by") // lorenz concentration ordinate
-    asarray(A, "tccurve"   , ".,0,100;by") // total concentration ordinate
-    asarray(A, "gccurve"   , ".,0,100;by") // generalized concentration ordinate
-    asarray(A, "accurve"   , ".,0,100;by") // absolute concentration ordinate
-    asarray(A, "eccurve"   , ".,0,100;by") // equality gap concentration ordinate
-    asarray(A, "cshare"    , ".,0,100;.,0,100;by") // concentration share
-    asarray(A, "dcshare"   , ".,0,100;.,0,100;by") // concentration share as density
-    asarray(A, "gcshare"   , ".,0,100;.,0,100;by") // generalized concentration share
-    asarray(A, "tcshare"   , ".,0,100;.,0,100;by") // concentration share as total
-    asarray(A, "acshare"   , ".,0,100;.,0,100;by") // concentration share as average
+    asarray(A, "gci"        , "by;0")    // Gini concentration index
+    asarray(A, "aci"        , "by;0")    // absolute Gini concentration index
+    asarray(A, "ccurve"     , ".,0,100;by") // lorenz concentration ordinate
+    asarray(A, "tccurve"    , ".,0,100;by") // total concentration ordinate
+    asarray(A, "gccurve"    , ".,0,100;by") // generalized concentration ordinate
+    asarray(A, "accurve"    , ".,0,100;by") // absolute concentration ordinate
+    asarray(A, "eccurve"    , ".,0,100;by") // equality gap concentration ordinate
+    asarray(A, "cshare"     , ".,0,100;.,0,100;by") // concentration share
+    asarray(A, "dcshare"    , ".,0,100;.,0,100;by") // concentration share as density
+    asarray(A, "gcshare"    , ".,0,100;.,0,100;by") // generalized concentration share
+    asarray(A, "tcshare"    , ".,0,100;.,0,100;by") // concentration share as total
+    asarray(A, "acshare"    , ".,0,100;.,0,100;by") // concentration share as average
     // poverty
-    asarray(A, "hcr"       , "pl")      // Head count ratio
-    asarray(A, "pgap"      , "pl")      // poverty gap
-    asarray(A, "apgap"     , "pl")      // absolute poverty gap
-    asarray(A, "pgi"       , "pl")      // poverty gap index
-    asarray(A, "apgi"      , "pl")      // absolute poverty gap index
-    asarray(A, "fgt"       , "0,0,.;pl")    // FGT poverty measure
-    asarray(A, "chu"       , "50,0,100;pl") // Clark-Hemming-Ulph poverty measure
-    asarray(A, "watts"     , "pl")      // Watts index
-    asarray(A, "sen"       , "pl")      // Sen poverty index
-    asarray(A, "sst"       , "pl")      // Sen-Shorrocks-Thon poverty index
-    asarray(A, "takayama"  , "pl")      // Takayama poverty index
-    asarray(A, "tip"       , ".,0,100;pl") // TIP ordinate
-    asarray(A, "atip"      , ".,0,100;pl") // absolute TIP ordinate
+    asarray(A, "hcr"        , "pl")      // Head count ratio
+    asarray(A, "pgap"       , "pl")      // poverty gap
+    asarray(A, "apgap"      , "pl")      // absolute poverty gap
+    asarray(A, "pgi"        , "pl")      // poverty gap index
+    asarray(A, "apgi"       , "pl")      // absolute poverty gap index
+    asarray(A, "fgt"        , "0,0,.;pl")    // FGT poverty measure
+    asarray(A, "chu"        , "50,0,100;pl") // Clark-Hemming-Ulph poverty measure
+    asarray(A, "watts"      , "pl")      // Watts index
+    asarray(A, "sen"        , "pl")      // Sen poverty index
+    asarray(A, "sst"        , "pl")      // Sen-Shorrocks-Thon poverty index
+    asarray(A, "takayama"   , "pl")      // Takayama poverty index
+    asarray(A, "tip"        , ".,0,100;pl") // TIP ordinate
+    asarray(A, "atip"       , ".,0,100;pl") // absolute TIP ordinate
     // association
-    asarray(A, "corr"      , "by")      // correlation
-    asarray(A, "rsquared"  , "by")      // R squared
-    asarray(A, "slope"     , "by")      // slope of linear regression
-    asarray(A, "b"         , "by")      // same as slope
-    asarray(A, "cohend"    , "bys;2")   // Cohen's d
-    asarray(A, "covar"     , "by;1")    // covariance
-    asarray(A, "spearman"  , "by")      // spearman rank correlation
-    asarray(A, "taua"      , "by;0")    // Kendall's tau-a
-    asarray(A, "taub"      , "by;0")    // Kendall's tau-b
-    asarray(A, "somersd"   , "by;0")    // Somers' D
-    asarray(A, "gamma"     , "by;0")    // Goodman and Kruskal's gamma
+    asarray(A, "correlation", "by")      // correlation
+    asarray(A, "rsquared"   , "by")      // R squared
+    asarray(A, "slope"      , "by")      // slope of linear regression
+    asarray(A, "b"          , "by")      // same as slope
+    asarray(A, "cohend"     , "bys;2")   // Cohen's d
+    asarray(A, "covariance" , "by;1")    // covariance
+    asarray(A, "spearman"   , "by")      // spearman rank correlation
+    asarray(A, "taua"       , "by;0")    // Kendall's tau-a
+    asarray(A, "taub"       , "by;0")    // Kendall's tau-b
+    asarray(A, "somersd"    , "by;0")    // Somers' D
+    asarray(A, "gamma"      , "by;0")    // Goodman and Kruskal's gamma
     // categorical
-    asarray(A, "hhi"       , "")        // Herfindahl–Hirschman index
-    asarray(A, "hhin"      , "")        // normalized hhi
-    asarray(A, "gimp"      , "")        // Gini impurity
-    asarray(A, "gimpn"     , "")        // normalized  Gini impurity
-    asarray(A, "entropy"   , "0,0,.")   // Shannon entropy
-    asarray(A, "hill"      , "1,0,.")   // Hill number
-    asarray(A, "renyi"     , "1,0,.")   // Rényi entropy
-    asarray(A, "mindex"    , "bys;0,0,.") // mutual information
-    asarray(A, "uc"        , "bys")     // uncertainty coefficient (symmetric)
-    asarray(A, "ucl"       , "bys")     // uncertainty coefficient (left)
-    asarray(A, "ucr"       , "bys")     // uncertainty coefficient (right)
-    asarray(A, "cramersv"  , "bys;0,0,.") // Cramér's V
-    asarray(A, "dissim"    , "bys")     // (generalized) dissimilarity index
-    asarray(A, "or"        , "by")      // odds ratio (for 2x2 table)
-    asarray(A, "rr"        , "by")      // risk ratio (for 2x2 table)
+    asarray(A, "hhi"        , "")        // Herfindahl–Hirschman index
+    asarray(A, "hhin"       , "")        // normalized hhi
+    asarray(A, "gimp"       , "")        // Gini impurity
+    asarray(A, "gimpn"      , "")        // normalized  Gini impurity
+    asarray(A, "entropy"    , "0,0,.")   // Shannon entropy
+    asarray(A, "hill"       , "1,0,.")   // Hill number
+    asarray(A, "renyi"      , "1,0,.")   // Rényi entropy
+    asarray(A, "mindex"     , "bys;0,0,.") // mutual information
+    asarray(A, "uc"         , "bys")     // uncertainty coefficient (symmetric)
+    asarray(A, "ucl"        , "bys")     // uncertainty coefficient (left)
+    asarray(A, "ucr"        , "bys")     // uncertainty coefficient (right)
+    asarray(A, "cramersv"   , "bys;0,0,.") // Cramér's V
+    asarray(A, "dissim"     , "bys")     // (generalized) dissimilarity index
+    asarray(A, "or"         , "by")      // odds ratio (for 2x2 table)
+    asarray(A, "rr"         , "by")      // risk ratio (for 2x2 table)
     return(A)
 }
 
@@ -4829,7 +4860,7 @@ void dstat()
         stats = mm_unique(D.cstripe[,2], 1) // uniq list of statistics
         st_local("stats", invtokens(stats'))
         st_local("N_stats", strofreal(length(stats)))
-        st_local("sinfo", "1")
+        st_local("sinfo", "1") // whether info on stats is in cstripe or not
         if (length(D.eqs)>1 & length(D.eqs)==rows(D.cstripe)) {
             if (length(stats)==1) {
                 st_local("sinfo", "0")
@@ -4893,7 +4924,8 @@ void dstat()
     }
     ds_recenter_IF(D)
     if (D.nose) return
-    ds_vce(D, st_local("clustvar"), st_local("nocov")!="")
+    ds_vce(D, st_local("clustvar"), strtoreal(st_local("vce_minus")),
+        st_local("nocov")!="")
 }
 
 void ds_view(`RM' Y, `SR' yvars, `Int' touse)
@@ -5110,53 +5142,52 @@ void ds_lnratio(`Data' D)
     }
 }
 
-void ds_vce(`Data' D, `SS' clust, `Bool' seonly)
+void ds_vce(`Data' D, `SS' clust, `Int' minus, `Bool' seonly)
 {
     `Bool' dev
     `RS'   df_r, c, N_clust
     `RR'   m
     `RM'   V
     
+    // compute V
     m = D.IFtot'
     dev = any(m) // use crossdev() if there are any score-type IFs
-    // no clusters
-    if (clust=="") {
+    if (clust=="") { // no clusters
         if (D.wtype==0) { // no weights
             if (seonly)   V = _ds_vce_cross(1, D.IF, m/D.N)
             else if (dev) V = _ds_vce_cdev(D.IF, m/D.N)
             else          V = cross(D.IF, D.IF)
-            df_r = D.N - 1
+            df_r = D.N - minus
             c = (df_r>0 & df_r<. ? D.N/df_r : 0)
         }
         else if (D.wtype==3) { // pw
             if (seonly)   V = _ds_vce_cross2(D.w, D.IF, m/D.N)
             else if (dev) V = _ds_vce_cdev(D.w:*D.IF, m/D.N)
             else          V = cross(D.IF, D.w:^2, D.IF)
-            df_r = D.N - 1
+            df_r = D.N - minus
             c = (df_r>0 & df_r<. ? D.N/df_r : 0)
         }
         else { // iw or fw
             if (seonly)   V = _ds_vce_cross(D.w, D.IF, m/D.W)
             else if (dev) V = _ds_vce_cdev(D.IF, m/D.W, D.w)
             else          V = cross(D.IF, D.w, D.IF)
-            df_r = D.W - 1
+            df_r = D.W - minus
             c = (df_r>0 & df_r<. ? D.W/df_r : 0)
         }
-        V = V * c
     }
-    // with clusters
-    else {
+    else { // with clusters
         V = _ds_vce_csum(D.IF, D.w, (st_isstrvar(clust) ? 
             st_sdata(., clust, D.touse) : st_data(., clust, D.touse)))
         N_clust = rows(V)
         if (seonly)   V = _ds_vce_cross(1, V, m/N_clust)
         else if (dev) V = _ds_vce_cdev(V, m/N_clust)
         else          V = cross(V, V)
-        df_r = N_clust - 1
-        V = V * (df_r>0 & df_r<. ? N_clust/df_r : 0)
+        df_r = N_clust - minus
+        c = (df_r>0 & df_r<. ? N_clust/df_r : 0)
         st_local("N_clust", st_tempname())
         st_numscalar(st_local("N_clust"), N_clust)
     }
+    V = V * c
     // return results
     st_local("df_r", st_tempname())
     st_numscalar(st_local("df_r"), df_r)
@@ -7175,7 +7206,7 @@ void ds_sum_density(`Data' D, `Grp' G, `Int' i, `RS' at)
     return(D.S.d(at, D.exact))
 }
 
-void ds_sum_hist(`Data' D, `Grp' G, `Int' i, `RR' o)
+void ds_sum_histogram(`Data' D, `Grp' G, `Int' i, `RR' o)
 {
     `RS' c, lo, up
     `RC' z
@@ -7261,7 +7292,7 @@ void ds_sum_fccdf(`Data' D, `Grp' G, `Int' i, `RS' at)
     ds_set_IF(D, G, i, (z :- D.b[i]) / G.W)
 }
 
-void ds_sum_prop(`Data' D, `Grp' G, `Int' i, `RR' o)
+void ds_sum_proportion(`Data' D, `Grp' G, `Int' i, `RR' o)
 {
     _ds_sum_freq(D, G, i, o[1], o[2], 0)
     if (D.omit[i]) return
@@ -7284,7 +7315,7 @@ void ds_sum_f(`Data' D, `Grp' G, `Int' i, `RR' o)
     _ds_sum_freq(D, G, i, o[1], o[2], 1)
 }
 
-void ds_sum_freq(`Data' D, `Grp' G, `Int' i, `RR' o)
+void ds_sum_frequency(`Data' D, `Grp' G, `Int' i, `RR' o)
 {
     _ds_sum_freq(D, G, i, o[1], o[2], 1)
 }
@@ -9234,7 +9265,7 @@ void _ds_sum_tip(`Data' D, `Grp' G, `Int' i, `Int' t, `RS' p)
     D.b[i] = _ds_tip(D, G, p/100, t, i, i) // also computes IF
 }
 
-void ds_sum_corr(`Data' D, `Grp' G, `Int' i)
+void ds_sum_correlation(`Data' D, `Grp' G, `Int' i)
 {
     `RS'  mX, sdX, mY, sdY, cov
     `RM'  mv
@@ -9339,7 +9370,7 @@ void ds_sum_cohend(`Data' D, `Grp' G, `Int' i, `RS' df)
         ) / G.W)
 }
 
-void ds_sum_covar(`Data' D, `Grp' G, `Int' i, `RS' df)
+void ds_sum_covariance(`Data' D, `Grp' G, `Int' i, `RS' df)
 {
     `RS'  c, mX, mY
     `RM'  mv
