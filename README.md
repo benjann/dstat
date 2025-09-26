@@ -39,6 +39,18 @@ Installation from GitHub:
 
 Main changes:
 
+    26sep2025 (version 1.5.0)
+    - dstat summarize:
+      o now skips computations and sets the result to 1 if X and Y are the same
+        variable for the following statistics: correlate, slope, rsquared,
+        spearman, taub, somersd, gamma, uc[l|r], cramersv, dissimilarity
+      o no longer sets e(novalues) and e(vformat)
+      o statistic dissim renamed to dissimilarity 
+    - dstat pw:
+      o now additionally returns square matrices e(B), e(Nobs), and e(P)
+      o now resets e(depvar) and e(N_vars)
+      o now removes e(sinfo)
+
     21sep2025 (version 1.4.9)
     - dstat summarize: renamed some statistics (hist -> histogram,
         prop -> proportion, freq -> frequency, corr -> correlation,

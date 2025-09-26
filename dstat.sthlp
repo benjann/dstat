@@ -1,5 +1,5 @@
 {smcl}
-{* 21sep2025}{...}
+{* 26sep2025}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -159,7 +159,7 @@ help for {hi:dstat}{...}
     {p_end}
 
 {syntab:{help dstat##pw:Subcommand {bf:pw}}}
-{synopt:{opt s:tatistic(stat)}}type of association measure; default is {cmd:statistic(corr)}
+{synopt:{opt s:tatistic(stat)}}type of association measure; default is {cmd:statistic(correlation)}
     {p_end}
 {synopt:{opt lo:wer}}lower-triangle elements only
     {p_end}
@@ -407,7 +407,7 @@ help for {hi:dstat}{...}
     statistics). If abbreviation is ambiguous, the first matching statistic in
     the sorted list of supported statistics will be used (with the following
     exceptions: {cmd:q} or {cmd:p} can be used for {cmd:quantile}, {cmd:d}
-    for {cmd:density}, and {cmd:f} for {cmd:freq}). For example, to obtain the
+    for {cmd:density}, and {cmd:f} for {cmd:frequency}). For example, to obtain the
     geometric mean, you could type {cmd:gmean}, {cmd:gm}, {cmd:GM}, {cmd:gMean},
     {cmd:gme}, or any other variant including at least the first two letters.
 
@@ -435,7 +435,7 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt density}{cmd:(}{it:x}{cmd:)}}kernel density at value {it:x}
     {p_end}
-{synopt:{opt hist}{cmd:(}{it:x1}{cmd:,}{it:x2}{cmd:)}}histogram density of data within ({it:x1},{it:x2}]
+{synopt:{opt histogram}{cmd:(}{it:x1}{cmd:,}{it:x2}{cmd:)}}histogram density of data within ({it:x1},{it:x2}]
     {p_end}
 {synopt:[*]{opt cdf}{cmd:(}{it:x}{cmd:)}}cumulative distribution (CDF) at value {it:x}; prefix {it:*} is empty for default,
     {cmd:m} for mid-adjusted CDF, {cmd:f} for floor CDF
@@ -443,13 +443,13 @@ help for {hi:dstat}{...}
 {synopt:[*]{opt ccdf}{cmd:(}{it:x}{cmd:)}}complementary CDF at value {it:x}; prefix {it:*} is empty for default,
     {cmd:m} for mid-adjusted CCDF, {cmd:f} for floor CCDF
     {p_end}
-{synopt:{opt prop}{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}}proportion of data equal to {it:x1} or within [{it:x1},{it:x2}]
+{synopt:{opt proportion}{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}}proportion of data equal to {it:x1} or within [{it:x1},{it:x2}]
     {p_end}
 {synopt:{opt pct}{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}}percent of data equal to {it:x1} or within [{it:x1},{it:x2}]
     {p_end}
-{synopt:{opt freq}[{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}]}overall frequency, or frequency of data equal to {it:x1} or within [{it:x1},{it:x2}]
+{synopt:{opt frequency}[{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}]}overall frequency, or frequency of data equal to {it:x1} or within [{it:x1},{it:x2}]
     {p_end}
-{synopt:{opt count}[{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}]}same as {cmd:freq()}
+{synopt:{opt count}[{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}]}same as {cmd:frequency()}
     {p_end}
 {synopt:{opt total}[{cmd:(}{it:x1}[{cmd:,}{it:x2}]{cmd:)}]}overall total, or total of data equal to {it:x1} or within [{it:x1},{it:x2}]
     {p_end}
@@ -697,11 +697,11 @@ help for {hi:dstat}{...}
 
 {marker association}{...}
 {syntab:Association measures}
-{synopt:{opt corr}[{cmd:(}{it:{help varname:by}}{cmd:)}]}correlation coefficient;
+{synopt:{opt correlation}[{cmd:(}{it:{help varname:by}}{cmd:)}]}correlation coefficient;
     {it:by} specifies the secondary variable; default is as set by option {cmd:by()}
     {p_end}
 {synopt:{opt slope}[{cmd:(}{it:{help varname:by}}{cmd:)}]}regression slope
-    (equal to mean difference if {it:by} is dichotomous); {it:by} as for {cmd:corr}
+    (equal to mean difference if {it:by} is dichotomous); {it:by} as for {cmd:correlation}
     {p_end}
 {synopt:{opt b}[{cmd:(}{it:{help varname:by}}{cmd:)}]}same as {cmd:slope}
     {p_end}
@@ -710,27 +710,27 @@ help for {hi:dstat}{...}
     adjustment; default is {it:df}=2; can also specify {opt cohend(df)};
     {it:by} is assumed to be dichotomous (string allowed)
     {p_end}
-{synopt:{opt covar}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}covariance; {it:df} applies small-sample
-    adjustment; default is {it:df}=1; can also specify {opt covar(df)};
-    {it:by} as for {cmd:corr}
+{synopt:{opt covariance}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:df}]{cmd:)}]}covariance; {it:df} applies small-sample
+    adjustment; default is {it:df}=1; can also specify {opt covariance(df)};
+    {it:by} as for {cmd:correlation}
     {p_end}
-{synopt:{opt rsquared}[{cmd:(}{it:{help varname:by}}{cmd:)}]}R squared, equal to {cmd:corr}^2;
-     {it:by} as for {cmd:corr}
+{synopt:{opt rsquared}[{cmd:(}{it:{help varname:by}}{cmd:)}]}R squared, equal to {cmd:correlation}^2;
+     {it:by} as for {cmd:correlation}
     {p_end}
 {synopt:{opt spearman}[{cmd:(}{it:{help varname:by}}{cmd:)}]}Spearman's rank correlation;
-    {it:by} as for {cmd:corr}
+    {it:by} as for {cmd:correlation}
     {p_end}
 {synopt:{opt taua}[{cmd:(}{it:{help varname:by}}{cmd:)}]}Kendall's tau-a (using fast algorithm by Newson 2006);
-    {it:by} as for {cmd:corr}
+    {it:by} as for {cmd:correlation}
     {p_end}
 {synopt:{opt taub}[{cmd:(}{it:{help varname:by}}{cmd:)}]}Kendall's tau-b (using fast algorithm by Newson 2006);
-    {it:by} as for {cmd:corr}
+    {it:by} as for {cmd:correlation}
     {p_end}
 {synopt:{opt somersd}[{cmd:(}{it:{help varname:by}}{cmd:)}]}Somers' D (using fast algorithm by Newson 2006);
-    {it:by} as for {cmd:corr}
+    {it:by} as for {cmd:correlation}
     {p_end}
 {synopt:{opt gamma}[{cmd:(}{it:{help varname:by}}{cmd:)}]}Goodman and Kruskal's gamma (using fast algorithm by Newson 2006);
-    {it:by} as for {cmd:corr}
+    {it:by} as for {cmd:correlation}
     {p_end}
 
 {syntab:Categorical data (univariate)}
@@ -772,7 +772,8 @@ help for {hi:dstat}{...}
 {synopt:{opt cramersv}[{cmd:(}{it:{help varname:by}}{cmd:)}]}Cramér's V;
     {it:by} as for {cmd:mindex}
     {p_end}
-{synopt:{opt dissim}[{cmd:(}{it:{help varname:by}}{cmd:)}]}(generalized) dissimilarity index (Duncan's D);
+{synopt:{opt dissimilarity}[{cmd:(}{it:{help varname:by}}{cmd:)}]}(generalized)
+    dissimilarity index (Duncan segregation index, Duncan's D);
     {it:by} as for {cmd:mindex}
     {p_end}
 {synopt:{opt or}[{cmd:(}{it:{help varname:by}}{cmd:)}]}odds ratio; variables are
@@ -1314,7 +1315,7 @@ help for {hi:dstat}{...}
     {help dstat##association:Association measures} or
     {help dstat##catbivar:Categorical data (bivariate)}
     in the above table of summary statistics (omitting argument
-    {it:by}). {cmd:statistic(corr)} is the default. Type, for example,
+    {it:by}). {cmd:statistic(correlation)} is the default. Type, for example,
     {cmd:statistic(taub)} to compute Kendall's tau-b. Arguments other than
     {it:by} can be provided in parentheses as usual; for example, type
     {cmd:statistic(mindex(2))} to compute the M index with base 2.
@@ -1831,6 +1832,13 @@ help for {hi:dstat}{...}
 {marker examples}{...}
 {title:Examples}
 
+        {help dstat##ex_sum:Summary statistics}
+        {help dstat##ex_corr:Correlation matrix}
+        {help dstat##ex_dist:Distribution functions}
+        {help dstat##ex_cov:Covariate balancing}
+        {help dstat##ex_inf:Influence functions}
+
+{marker ex_sum}{...}
 {dlgtab:Summary statistics}
 
 {pstd}
@@ -1855,6 +1863,29 @@ help for {hi:dstat}{...}
         . {stata dstat (gini mld vlog) wage (mean) hours ttl_exp (pr1 pr2 pr3) race}
         {p_end}
 
+{marker ex_corr}{...}
+{dlgtab:Correlation matrix}
+
+{pstd}
+    {cmd:dstat pw} is wrapper for {cmd:dstat summarize} to compute all pairwise
+    associations among a given set of variables. In addition to the usual
+    returns, {cmd:dstat pw} stores the coefficients in a square matrix called
+    {cmd:e(B)} (and the p-values in matrix {cmd:e(P)}) so that the results can be
+    tabulated in compact form or, for example, plotted by the {helpb heatplot}
+    command (see
+    {net "describe heatplot, from(http://fmwww.bc.edu/repec/bocode/h/)":{bf:ssc describe heatplot}}). Here
+    is an example using Kendall's rank correlation:
+
+        . {stata sysuse auto, clear}
+{p 8 12 2}
+        . {stata dstat pw price mpg trunk weight length turn foreign, statistic(taub) diagonal}
+        {p_end}
+        . {stata matlist e(B), format(%7.4f)}
+{p 8 12 2}
+        . {stata heatplot e(B), color(hcl diverging) cuts(-1.05(.1)1.05) aspect(1) legend(subti(Tau b))}
+        {p_end}
+
+{marker ex_dist}{...}
 {dlgtab:Distribution functions}
 
 {pstd}
@@ -1891,6 +1922,7 @@ help for {hi:dstat}{...}
         . {stata dstat density wage, over(union) total unconditional ll(0) graph(merge)}
         {p_end}
 
+{marker ex_cov}{...}
 {dlgtab:Covariate balancing}
 
 {pstd}
@@ -1959,6 +1991,7 @@ help for {hi:dstat}{...}
         . {stata "dstat (mean) wage, over(union, contrast(0)) balance(eb:grade hours ttl_exp tenure)"}
         {p_end}
 
+{marker ex_inf}{...}
 {dlgtab:Influence functions}
 
 {pstd}
@@ -2106,7 +2139,12 @@ help for {hi:dstat}{...}
 {synoptset 20 tabbed}{...}
 {p2col 5 20 24 2: Functions}{p_end}
 {synopt:{cmd:e(sample)}}estimation sample{p_end}
-{p2colreset}{...}
+
+{pstd}{cmd:dstat pw} additionally stores the following square matrices.
+
+{synopt:{cmd:e(B)}}estimates{p_end}
+{synopt:{cmd:e(Nobs)}}number of observations per estimate{p_end}
+{synopt:{cmd:e(P)}}two-sided p-values{p_end}
 
 {pstd}
     If {cmd:vce()} is {cmd:svy}, {cmd:bootstrap}, or {cmd:jackknife}, additional
@@ -2293,12 +2331,14 @@ help for {hi:dstat}{...}
     {helpb catplot},
     {helpb cdfplot},
     {helpb ci2},
+    {helpb coefplot},
     {helpb dfl},
     {helpb distplot},
     {helpb duncan},
     {helpb eqprhistogram},
     {helpb fre},
     {helpb glcurve},
+    {helpb heatplot},
     {helpb ineqdeco},
     {helpb kdens},
     {helpb kmatch},

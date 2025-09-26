@@ -1,4 +1,4 @@
-*! version 1.4.9  21sep2025  Ben Jann
+*! version 1.5.0  26sep2025  Ben Jann
 
 capt mata: assert(mm_version()>=205)
 if _rc {
@@ -1537,7 +1537,60 @@ program _Estimate_PW, eclass
     eret local title  `"Pairwise `statistic'"'
     eret local stats  `"`statistic'"'
     eret scalar N_stats = 1
+    eret local depvar "`varlist'"
+    eret scalar N_vars = `n'
     eret local sinfo "" // remove scalar e(sinfo)
+    eret local slist "" // remove macro e(slist)
+    
+    // post results as matrices
+    tempname b B nobs Nobs se P
+    matrix `b' = e(b)
+    matrix `nobs' = e(nobs)
+    matrix `B' = J(`n', `n', .)
+    mat coln `B' = `varlist'
+    mat rown `B' = `varlist'
+    matrix `Nobs' = `B'
+    local hasSE 1
+    capt confirm matrix e(V)
+    if _rc==1 exit 1
+    if _rc {
+        capt confirm matrix e(se)
+        if _rc==1 exit 1
+        if _rc local hasSE 0
+        else matrix `se' = e(se)
+    }
+    else {
+        matrix `se' = vecdiag(e(V))
+        mata: st_replacematrix("`se'", sqrt(st_matrix("`se'")))
+    }
+    if `hasSE' {
+        local df = e(df_r)
+        matrix `P' = `B'
+    }
+    local k 0
+    forv i = 1/`n' {
+        if      "`lower'"!="" local range `i'/`n'
+        else if "`upper'"!="" local range 1/`i'
+        else                  local range 1/`n'
+        forv j = `range' {
+            if "`diagonal'"=="" {
+                if `i'==`j' continue
+            }
+            local ++k
+            matrix `B'[`j',`i'] = `b'[1,`k']
+            matrix `Nobs'[`j',`i'] = `nobs'[1,`k']
+            if `hasSE' {
+                matrix `P'[`j',`i'] = 2 * cond(`df'<=2e+17,/*
+                    */ ttail(`df', abs(`b'[1,`k']/`se'[1,`k'])), /*
+                    */ 1-normal(abs(`b'[1,`k']/`se'[1,`k'])))
+            }
+        }
+    }
+    eret matrix B = `B'
+    eret matrix Nobs = `Nobs'
+    if `hasSE' {
+        eret matrix P = `P'
+    }
     
     // fix variable labels of influence functions
     if `"`e(generate)'"'!="" {
@@ -2084,8 +2137,6 @@ program _Estimate, eclass
     if      "`hdtrim2'"!="" eret local hdtrim hdtrim(`hdtrim2')
     else if "`hdtrim'"!=""  eret local hdtrim hdtrim
     if `"`mqopts'"'!=""     eret local mqopts mqopts(`mqopts')
-    eret local novalues "`novalues'"
-    eret local vformat "`vformat'"
     eret local nocasewise "`nocasewise'"
     eret local percent "`percent'"
     eret local proportion "`proportion'"
@@ -2153,6 +2204,8 @@ program _Estimate, eclass
         }
     }
     if "`subcmd'"!="summarize" {
+        eret local novalues "`novalues'"
+        eret local vformat "`vformat'"
         eret matrix at = `AT'
     }
     if "`subcmd'"=="density" {
@@ -2992,7 +3045,7 @@ void ds_parse_stats(`Int' n)
     asarray(A, "ucl"        , "bys")     // uncertainty coefficient (left)
     asarray(A, "ucr"        , "bys")     // uncertainty coefficient (right)
     asarray(A, "cramersv"   , "bys;0,0,.") // Cramér's V
-    asarray(A, "dissim"     , "bys")     // (generalized) dissimilarity index
+    asarray(A, "dissimilarity", "bys")   // (generalized) dissimilarity index
     asarray(A, "or"         , "by")      // odds ratio (for 2x2 table)
     asarray(A, "rr"         , "by")      // risk ratio (for 2x2 table)
     return(A)
@@ -3837,6 +3890,7 @@ class `GRP' {
     `RC'    wb         // adjusted L.wb (only if rows(pp)>0)
     `RC'    wc         // adjusted L.wc (only if rows(pp)>0)
     `RS'    Neff()     // effective sample size
+    `Bool'  y_is_x     // Y is the same variable as X and Y are the same variable
     `Int'   j          // index of current X variable
     void    Xset()     // set xtmp and clear xytmp amd pltmp.poor
     void    Yset()     // set ytmp and clear xytmp
@@ -4689,6 +4743,7 @@ struct `DATA' {
     `Bool'  abs        // absolute (lorenz)
     `Bool'  ave        // average (share)
     `Bool'  relax      // relax option (summarize)
+    `SR'    yvars      // names of auxiliary variables (summarize, lorenz, share)
     `RM'    Y          // view on auxiliary variables (summarize, lorenz, share)
     `Bool'  pstrong    // use strong poverty definition (summarize, tip)
     `RS'    pline      // default poverty line (summarize, tip)
@@ -4759,7 +4814,8 @@ void dstat()
         if (D.noIF==0) D.mvj = J(1, D.nvars, NULL)
     }
     st_numscalar(st_local("W"), D.W)
-    ds_view(D.Y, tokens(st_local("yvars")), D.touse)
+    D.yvars = tokens(st_local("yvars"))
+    ds_view(D.Y, D.yvars, D.touse)
     
     // over
     D.ovar = st_local("over")
@@ -5773,6 +5829,7 @@ void ds_init_G(`Grp' G, `Data' D, `Level' L, `Int' j, | `Int' y, `RS' pl,
         if (D.S.nobs()) D.S.data(J(0,1,.)) // clear density object
     }
     if (y<.) {
+        G.y_is_x = (D.xvars[j]==D.yvars[y])
         G.Yset(y, D.Y[G.p(),y])
     }
     if (pl<.) {
@@ -9271,6 +9328,11 @@ void ds_sum_correlation(`Data' D, `Grp' G, `Int' i)
     `RM'  mv
     `RC'  zX, zY
     
+    if (G.y_is_x==`TRUE') {
+        D.b[i] = 1
+        if (!D.noIF) ds_set_IF(D, G, i, J(G.N, 1, 0))
+        return
+    }
     mv = quadmeanvariance((G.X(), G.Y()), G.w())
     mv[(2,3),] = mv[(2,3),] * ((G.W-1)/G.W) // remove df correction
     sdX = sqrt(mv[2,1]); sdY = sqrt(mv[3,2]); cov = mv[3,1]
@@ -9290,6 +9352,11 @@ void ds_sum_rsquared(`Data' D, `Grp' G, `Int' i)
     `RM'  mv
     `RC'  zX, zY
     
+    if (G.y_is_x==`TRUE') {
+        D.b[i] = 1
+        if (!D.noIF) ds_set_IF(D, G, i, J(G.N, 1, 0))
+        return
+    }
     mv = quadmeanvariance((G.X(), G.Y()), G.w())
     mv[(2,3),] = mv[(2,3),] * ((G.W-1)/G.W) // remove df correction
     VX = mv[2,1]; VY = mv[3,2]; cov = mv[3,1]
@@ -9311,6 +9378,11 @@ void ds_sum_slope(`Data' D, `Grp' G, `Int' i)
     `RM'  mv
     `RC'  zX, zY
     
+    if (G.y_is_x==`TRUE') {
+        D.b[i] = 1
+        if (!D.noIF) ds_set_IF(D, G, i, J(G.N, 1, 0))
+        return
+    }
     mv = quadmeanvariance((G.X(), G.Y()), G.w())
     mv[(2,3),] = mv[(2,3),] * ((G.W-1)/G.W) // remove df correction
     VY  = mv[3,2]
@@ -9395,6 +9467,11 @@ void ds_sum_spearman(`Data' D, `Grp' G, `Int' i)
     `RM' mv, cov, vx, vy
     `RC' FX, FY, hX, hY, hXY
     
+    if (G.y_is_x==`TRUE') {
+        D.b[i] = 1
+        if (!D.noIF) ds_set_IF(D, G, i, J(G.N, 1, 0))
+        return
+    }
     FX = FY = J(G.N, 1, .)
     FX[G.pX()] = _mm_ranks(G.Xs(), G.ws(), 3, 1, 1)
     FY[G.pY()] = _mm_ranks(G.Ys(), G.wsY(), 3, 1, 1)
@@ -9437,6 +9514,11 @@ void ds_sum_taub(`Data' D, `Grp' G, `Int' i, `Bool' naive)
     `RS' K, S, T, U, Q
     `RC' h
     
+    if (G.y_is_x==`TRUE') {
+        D.b[i] = 1
+        if (!D.noIF) ds_set_IF(D, G, i, J(G.N, 1, 0))
+        return
+    }
     G.cd_fast(naive)
     S = G.cd_S()
     K = G.cd_K()
@@ -9457,6 +9539,11 @@ void ds_sum_somersd(`Data' D, `Grp' G, `Int' i, `Bool' naive)
     `RS' K, S, U, Q
     `RC' h
     
+    if (G.y_is_x==`TRUE') {
+        D.b[i] = 1
+        if (!D.noIF) ds_set_IF(D, G, i, J(G.N, 1, 0))
+        return
+    }
     G.cd_fast(naive)
     S = G.cd_S()
     K = G.cd_K()
@@ -9475,6 +9562,11 @@ void ds_sum_gamma(`Data' D, `Grp' G, `Int' i, `Bool' naive)
     `RS' K, S, T, U, V, Q
     `RC' h
     
+    if (G.y_is_x==`TRUE') {
+        D.b[i] = 1
+        if (!D.noIF) ds_set_IF(D, G, i, J(G.N, 1, 0))
+        return
+    }
     G.cd_fast(naive)
     S = G.cd_S()
     K = G.cd_K()
@@ -9603,17 +9695,29 @@ void ds_sum_mindex(`Data' D, `Grp' G, `Int' i, `RS' base)
 
 void ds_sum_uc(`Data' D, `Grp' G, `Int' i)
 {
-    _ds_sum_minfo(2, D, G, i, 0)
+    if (G.y_is_x==`TRUE') {
+        D.b[i] = 1
+        if (!D.noIF) ds_set_IF(D, G, i, J(G.N, 1, 0))
+    }
+    else _ds_sum_minfo(2, D, G, i, 0)
 }
 
 void ds_sum_ucl(`Data' D, `Grp' G, `Int' i)
 {
-    _ds_sum_minfo(3, D, G, i, 0)
+    if (G.y_is_x==`TRUE') {
+        D.b[i] = 1
+        if (!D.noIF) ds_set_IF(D, G, i, J(G.N, 1, 0))
+    }
+    else _ds_sum_minfo(3, D, G, i, 0)
 }
 
 void ds_sum_ucr(`Data' D, `Grp' G, `Int' i)
 {
-    _ds_sum_minfo(4, D, G, i, 0)
+    if (G.y_is_x==`TRUE') {
+        D.b[i] = 1
+        if (!D.noIF) ds_set_IF(D, G, i, J(G.N, 1, 0))
+    }
+    else _ds_sum_minfo(4, D, G, i, 0)
 }
 
 void _ds_sum_minfo(`Int' stat, `Data' D, `Grp' G, `Int' i, `RS' base)
@@ -9668,6 +9772,11 @@ void ds_sum_cramersv(`Data' D, `Grp' G, `Int' i, `Bool' bc)
     `RC'  h, z
     pragma unused bc // bias correction not implemented
     
+    if (G.y_is_x==`TRUE') {
+        D.b[i] = 1
+        if (!D.noIF) ds_set_IF(D, G, i, J(G.N, 1, 0))
+        return
+    }
     // obtain probability table (long format): x, y, pxy, px, py, px*py
     prXY = select((G.X(), G.Y(), G.prXY()), G.tagXY())
     RC   = rows(prXY) // number of (nonempty) cells
@@ -9705,13 +9814,18 @@ void ds_sum_cramersv(`Data' D, `Grp' G, `Int' i, `Bool' bc)
     ds_set_IF(D, G, i, h/G.W)
 }
 
-void ds_sum_dissim(`Data' D, `Grp' G, `Int' i)
+void ds_sum_dissimilarity(`Data' D, `Grp' G, `Int' i)
 {
     `Int' C, R, RC
     `RS'  b, d, pr0, q
     `RM'  prXY
     `RC'  prY, h, z, u, Z
     
+    if (G.y_is_x==`TRUE') {
+        D.b[i] = 1
+        if (!D.noIF) ds_set_IF(D, G, i, J(G.N, 1, 0))
+        return
+    }
     // obtain probability table (long format): x, y, pxy, px, py
     prXY = select((G.X(), G.Y(), G.prXY()), G.tagXY())
     RC   = rows(prXY) // number of (nonempty) cells
