@@ -7089,14 +7089,11 @@ void _dstat_sum(`Data' D, `Grp' G, `Int' j, `Int' i, `SS' s, `T' I)
 
 `Bool' _ds_sum_omit(`Data' D, `Int' i)
 {
-    if (D.b[i]>=.) {
-        D.omit[i] = 1
-        D.b[i] = 0
-        if (D.noIF) return(1)
-        D.IF[,i] = J(D.N, 1, 0)
-        return(1)
-    }
-    return(0)
+    if (D.b[i]<.) return(0)
+    D.omit[i] = 1
+    D.b[i] = 0
+    if (!D.noIF) D.IF[,i] = J(D.N, 1, 0)
+    return(1)
 }
 
 void _ds_sum_fixed(`Data' D, `Int' i, `RS' b)
@@ -8253,6 +8250,7 @@ void ds_sum_hoover(`Data' D, `Grp' G, `Int' i)
     z  = G.X() :- t
     z2 = abs(z)
     D.b[i] = ds_mean(z2, G.w(), G.W) / (2 * t)
+    if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
     ds_set_IF(D, G, i, ((z2 / (2 * t) :- D.b[i])
         - ds_mean(sign(z) * t + z2, G.w(), G.W) / (2 * t^2) * z) / G.W)
@@ -8301,6 +8299,13 @@ void ds_sum_gw_gini(`Data' D, `Grp' G, `Int' i, `RS' df)
     else c = 1
     if (abs) b = c * (cp * 2 - m)     // = c * (2 * cov)  with cov = cp - m/2
     else     b = c * (cp * 2 / m - 1) // = c * (2 * cov / m)
+    if (b>=.) {
+        if (!any(X)) { // X all zero
+            b = 0
+            if (!noIF) h = J(rows(X), 1, 0)
+            return(b)
+        }
+    }
     if (noIF) return(b)
     // The main moment condition of the Gini coefficient can be written as
     // h = (2*F - 1)*X - G*X (see Binder & Kovacevic 1995)
@@ -8332,6 +8337,13 @@ void ds_sum_b_gini(`Data' D, `Grp' G, `Int' i, `RS' df)
     }
     else c = 1
     D.b[i] = c * (cp * 2 / m - 1)
+    if (D.b[i]>=.) {
+        if (!any(G.X())) { // X all zero
+            D.b[i] = 0
+            if (!D.noIF) ds_set_IF(D, G, i, J(G.N, 1, 0))
+            return
+        }
+    }
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
     B  = ds_invp(G.N, p, _ds_sum_ccdf(mg, mg:*w, G.W))
@@ -8461,6 +8473,13 @@ void ds_sum_gw_theil(`Data' D, `Grp' G, `Int' i, `RS' nozero)
     m = ds_mean(X, w, W)
     z = X :* ln(nozero ? X : editvalue(X, 0, 1))
     b = ds_mean(z, w, W)/m - ln(m)
+    if (b>=. & !nozero) {
+        if (!any(X)) { // X all zero
+            b = 0
+            if (!noIF) h = J(rows(X), 1, 0)
+            return(b)
+        }
+    }
     if (noIF) return(b)
     delta = ds_mean(z, w, W)/m^2 + 1/m
     h = ((z/m:-ln(m)) :- b) - delta*(X :- m)
@@ -8470,17 +8489,25 @@ void ds_sum_gw_theil(`Data' D, `Grp' G, `Int' i, `RS' nozero)
 void ds_sum_w_theil(`Data' D, `Grp' G, `Int' i, `RS' nozero)
 {
     `RS' m
-    `RC' mg, z, h
+    `RC' mg, lnmg, z, h
     
     m = G.mean()
     mg = J(G.N, 1, .)
     mg[G.pY()] = _mm_collapse2(G.XsY(), G.wsY(), G.Ys())
-    z = G.X() :* ln(nozero ? G.X() : editvalue(G.X(), 0, 1)) - mg:*ln(mg)
+    lnmg = ln(nozero ? mg : editvalue(mg, 0, 1))
+    z = G.X() :* ln(nozero ? G.X() : editvalue(G.X(), 0, 1)) - mg:*lnmg
     D.b[i] = ds_mean(z, G.w(), G.W) / m
+    if (D.b[i]>=. & !nozero) {
+        if (!any(G.X())) { // X all zero
+            D.b[i] = 0
+            if (!D.noIF) ds_set_IF(D, G, i, J(G.N, 1, 0))
+            return
+        }
+    }
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
     h = (z/m :- D.b[i]) - (ds_mean(z, G.w(), G.W) / m^2) :* (G.X() :- m) -
-        (ln(mg):+1)/m :* (G.X() - mg)
+        (lnmg:+1)/m :* (G.X() - mg)
     ds_set_IF(D, G, i, h / G.W)
 }
 
@@ -8492,19 +8519,27 @@ void ds_sum_w_theil(`Data' D, `Grp' G, `Int' i, `RS' nozero)
 void ds_sum_b_theil(`Data' D, `Grp' G, `Int' i, `RS' nozero)
 {
     `RS' m, mz
-    `RC' mg, z, h
+    `RC' mg, lnmg, z, h
     pragma unused nozero
     
     m = G.mean()
     mg = J(G.N, 1, .)
     mg[G.pY()] = _mm_collapse2(G.XsY(), G.wsY(), G.Ys())
-    z = mg:*ln(mg)
+    lnmg = ln(nozero ? mg : editvalue(mg, 0, 1))
+    z = mg :* lnmg
     mz = ds_mean(z, G.w(), G.W)
     D.b[i] = mz/m - ln(m)
+    if (D.b[i]>=. & !nozero) {
+        if (!any(G.X())) { // X all zero
+            D.b[i] = 0
+            if (!D.noIF) ds_set_IF(D, G, i, J(G.N, 1, 0))
+            return
+        }
+    }
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
     h = (z/m :- (ln(m) + D.b[i])) - ((mz/m + 1)/m) :* (G.X() :- m) +
-        (ln(mg):+1)/m :* (G.X() - mg)
+        (lnmg:+1)/m :* (G.X() - mg)
     ds_set_IF(D, G, i, h / G.W)
 }
 
@@ -8558,6 +8593,13 @@ void ds_sum_gw_ge(`Data' D, `Grp' G, `Int' i, `RS' a)
     mz = ds_mean(z, w, W)
     c  = 1 / (a * (a - 1))
     b  = c * (mz/m^a - 1)
+    if (b>=.) {
+        if (!any(X)) { // X all zero
+            b = 0
+            if (!noIF) h = J(rows(X), 1, 0)
+            return(b)
+        }
+    }
     if (noIF) return(b)
     delta = 1 / ((a - 1) * m^(a + 1)) * mz
     h = (c*(z/m^a:-1) :- b) - delta * (X :- m)
@@ -8575,11 +8617,18 @@ void ds_sum_w_ge(`Data' D, `Grp' G, `Int' i, `RS' a)
     m = G.mean()
     mg = J(G.N, 1, .)
     mg[G.pY()] = _mm_collapse2(G.XsY(), G.wsY(), G.Ys())
-    h = (1/(a*(a-1)*m^a)) * (z :- mg:^a)
-    D.b[i] = ds_mean(h, G.w(), G.W)
+    h = z :- mg:^a
+    D.b[i] = (1/(a*(a-1)*m^a)) * ds_mean(h, G.w(), G.W)
+    if (D.b[i]>=.) {
+        if (!any(G.X())) { // X all zero
+            D.b[i] = 0
+            if (!D.noIF) ds_set_IF(D, G, i, J(G.N, 1, 0))
+            return
+        }
+    }
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
-    h = h :- D.b[i]
+    h = (1/(a*(a-1)*m^a)) * h :- D.b[i]
     h = h - mg:^(a-1)/((a-1)*m^a) :* (G.X() - mg)
     delta = ds_mean((1/((a-1)*m^(a+1))) * (z :- mg:^a), G.w(), G.W)
     h = h - delta * (G.X() :- m)
@@ -8605,6 +8654,13 @@ void ds_sum_b_ge(`Data' D, `Grp' G, `Int' i, `RS' a)
     mg = J(G.N, 1, .)
     mg[G.pY()] = _mm_collapse2(G.XsY(), G.wsY(), G.Ys())
     D.b[i] = c * (ds_mean(mg:^a, G.w(), G.W) / m^a - 1)
+    if (D.b[i]>=.) {
+        if (!any(G.X())) { // X all zero
+            D.b[i] = 0
+            if (!D.noIF) ds_set_IF(D, G, i, J(G.N, 1, 0))
+            return
+        }
+    }
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
     h = (c * (mg:^a/m^a :- 1) :- D.b[i]) + 
