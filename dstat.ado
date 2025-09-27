@@ -1,4 +1,4 @@
-*! version 1.5.0  26sep2025  Ben Jann
+*! version 1.5.1  27sep2025  Ben Jann
 
 capt mata: assert(mm_version()>=205)
 if _rc {
@@ -2955,7 +2955,7 @@ void ds_parse_stats(`Int' n)
     asarray(A, "gini"       , "0")       // Gini coefficient
     asarray(A, "agini"      , "0")       // absolute Gini coefficient
     asarray(A, "mld"        , "")        // mean log deviation (MLD)
-    asarray(A, "theil"      , "")        // Theil index
+    asarray(A, "theil"      , "1")       // Theil index
     asarray(A, "ge"         , "1")       // generalized entropy
     asarray(A, "atkinson"   , "1,0,.")   // Atkinson inequality measure
     asarray(A, "cv"         , "1")       // coefficient of variation
@@ -2984,9 +2984,9 @@ void ds_parse_stats(`Int' n)
     asarray(A, "gw_mld"     , "bys")     // weighted avg of within-group MLD
     asarray(A, "w_mld"      , "bys")     // within MLD
     asarray(A, "b_mld"      , "bys")     // between MLD
-    asarray(A, "gw_theil"   , "bys")     // weighted avg of within-group Theil
-    asarray(A, "w_theil"    , "bys")     // within Theil index
-    asarray(A, "b_theil"    , "bys")     // between Theil index
+    asarray(A, "gw_theil"   , "bys;1")   // weighted avg of within-group Theil
+    asarray(A, "w_theil"    , "bys;1")   // within Theil index
+    asarray(A, "b_theil"    , "bys;1")   // between Theil index
     asarray(A, "gw_ge"      , "bys;1")   // weighted avg of within-group GE
     asarray(A, "w_ge"       , "bys;1")   // within generalized entropy
     asarray(A, "b_ge"       , "bys;1")   // between generalized entropy
@@ -8421,40 +8421,45 @@ void ds_sum_b_mld(`Data' D, `Grp' G, `Int' i)
     return(_ds_sum_invalid(D, j, "b_mld", ln(X)))
 }
 
-void ds_sum_theil(`Data' D, `Grp' G, `Int' i)
+void ds_sum_theil(`Data' D, `Grp' G, `Int' i, `RS' nozero)
 {
     `RC' h
     
-    D.b[i] = _ds_sum_theil(G.X(), G.w(), G.W, D.noIF, h=.)
+    D.b[i] = _ds_sum_theil(G.X(), G.w(), G.W, D.noIF, h=., &nozero)
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
     ds_set_IF(D, G, i, h / G.W)
 }
 
-`BoolC' _ds_sum_theil_invalid(`Data' D, `Int' j, `RC' X)
+`BoolC' _ds_sum_theil_invalid(`Data' D, `Int' j, `RC' X, `RS' nozero)
 {   // registered in _ds_sum_invalid_dict()
-    return(_ds_sum_invalid(D, j, "theil", ln(X)))
+    return(__ds_sum_theil_invalid(D, j, "theil", X, nozero))
 }
 
-void ds_sum_gw_theil(`Data' D, `Grp' G, `Int' i)
+`BoolC' __ds_sum_theil_invalid(`Data' D, `Int' j, `SS' s, `RC' X, `RS' nozero)
 {
-    _ds_sum_gw(D, G, i, &_ds_sum_theil())
+    return(_ds_sum_invalid(D, j, s, ln(nozero ? X : editvalue(X, 0, 1))))
 }
 
-`BoolC' _ds_sum_gw_theil_invalid(`Data' D, `Int' j, `RC' X)
+void ds_sum_gw_theil(`Data' D, `Grp' G, `Int' i, `RS' nozero)
+{
+    _ds_sum_gw(D, G, i, &_ds_sum_theil(), &nozero)
+}
+
+`BoolC' _ds_sum_gw_theil_invalid(`Data' D, `Int' j, `RC' X, `RS' nozero)
 {   // registered in _ds_sum_invalid_dict()
-    return(_ds_sum_invalid(D, j, "gw_theil", ln(X)))
+    return(__ds_sum_theil_invalid(D, j, "gw_theil", X, nozero))
 }
 
-`RS' _ds_sum_theil(`RC' X, `RC' w, `RS' W, `Bool' noIF, `RC' h, | `PR' o)
+`RS' _ds_sum_theil(`RC' X, `RC' w, `RS' W, `Bool' noIF, `RC' h, `PR' o)
 {
-    `RS' b, m, delta
+    `RS' b, m, delta, nozero
     `RC' z
     pragma unused W
-    pragma unused o
     
+    nozero = *o
     m = ds_mean(X, w, W)
-    z = X :* ln(X)
+    z = X :* ln(nozero ? X : editvalue(X, 0, 1))
     b = ds_mean(z, w, W)/m - ln(m)
     if (noIF) return(b)
     delta = ds_mean(z, w, W)/m^2 + 1/m
@@ -8462,16 +8467,15 @@ void ds_sum_gw_theil(`Data' D, `Grp' G, `Int' i)
     return(b)
 }
 
-void ds_sum_w_theil(`Data' D, `Grp' G, `Int' i)
+void ds_sum_w_theil(`Data' D, `Grp' G, `Int' i, `RS' nozero)
 {
     `RS' m
     `RC' mg, z, h
     
-    z = ln(G.X())
     m = G.mean()
     mg = J(G.N, 1, .)
     mg[G.pY()] = _mm_collapse2(G.XsY(), G.wsY(), G.Ys())
-    z = G.X() :* z - mg:*ln(mg)
+    z = G.X() :* ln(nozero ? G.X() : editvalue(G.X(), 0, 1)) - mg:*ln(mg)
     D.b[i] = ds_mean(z, G.w(), G.W) / m
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
@@ -8480,15 +8484,16 @@ void ds_sum_w_theil(`Data' D, `Grp' G, `Int' i)
     ds_set_IF(D, G, i, h / G.W)
 }
 
-`BoolC' _ds_sum_w_theil_invalid(`Data' D, `Int' j, `RC' X)
+`BoolC' _ds_sum_w_theil_invalid(`Data' D, `Int' j, `RC' X, `RS' nozero)
 {   // registered in _ds_sum_invalid_dict()
-    return(_ds_sum_invalid(D, j, "w_theil", ln(X)))
+    return(__ds_sum_theil_invalid(D, j, "w_theil", X, nozero))
 }
 
-void ds_sum_b_theil(`Data' D, `Grp' G, `Int' i)
+void ds_sum_b_theil(`Data' D, `Grp' G, `Int' i, `RS' nozero)
 {
     `RS' m, mz
     `RC' mg, z, h
+    pragma unused nozero
     
     m = G.mean()
     mg = J(G.N, 1, .)
@@ -8503,17 +8508,17 @@ void ds_sum_b_theil(`Data' D, `Grp' G, `Int' i)
     ds_set_IF(D, G, i, h / G.W)
 }
 
-`BoolC' _ds_sum_b_theil_invalid(`Data' D, `Int' j, `RC' X)
+`BoolC' _ds_sum_b_theil_invalid(`Data' D, `Int' j, `RC' X, `RS' nozero)
 {   // registered in _ds_sum_invalid_dict()
-    return(_ds_sum_invalid(D, j, "b_theil", ln(X)))
+    return(__ds_sum_theil_invalid(D, j, "b_theil", X, nozero))
 }
 
 void ds_sum_ge(`Data' D, `Grp' G, `Int' i, `RS' a)
 {
     `RC' h
     
-    if (a==0) {; ds_sum_mld(D, G, i);   return; }
-    if (a==1) {; ds_sum_theil(D, G, i); return; }
+    if (a==0) {; ds_sum_mld(D, G, i);      return; }
+    if (a==1) {; ds_sum_theil(D, G, i, 1); return; }
     D.b[i] = _ds_sum_ge(G.X(), G.w(), G.W, D.noIF, h=., &a)
     if (_ds_sum_omit(D, i)) return
     if (D.noIF) return
@@ -8529,8 +8534,8 @@ void ds_sum_ge(`Data' D, `Grp' G, `Int' i, `RS' a)
 
 void ds_sum_gw_ge(`Data' D, `Grp' G, `Int' i, `RS' a)
 {
-    if (a==0) {; ds_sum_gw_mld(D, G, i);   return; }
-    if (a==1) {; ds_sum_gw_theil(D, G, i); return; }
+    if (a==0) {; ds_sum_gw_mld(D, G, i);      return; }
+    if (a==1) {; ds_sum_gw_theil(D, G, i, 1); return; }
     _ds_sum_gw(D, G, i, &_ds_sum_ge(), &a)
 }
 
@@ -8564,8 +8569,8 @@ void ds_sum_w_ge(`Data' D, `Grp' G, `Int' i, `RS' a)
     `RS' m
     `RC' z, mg, delta, h
     
-    if (a==0) {; ds_sum_w_mld(D, G, i);   return; }
-    if (a==1) {; ds_sum_w_theil(D, G, i); return; }
+    if (a==0) {; ds_sum_w_mld(D, G, i);      return; }
+    if (a==1) {; ds_sum_w_theil(D, G, i, 1); return; }
     z = G.X():^a
     m = G.mean()
     mg = J(G.N, 1, .)
@@ -8593,8 +8598,8 @@ void ds_sum_b_ge(`Data' D, `Grp' G, `Int' i, `RS' a)
     `RS' c, m
     `RC' mg, delta, h
     
-    if (a==0) {; ds_sum_b_mld(D, G, i);   return; }
-    if (a==1) {; ds_sum_b_theil(D, G, i); return; }
+    if (a==0) {; ds_sum_b_mld(D, G, i);      return; }
+    if (a==1) {; ds_sum_b_theil(D, G, i, 1); return; }
     c = 1 / (a * (a - 1))
     m = G.mean()
     mg = J(G.N, 1, .)

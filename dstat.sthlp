@@ -1,5 +1,5 @@
 {smcl}
-{* 26sep2025}{...}
+{* 27sep2025}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
 {viewerjumpto "Summary statistics" "dstat##stats"}{...}
@@ -557,7 +557,10 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt mld}}mean log deviation (MLD); equal to {cmd:ge(0)}
     {p_end}
-{synopt:{opt theil}}Theil index; equal to {cmd:ge(1)}
+{synopt:{opt theil}[{cmd:(}{it:nozero}{cmd:)}]}Theil index; equal to {cmd:ge(1)};
+    argument {it:nozero} decides whether or not to include observations that are
+    equal to zero; the default is to exclude them ({it:nozero}=1); type
+    {cmd:theil0} or {cmd:theil(0)} to include them ({it:nozero}=0)
     {p_end}
 {synopt:{opt ge}[{cmd:(}{it:alpha}{cmd:)}]}generalized entropy (Shorrocks 1980)
     with parameter {it:alpha}; default is {it:alpha}=1 (in which case
@@ -615,10 +618,11 @@ help for {hi:dstat}{...}
     {cmd:gw} for the weighted average of group-specific MLDs ({cmd:gw_mld} is
     equivalent to {cmd:w_mld}); {it:by} as for {it:d}{cmd:_gini}
     {p_end}
-{synopt:{it:d}{cmd:_theil}[{cmd:(}{it:{help varname:by}}{cmd:)}]}where {it:d}
+{synopt:{it:d}{cmd:_theil}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:nozero}]{cmd:)}]}where {it:d}
     is {cmd:b} for the between-group Theil index, {cmd:w} for the
     within-group Theil index, or {cmd:gw} for the weighted average of
-    group-specific Theil indices; {it:by} as for {it:d}{cmd:_gini}
+    group-specific Theil indices; {it:by} as for {it:d}{cmd:_gini}; {it:nozero} as
+    for {cmd:theil} (default is {it:nozero}=1); can also specify {it:d}{opt _theil(nozero)}
     {p_end}
 {synopt:{it:d}{cmd:_ge}[{cmd:(}{it:{help varname:by}}[{cmd:,}{it:alpha}]{cmd:)}]}where
     {it:d} is {cmd:b} for the between-group generalized entropy, {cmd:w} for the

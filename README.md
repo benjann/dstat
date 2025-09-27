@@ -39,6 +39,12 @@ Installation from GitHub:
 
 Main changes:
 
+    27sep2025 (version 1.5.1)
+    - dstat summarize: theil, b_theil, w_theil, and gw_theil now have argument
+      -nozero-; default is nozero=1 which is consistent with previous behavior; set
+      nozero to 0 if you want to include observations equal to zero in the
+      computations
+
     26sep2025 (version 1.5.0)
     - dstat summarize:
       o now skips computations and sets the result to 1 if X and Y are the same
