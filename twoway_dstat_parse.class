@@ -1,0 +1,366 @@
+*! version 1.0.0  07nov2025  Ben Jann
+
+version 16
+
+class {
+    dstat_subcmd   = ""
+    dstat_ename    = ""
+    dstat_opts     = ""
+    dstat_svexp    = ""
+    dstat_svopts   = ""
+    dstat_hor      = ""
+    dstat_nget     = 0
+    dstat_ci       = 0
+} , inherit(twoway_y2xview_parse)
+
+program parse
+    // get subcommand
+    gettoken subcmd 0 : 0, parse(" ,(")
+    if `"`subcmd'"'=="ci" {
+        .dstat_ci = 1
+        gettoken subcmd 0 : 0, parse(" ,(")
+        .dstat_svexp = "lb ub at"
+    }
+    else {
+        .dstat_svexp = "b at"
+    }
+    local l = strlen(`"`subcmd'"')
+    if      `"`subcmd'"'==substr("density",1,max(1,`l'))    local subcmd density
+    else if `"`subcmd'"'=="pdf"                             local subcmd density
+    else if `"`subcmd'"'==substr("cdf",1,max(1,`l'))        local subcmd cdf
+    else if `"`subcmd'"'==substr("ccdf",1,max(2,`l'))       local subcmd ccdf
+    else if `"`subcmd'"'==substr("histogram",1,max(1,`l'))  local subcmd histogram
+    else if `"`subcmd'"'==substr("proportion",1,max(1,`l')) local subcmd proportion
+    else if `"`subcmd'"'==substr("frequency",1,max(4,`l'))  local subcmd frequency
+    else if `"`subcmd'"'==substr("quantile",1,max(1,`l'))   local subcmd quantile
+    else if `"`subcmd'"'==substr("lorenz",1,max(1,`l'))     local subcmd lorenz
+    else if `"`subcmd'"'==substr("pshare",1,max(3,`l'))     local subcmd pshare
+    else if `"`subcmd'"'==substr("share",1,max(2,`l'))      local subcmd pshare
+    else if `"`subcmd'"'=="tip"                             local subcmd tip
+    else {
+        local ename
+        if `"`subcmd'"'=="." local ename .
+        else if `:list sizeof subcmd'==1 {
+            capt confirm name `subcmd'
+            if _rc==1 exit 1
+            if _rc==0 {
+                qui estimates dir
+                local enames = r(names)
+                if `: list subcmd in enames' {
+                    local ename `subcmd'
+                }
+            }
+        }
+        if "`ename'"=="" {
+            if inlist(`"`subcmd'"',",","(") local l 0
+            if !`l' di as err "twoway dstat: subcommand or estimation name required"
+            else {
+                di as err "twoway dstat "_c
+                if `.dstat_ci' di as err "ci " _c
+                di as err `"`subcmd': invalid subcommand or estimation name"'
+            }
+            exit 198
+        }
+        if "`ename'"!="." {
+            tempname ecurrent
+            _estimates hold `ecurrent', restore nullok
+            qui estimates restore `ename'
+        }
+        else if `"`e(cmd)'"'=="" {
+            di as err "last dstat results not found"
+            exit 301
+        }
+        if `"`e(cmd)'"'!="dstat" {
+            di as err `"twoway dstat: results from {bf:`e(cmd)'} not supported"'
+            exit 301
+        }
+        local subcmd `"`e(subcmd)'"'
+        if !inlist(`"`subcmd'"',"density","histogram","proportion","cdf",/*
+            */"ccdf","quantile","lorenz","pshare") {
+            di as err `"twoway dstat: results from {bf:dstat `subcmd'} not supported"'
+            exit 301
+        }
+        if `.dstat_ci' {
+            capt confirm matrix e(ci)
+            if _rc==1 exit
+            if _rc {
+                di as err "twoway dstat ci: no confidence intervals found" _c
+                if "`ename'"=="." di as err " in current estimates"
+                else              di as err " in {bf:`ename'}"
+                exit 111
+            }
+        }
+    }
+    
+    // pre-parse options and set plot type
+    local OPTS SELect(passthru) EFORM AREA(real 1) RESCALE(real 1) HORizontal/*
+        */ LABels(passthru) YAXis(passthru) XAXis(passthru)
+    if "`ename'"=="" {
+        local LHS varlist(numeric) [fw pw iw aw] [if] [in]
+        local OPTS NOHEADer HEADer NOTABle TABle Over(str) TOTal/*
+            */ VCE(str) NOSE Generate(passthru) rif(passthru) `OPTS'
+    }
+    else {
+        local LHS
+        local OPTS Level(passthru) CITYPE(passthru) `OPTS'
+    }
+    if inlist("`subcmd'","cdf","ccdf") {
+        if "`ename'"=="" {
+            syntax `LHS' [, `OPTS' NOSTEP STEP DISCrete IPolate * ]
+            local opts `discrete' `ipolate'
+        }
+        else {
+            syntax [, `OPTS' NOSTEP STEP * ]
+            local discrete "`e(discrete)'"
+            local ipolate "`e(ipolate)'"
+        }
+        if "`nostep'"=="" {
+            if "`discrete'"!="" & "`ipolate'"=="" local step step
+        }
+        if "`step'"!="" {
+            if "`horizontal'"!="" local connect stepstair
+            else                  local connect stairstep
+            local options connect(`connect' ..) `options'
+        }
+        if `.dstat_ci' .viewtype = "rarea"
+        else           .viewtype = "line"
+    }
+    else if inlist("`subcmd'","histogram","pshare") {
+        syntax `LHS' [, `OPTS' LINE * ]
+        if "`line'"!="" {
+            if `.dstat_ci' .viewtype = "rarea"
+            else           .viewtype = "line"
+            if "`horizontal'"!="" local connect stepstair
+            else                  local connect stairstep
+            local options connect(`connect' ..) `options'
+        }
+        else {
+            if `.dstat_ci' {
+                .viewtype = "rcap"
+                .dstat_svexp = "lb ub at=at_mid"
+            }
+            else {
+                .viewtype = "bar"
+                local options `horizontal' base(0) bartype(spanning ..) `options'
+                local horizontal
+            }
+        }
+    }
+    else if inlist("`subcmd'","proportion","frequency") {
+        syntax `LHS' [, `OPTS' * ]
+        if `.dstat_ci' .viewtype = "rcap"
+        else {
+            .viewtype = "bar"
+            local options `horizontal' base(0) `options'
+            local horizontal
+        }
+    }
+    else {
+        syntax `LHS' [, `OPTS' * ]
+        if `.dstat_ci' .viewtype = "rarea"
+        else           .viewtype = "line"
+    }
+    if `.dstat_ci' {
+        if "`horizontal'"!="" {
+            .drop_to.setstyle, style(y)
+            local horizontal
+        }
+    }
+    
+    // determine number of views and handle dstat options
+    if "`ename'"=="" {
+        // - dstat does not allow aweights
+        if "`weight'"=="aweight" local weight "iweight"
+        // - disallow generate() and rif()
+        parse_optionnotallowed, `generate' `rif'
+        // - over() and (potential) number of views
+        if `"`over'"'!="" {
+            parse_over `over'
+            if "`ovar'"!="" local opts over(`over') `total' `opts'
+        }
+        else local ovar
+        local nview: list sizeof varlist
+        if "`ovar'"!="" {
+            // count number of groups so that (maximum) number of views can be
+            // set; the actual number of views might be smaller because
+            // twoway's global if/in are not taken into account here and
+            // because the number of output equations depends on suboptions
+            // in over() such as select() and contrast
+            .dstat_nget = 1
+            marksample touse
+            markout `touse' `ovar'
+            capt assert ((`ovar'==floor(`ovar')) & (`ovar'>=0)) if `touse'
+            if _rc==1 exit _rc
+            if _rc {
+                di as err "variable in over() must be integer and nonnegative"
+                exit 452
+            }
+            qui levelsof `ovar' if `touse'
+            local nover = r(r) + ("`total'"!="")
+            local nview = `nview' * `nover'
+        }
+        else if `"`select'"'!="" .dstat_nget = 1
+        // - vce()
+        if `.dstat_ci' {
+            if `"`nose'"'!="" {
+                di as err "{bf:nose} not allowed with {bf:twoway dstat ci}"
+                exit 198
+            }
+            if `"`vce'"'=="none" {
+                di as err "{bf:vce(none)} not allowed with {bf:twoway dstat ci}"
+                exit 198
+            }
+        }
+        else if `"`vce'"'=="" local nose nose // turn VCE off
+        local opts `nose' `vce' `opts'
+        // - display
+        if "`header'"=="" local noheader noheader
+        if "`table'"==""  local notable  notable
+        local opts `noheader' `notable' `opts'
+    }
+    else {
+        local cfrm = c(frame)
+        tempname frm
+        frame create `frm'
+        frame change `frm'
+        qui dstat save `.dstat_svexp', wide `select'
+        local nview = r(k)
+        frame change `cfrm'
+        if "`ename'"!="." _estimates unhold `ecurrent'
+    }
+    
+    // options for dstat save
+    local svopts `eform'
+    if "`ename'"!=""  local svopts `level' `citype' `svopts'
+    if `area'         local svopts rescale(`area') `svopts'
+    else if `rescale' local svopts rescale(`rescale') `svopts'
+    local svopts `select' `labels' `svopts'
+    
+    // general twoway parsing
+    .must_create_serset = 1
+    .n = `nview'
+     .varcheck = 0
+    .Super(twoway_yxview_parse).parse, `options'
+    
+    // store settings
+    .dstat_subcmd = "`subcmd'"
+    .dstat_ename = "`ename'"
+    .dstat_svopts = `"`svopts'"'
+    .dstat_hor = "`horizontal'"
+    if "`ename'"=="" {
+        .varlist = `"`varlist'"'
+        .wtype = `"`weight'"'
+        .wtexp = `"`exp'"'
+        .if = `"`if'"'
+        .in = `"`in'"'
+        local opts `opts' `.options'
+        .dstat_opts = `"`opts'"'
+        local opts `yaxis' `xaxis'
+    }
+    else {
+        .varlist = ""
+        .wtype = ""
+        .wtexp = ""
+        .if = ""
+        .in = ""
+        local opts `yaxis' `xaxis'
+        local opts `opts' `.options'
+    }
+    .options = `"`opts'"'
+end
+
+program parse_optionnotallowed
+    syntax [, OPTIONNOTALLOWED ]
+end
+
+program parse_over
+    syntax [varname(numeric default=none)] [, *]
+    c_local ovar `varlist'
+end
+
+program log_create_serset
+    syntax , LOG(name) SERSETNAME(string) [ TOUSE(name) * ]
+    .log_touse , log(`log') touse(`touse')
+    local nolog  .`log'.Arrpush __NOLOG__
+    
+    // run dstat to determine number of views
+    if `.dstat_nget' {
+        tempname touse2
+        mark `touse2' `.if' `.in'
+        qui replace `touse2' = 0 if `touse'==0
+        tempname ecurrent
+        _estimates hold `ecurrent', restore nullok
+        dstat `.dstat_subcmd' `.varlist' [`.wtype'`.wtexp']/*
+            */ if `touse2', `.dstat_opts'
+        local cfrm = c(frame)
+        tempname frm
+        frame create `frm'
+        frame change `frm'
+        qui dstat save `.dstat_svexp', wide `.dstat_svopts'
+        .n = r(k)
+        frame change `cfrm'
+        _estimates unhold `ecurrent'
+    }
+    
+    // code to run dstat and save results in temporary frame
+    if "`.dstat_ename'"!="." {
+        `nolog' tempname ecurrent
+        `nolog' _estimates hold \`ecurrent', restore nullok
+    }
+    if "`.dstat_ename'"=="" {
+        `nolog' dstat `.dstat_subcmd' `.varlist' [`.wtype'`.wtexp']/*
+            */ if \`touse1', `.dstat_opts'
+    }
+    else if "`.dstat_ename'"!="." {
+        `nolog' qui estimates restore `.dstat_ename'
+    }
+    `nolog' local cfrm = c(frame)
+    `nolog' tempname frm
+    `nolog' frame put in 1 if 0, into(\`frm') // so that labels are preserved
+    `nolog' frame change \`frm'
+    `nolog' qui dstat save `.dstat_svexp', replace twoway wide/*
+        */ `.dstat_svopts' `.dstat_hor'
+    
+    // create serset
+    .wtype = ""
+    .wtexp = ""
+    .`log'.Arrpush .`sersetname' = .serset.new \`r(names)'/*
+        */ , nocount `.omitmethod' `options'
+    `nolog' frame change \`cfrm'
+    if "`.dstat_ename'"!="." {
+        `nolog' _estimates unhold \`ecurrent'
+    }
+end
+
+program log_create_view
+    syntax [, VIEW(integer 1) * ]
+    local n `.n'
+    .n = 1
+    if !`.dstat_ci' {
+        .viewclass = "yxview"
+        if "`.dstat_hor'"!="" .varlist = "at`view' b`view'"
+        else                  .varlist = "b`view' at`view'"
+        .Super(twoway_yxview_parse).log_create_view, view(1)/*
+            */ `macval(options)'
+    }
+    else {
+        .varlist = "lb`view' ub`view' at`view'"
+        .Super(twoway_y2xview_parse).log_create_view, view(1)/*
+            */ style(ci) `macval(options)'
+    }
+    .n = `n'
+end
+
+program log_edits
+    if !`.dstat_ci' {
+        .Super(twoway_yxview_parse).log_edits `macval(0)'
+        exit
+    }
+    .Super(twoway_y2xview_parse).log_edits `macval(0)'
+end
+
+program get_plot_count
+    .nplots = 1
+end
+
+exit

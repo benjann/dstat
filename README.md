@@ -39,6 +39,16 @@ Installation from GitHub:
 
 Main changes:
 
+    07nov2025 (version 1.5.2)
+    - command -twoway dstat- added (required Stata 16 or newer)
+    - command -dstat save- added
+    - syntax of -dstat pw- is now -dstat pw [(stat)] varlist-; old syntax
+      -dstat pw varlist, statistic(stat)- still supported, but no longer documented
+    - -dstat pw- returned error if -stat(#)- was specified as -stat#-; this is fixed
+    - -dstat share- renamed to -dstat pshare-; -dstat share- still allowed;
+      statistics -share- and -cshare- can now be specified as -pshare- and
+      -pcshare-
+
     27sep2025 (version 1.5.1)
     - dstat summarize: theil, b_theil, w_theil, and gw_theil now have argument
       -nozero-; default is nozero=1 which is consistent with previous behavior; set
