@@ -1,4 +1,4 @@
-*! version 1.5.2  07nov2025  Ben Jann
+*! version 1.5.3  16nov2025  Ben Jann
 
 capt mata: assert(mm_version()>=205)
 if _rc {
@@ -925,7 +925,7 @@ program Graph
     syntax [, Level(passthru) citype(passthru) VERTical HORizontal ///
         MERge OVERLay flip BYStats BYStats2(str) NOSTEP STEP ///
         NOREFline REFline(str) SELect(str) GSELect(str) PSELect(str) cref ///
-        BYOPTs(str) PLOTLabels(str asis) * ]
+        LEGend(passthru) BYOPTs(str) PLOTLabels(str asis) * ]
     if "`overlay'"!="" local merge merge
     _Graph_parse_select "" `"`select'"'
     _Graph_parse_select g `"`gselect'"'
@@ -935,6 +935,7 @@ program Graph
     local options `vertical' `horizontal' `options'
     if `"`bystats2'"'=="" & "`bystats'"!="" local bystats2 main
     _Graph_parse_bystats, `bystats2'
+    _Graph_parse_byopts, `byopts'
     _Graph_parse_opts, `options'
     _Graph_parse_ciopts, `ciopts'
     if `"`ci_recast'"'=="" & `"`cirecast'"'!="" local ci_recast recast(`cirecast')
@@ -1289,13 +1290,15 @@ program Graph
     }
     // turn off legend
     if `n`ii''==1 {
-        if `n`jj''==1 local legendoff legend(off)
-        else          local byopts legend(off) `byopts'
+        if `"`legend'"'=="" {
+            if `n`jj''==1               local legend legend(off)
+            else if !`byopts_haslegend' local byopts legend(off) `byopts'
+        }
     }
     
     // draw graph
     if `"`byopts'"'!="" local byopts byopts(`byopts')
-    local plots `plots', `at' `bopts' `legendoff' `byopts' `options'
+    local plots `plots', `at' `bopts' `legend' `byopts' `options'
     //di `"`plots'"'
     coefplot `plots'
 end
@@ -1322,6 +1325,12 @@ program _Graph_parse_bystats
         exit 198
     }
     c_local bystats `bystats'
+end
+
+program _Graph_parse_byopts
+    syntax [, LEGend(passthru) * ]
+    c_local byopts_haslegend = `"`legend'"'!=""
+    c_local byopts `legend' `options'
 end
 
 program _Graph_overlabels
@@ -1866,40 +1875,42 @@ program _Estimate, eclass
     local lhs varlist(numeric fv)
     if "`subcmd'"=="density" {
         local opts n(numlist int >=1 max=1) COMmon at(str)/*
-            */ range(numlist min=2 max=2) tight ltight rtight /*
+            */ range(numlist max=2 missingok) tight ltight rtight /*
             */ UNConditional
     }
     else if "`subcmd'"=="histogram" {
         local opts n(passthru) COMmon at(str) /*
+            */ range(numlist max=2 missingok) /*
             */ ep PROPortion PERcent FREQuency UNConditional
     }
     else if inlist("`subcmd'","cdf","ccdf") {
         local opts n(numlist int >=1 max=1) COMmon at(str) /*
-            */ range(numlist min=2 max=2) /*
+            */ range(numlist max=2 missingok) /*
             */ mid FLoor DISCrete PERcent FREQuency IPolate UNConditional
     }
     else if "`subcmd'"=="proportion" {
         local opts NOCATegorical at(str) PERcent FREQuency /*
-            */ UNConditional
+            */ range(numlist max=2 missingok) UNConditional
     }
     else if "`subcmd'"=="quantile" {
         local opts n(numlist int >=1 max=1) at(str) /*
-            */ range(numlist min=2 max=2 >=0 <=1)
+            */ range(numlist max=2 >=0 missingok)
     }
     else if "`subcmd'"=="lorenz" {
         local opts n(numlist int >=1 max=1) at(str) /*
-            */ range(numlist min=2 max=2 >=0 <=1) /*
+            */ range(numlist max=2 >=0 missingok) /*
             */ gap sum GENERALized ABSolute PERcent /*
             */ BYvar(varname numeric) Zvar(varname numeric) // zvar() is old syntax
     }
     else if "`subcmd'"=="pshare" {
         local opts n(numlist int >=1 max=1) at(str) /*
+            */ range(numlist max=2 >=0 missingok) /*
             */ PROPortion PERcent sum AVErage GENERALized /*
             */ BYvar(varname numeric) Zvar(varname numeric) // zvar() is old syntax
     }
     else if "`subcmd'"=="tip" {
         local opts n(numlist int >=1 max=1) at(str) /*
-            */ range(numlist min=2 max=2 >=0 <=1) /*
+            */ range(numlist max=2 >=0 missingok) /*
             */ ABSolute PLine(passthru) PSTRong
     }
     else if "`subcmd'"=="summarize" {
@@ -1958,7 +1969,19 @@ program _Estimate, eclass
         if "`nocategorical'"=="" local categorical "categorical"
     }
     Parse_densityopts, `options'
-    Parse_at "`subcmd'" "`categorical'" `"`n'"' `"`at'"' `"`range'"' 
+    Parse_at "`subcmd'" "`categorical'" `"`n'"' `"`at'"' `"`range'"' "`ep'"
+    if `"`range'"'!="" {
+        if inlist("`subcmd'","quantile","lorenz","pshare","tip") {
+            // confirm that number in range() <= 1
+            foreach limit of local range {
+                if `limit'>1 & `limit'<. {
+                    di as err "range() invalid -- invalid numlist has"/*
+                        */ " elements outside of allowed range"
+                    exit 125
+                }
+            }
+        }
+    }
     if "`subcmd'"!="summarize" {
         Parse_varlist_unique `varlist'
     }
@@ -2664,7 +2687,7 @@ program Parse_generate_scaling
 end
 
 program Parse_at // returns atmat="matrix" if at is matrix, else expands numlist
-    args subcmd cat n at range
+    args subcmd cat n at range ep
     if `"`at'"'=="" exit
     if `"`n'"'!="" {
         di as err "{bf:n()} and {bf:at()} not both allowed"
@@ -2672,6 +2695,10 @@ program Parse_at // returns atmat="matrix" if at is matrix, else expands numlist
     }
     if `"`range'"'!="" {
         di as err "{bf:range()} and {bf:at()} not both allowed"
+        exit 198
+    }
+    if `"`ep'"'!="" {
+        di as err "{bf:ep} and {bf:at()} not both allowed"
         exit 198
     }
     if `: list sizeof at'==1 {
@@ -5171,7 +5198,8 @@ struct `DATA' {
     `RS'    hdtrim     // apply trimming to hdquantile
     `MQopt' mqopt      // options for mid-quantiles
     `Int'   n          // number of evaluation points (if relevant)
-    `Bool'  common     // common points across subpops (if relevant)
+    `Bool'  common     // use common points across subpops (if relevant)
+    `RR'    ra         // custom range of evaluation points (if relevant)
     `RM'    at         // vector of evaluation points (if relevant)
     `Bool'  hasdens    // whether density estimation has been employed
     `PDF'   S          // density estimation object (density, quantile, summarize)
@@ -5784,45 +5812,57 @@ void ds_vce(`Data' D, `SS' clust, `Int' minus, `Bool' seonly)
 
 void ds_get_at(`Data' D)
 {
-    `RR' r
+    `RS' d
     
     D.AT = NULL
     if      (D.cmd=="summarize")    _ds_get_stats(D)
     else if (st_local("atmat")!="") _ds_get_atmat(D, st_local("at"))
     else if (st_local("at")!="")    D.AT = &(strtoreal(tokens(st_local("at")))')
-    else if (D.cmd=="proportion")   _ds_get_levels(D)
-    else if (D.cmd=="histogram")    _ds_get_at_hist(D, st_local("n"))
-    else if (D.cmd=="density") {
-        D.n = strtoreal(st_local("n"))
-        r   = strtoreal(tokens(st_local("range")))
-        if (length(r)) D.AT = &(rangen(r[1], r[2], D.n))
-        else if (D.common) _ds_get_at_dens(D)
-    }
-    else if (D.cmd=="cdf" | D.cmd=="ccdf") {
-        if (D.discr) _ds_get_levels(D)
-        else {
+    else {
+        D.ra = strtoreal(tokens(st_local("range")))
+        if (cols(D.ra)<2) D.ra = D.ra, J(1,2-cols(D.ra),.)
+        if      (D.cmd=="proportion") _ds_get_levels(D)
+        else if (D.cmd=="histogram")  _ds_get_at_hist(D, st_local("n"))
+        else if (D.cmd=="density") {
             D.n = strtoreal(st_local("n"))
-            r   = strtoreal(tokens(st_local("range")))
-            if (length(r)) D.AT = &(rangen(r[1], r[2], D.n))
-            else if (D.common) _ds_get_at_cdf(D)
+            if (!hasmissing(D.ra)) D.AT = &(rangen(D.ra[1], D.ra[2], D.n))
+            else if (D.S.lb()<. & D.S.ub()<. & D.ltight!=.z & D.rtight!=.z)
+                D.AT = &(rangen(D.ra[1]<. ? D.ra[1] : D.S.lb(),
+                                D.ra[2]<. ? D.ra[2] : D.S.ub(), D.n))
+            else if (D.common) _ds_get_at_dens(D)
+            else {
+                if (D.ra[1]>=.) D.ra[1] = D.ltight
+                if (D.ra[2]>=.) D.ra[2] = D.rtight
+            }
         }
-    }
-    else if (D.cmd=="quantile") {
-        D.n = strtoreal(st_local("n"))
-        r   = strtoreal(tokens(st_local("range")))
-        if (!length(r)) r = (0,1)
-        D.AT = &(rangen(r[1]+(r[2]-r[1])/(D.n+1), r[2]-(r[2]-r[1])/(D.n+1), D.n))
-    }
-    else if (D.cmd=="lorenz" | D.cmd=="tip") {
-        D.n = strtoreal(st_local("n"))
-        r   = strtoreal(tokens(st_local("range")))
-        if (!length(r)) r = (0,1)
-        D.AT = &(rangen(r[1], r[2], D.n))
-    }
-    else if (D.cmd=="pshare") {
-        D.n  = strtoreal(st_local("n"))
-        D.AT = &((0::D.n) / D.n)
-        D.n  = D.n + 1 // one additional point for upper limit
+        else if (D.cmd=="cdf" | D.cmd=="ccdf") {
+            if (D.discr) _ds_get_levels(D)
+            else {
+                D.n = strtoreal(st_local("n"))
+                if (!hasmissing(D.ra)) D.AT = &(rangen(D.ra[1], D.ra[2], D.n))
+                else if (D.common) _ds_get_at_cdf(D)
+            }
+        }
+        else if (D.cmd=="quantile") {
+            D.n = strtoreal(st_local("n"))
+            if (D.ra[1]>=.) D.ra[1] = 0
+            if (D.ra[2]>=.) D.ra[2] = 1
+            d = (D.ra[2] - D.ra[1]) / (D.n + 1)
+            D.AT = &(rangen(D.ra[1]+d, D.ra[2]-d, D.n))
+        }
+        else if (D.cmd=="lorenz" | D.cmd=="tip") {
+            D.n = strtoreal(st_local("n"))
+            if (D.ra[1]>=.) D.ra[1] = 0
+            if (D.ra[2]>=.) D.ra[2] = 1
+            D.AT = &(rangen(D.ra[1], D.ra[2], D.n))
+        }
+        else if (D.cmd=="pshare") {
+            D.n  = strtoreal(st_local("n")) + 1 // extra point for upper limit
+            if (D.ra[1]>=.) D.ra[1] = 0
+            if (D.ra[2]>=.) D.ra[2] = 1
+            if (D.ra[1]>D.ra[2]) D.ra = D.ra[(2,1)] // ascending order
+            D.AT = &(rangen(D.ra[1], D.ra[2], D.n))
+        }
     }
     D.AT = J(1, ceil(D.nvars*D.nover/cols(D.AT)), D.AT)[|1 \ D.nvars*D.nover|]
 }
@@ -5887,15 +5927,14 @@ void _ds_get_levels(`Data' D)
 
     D.AT = J(1, D.nvars, NULL)
     for (j=1;j<=D.nvars;j++) {
-        if (D.nocw) {
-            D.AT[j] = &(mm_unique(select(D.X[,j], D.X[,j]:<.)))
-            if (length(*D.AT[j])==0) { // no observations
-                if (D.cmd=="proportion") D.AT[j] = &0
-                else                     D.AT[j] = &.z
-            }
-        }
-        else D.AT[j] = &(mm_unique(D.X[,j])) 
-        //D.AT[j] = &(__ds_get_levels(D.X[,j]))
+        if (D.nocw)
+             D.AT[j] = &(mm_unique(select(D.X[,j], D.X[,j]:<.)))
+        else D.AT[j] = &(mm_unique(D.X[,j]))
+        if (D.ra[1]<. & length(*D.AT[j]))
+                *D.AT[j] = select(*D.AT[j], *D.AT[j] :>= D.ra[1])
+        if (D.ra[2]<. & length(*D.AT[j]))
+                *D.AT[j] = select(*D.AT[j], *D.AT[j] :<= D.ra[2])
+        if (length(*D.AT[j])==0) *D.AT[j] = .z // no observations
         if (!D.cat) continue
         if (any(*D.AT[j]:<0)) {
             errprintf("{bf:%s} has negative values; specify option " + 
@@ -5914,14 +5953,9 @@ void _ds_get_at_dens(`Data' D)
 {   // generate evaluation grid based on full sample
     `Int' j
     `RS'  tau
-    `RR'  bw, range, minmax
+    `RR'  bw, ra, minmax
     `RC'  X
     
-    // if lb() and ub() specified
-    if (D.S.lb()<. & D.S.ub()<. & D.ltight!=.z & D.rtight!=.z) {
-        D.AT = &(rangen(D.S.lb(), D.S.ub(), D.n))
-        return
-    }
     // obtain bandwidth if specified
     j = cols(D.overlevels) * D.nvars
     if (D.total) bw = D.bwidth[|j+1 \ .|]
@@ -5944,13 +5978,17 @@ void _ds_get_at_dens(`Data' D)
         }
         else X = D.X[,j]
         // mimic grid definition from mm_density()
-        range = J(1,2,.)
+        ra = D.ra
         minmax = minmax(X)
-        if (D.ltight==.z)    range[1] = minmax[1]
-        else if (D.S.lb()<.) range[1] = D.S.lb()
-        if (D.rtight==.z)    range[2] = minmax[2]
-        else if (D.S.ub()<.) range[2] = D.S.ub()
-        if (missing(range)) {
+        if (ra[1]>=.) {
+            if (D.ltight==.z)    ra[1] = minmax[1]
+            else if (D.S.lb()<.) ra[1] = D.S.lb()
+        }
+        if (ra[2]>=.) {
+            if (D.rtight==.z)    ra[2] = minmax[2]
+            else if (D.S.ub()<.) ra[2] = D.S.ub()
+        }
+        if (missing(ra)) {
             if (bw[j]>=.) {
                 D.S.data(X, D.w, D.wtype>=2, 0)
                 bw[j] = D.S.h()
@@ -5960,10 +5998,10 @@ void _ds_get_at_dens(`Data' D)
             tau = min((tau, bw[j] * (D.S.kernel()=="epanechnikov" ? sqrt(5) : 
                 (D.S.kernel()=="cosine" ? .5 : 
                 (D.S.kernel()=="gaussian" ? 3 : 1)))))
-            if (range[1]>=.) range[1] = minmax[1] - tau
-            if (range[2]>=.) range[2] = minmax[2] + tau
+            if (ra[1]>=.) ra[1] = minmax[1] - tau
+            if (ra[2]>=.) ra[2] = minmax[2] + tau
         }
-        D.AT[j] = &(rangen(range[1], range[2], D.n)) 
+        D.AT[j] = &(rangen(ra[1], ra[2], D.n)) 
     }
     if (D.total) { // store bandwidth to avoid double work
         D.bwidth[|cols(D.overlevels)*D.nvars + 1 \ .|] = bw
@@ -5976,17 +6014,20 @@ void _ds_get_at_cdf(`Data' D)
 
     D.AT = J(1, D.nvars, NULL)
     for (j=1;j<=D.nvars;j++) {
-        if (D.nocw) D.AT[j] = &(ds_cdf_AT(select(D.X[,j], D.X[,j]:<.), D.n))
-        else        D.AT[j] = &(ds_cdf_AT(D.X[,j], D.n))
+        if (D.nocw)
+             D.AT[j] = &(ds_cdf_AT(select(D.X[,j], D.X[,j]:<.), D.n, D.ra))
+        else D.AT[j] = &(ds_cdf_AT(D.X[,j], D.n, D.ra))
     }
 }
 
 void _ds_get_at_hist(`Data' D, `SS' rule)
 {
-    `Int' i, I, j, n
-    `RS'  N, h
-    `RR'  minmax
-    `Grp' G
+    `Int'  i, I, j, n
+    `IntC' p
+    `RS'   N, h
+    `RR'   minmax
+    `RC'   at
+    `Grp'  G
     
     if (rule=="")          rule = "sqrt"
     if (strtoreal(rule)<.) D.n = strtoreal(rule) + 1
@@ -6046,8 +6087,32 @@ void _ds_get_at_hist(`Data' D, `SS' rule)
                 if (n<1) n = 1 // make sure that never zero
             }
             else n = D.n - 1
-            if (D.ep==0) D.AT[D.k] = &(rangen(minmax[1], minmax[2], n+1))
-            else D.AT[D.k] = &(mm_quantile(G.X(), G.w(), (0::n)/n, 1)) // qdef=1
+            if (D.ra[1]<.) minmax[1] = D.ra[1]
+            if (D.ra[2]<.) minmax[2] = D.ra[2]
+            if (minmax[1]>minmax[2]) minmax = minmax[(2,1)]
+            if (n<2)          D.AT[D.k] = &(minmax[1] \ minmax[2])
+            else if (D.ep==0) D.AT[D.k] = &(rangen(minmax[1], minmax[2], n+1))
+            else { // ep
+                if (any(D.ra:<.)) {
+                    p = J(G.N,1,0)
+                    if (D.ra[1]<.) p = p + (G.X():<D.ra[1])
+                    if (D.ra[2]<.) p = p + (G.X():>D.ra[2])
+                    p = selectindex(!p)
+                    if (length(p)) {
+                        at = _mm_unique(mm_quantile(G.X()[p],
+                            rows(G.w())==1 ? G.w() : G.w()[p], (0::n)/n, 1))
+                        at[1] = minmax[1]
+                        if (rows(at)==1) at = at \ minmax[2]
+                        else             at[rows(at)] = minmax[2]
+                    }
+                    else at = minmax'
+                }
+                else {
+                    at = _mm_unique(mm_quantile(G.X(), G.w(), (0::n)/n, 1))
+                    if (rows(at)==1) at = at \ at
+                }
+                D.AT[D.k] = &(at*1) // store pointer to copy
+            }
         }
     }
 }
@@ -6057,7 +6122,7 @@ void ds_set_K(`Data' D)
     `Int' i, j, k
     
     // determine K
-    if (D.n<.) D.K = D.nover * D.nvars * D.n
+    if (D.n<. & !D.ep) D.K = D.nover * D.nvars * D.n
     else {
         D.K = k = 0
         for (i=1; i<=D.nover; i++) {
@@ -6587,15 +6652,10 @@ void dstat_density(`Data' D)
             if (D.AT[D.k]==NULL) {
                 b = a + D.n - 1
                 if (G.N) {
-                    D.b[|a \ b|] = D.S.d(D.n, D.ltight, D.rtight, D.exact)
+                    D.b[|a \ b|] = D.S.d(D.n, D.ra[1], D.ra[2], D.exact)
                     AT = D.S.at()
                 }
-                else {
-                    if (D.S.lb()<. & D.S.ub()<. & D.ltight!=.z & D.rtight!=.z) {
-                        AT = rangen(D.S.lb(), D.S.ub(), D.n)
-                    }
-                    else AT = J(D.n, 1, .z)
-                }
+                else AT = J(D.n, 1, .z)
             }
             else {
                 AT = *D.AT[D.k]
@@ -6731,7 +6791,7 @@ void dstat_cdf(`Data' D, `Bool' cc)
         for (j=1; j<=D.nvars; j++) {
             D.k = D.k + 1
             ds_init_G(G, D, D.L, j)
-            if (D.AT[D.k]==NULL) AT = ds_cdf_AT(G.X(), D.n)
+            if (D.AT[D.k]==NULL) AT = ds_cdf_AT(G.X(), D.n, D.ra)
             else                 AT = *D.AT[D.k]
             a = b + 1
             b = a + rows(AT) - 1
@@ -6739,7 +6799,8 @@ void dstat_cdf(`Data' D, `Bool' cc)
             ds_set_nobs_sumw(D, G, a, b)
             ds_set_cstripe(D, i, j, a, b, (D.novalues ? 
                 "c":+strofreal(1::b-a+1) : strofreal(AT, D.vfmt)))
-            if (G.N==0) ds_noobs(D, a, b)
+            if (G.N==0)      ds_noobs(D, a, b)
+            else if (AT==.z) ds_noobs(D, a, b)
             else {
                 D.b[|a \ b|] = _ds_cdf(G.X(), G.w(), AT, D.mid+D.floor*2,
                     D.freq, D.ipolate)
@@ -6756,12 +6817,14 @@ void dstat_cdf(`Data' D, `Bool' cc)
     }
 }
 
-`RC' ds_cdf_AT(`RC' X, `Int' n)
+`RC' ds_cdf_AT(`RC' X, `Int' n, `RR' ra)
 {
     `RR' minmax
     
     if (rows(X)==0) return(J(n,1,.z))
     minmax = minmax(X)
+    if (ra[1]<.) minmax[1] = ra[1]
+    if (ra[2]<.) minmax[2] = ra[2]
     return(rangen(minmax[1], minmax[2], n))
 }
 
@@ -6983,7 +7046,8 @@ void dstat_prop(`Data' D)
             ds_set_cstripe(D, i, j, a, b, (D.novalues ? 
                 "p":+strofreal(1::b-a+1) : (D.cat ? strofreal(AT) :
                 strofreal(AT, D.vfmt))))
-            if (G.N==0) ds_noobs(D, a, b)
+            if (G.N==0)      ds_noobs(D, a, b)
+            else if (AT==.z) ds_noobs(D, a, b)
             else {
                 D.b[|a \ b|] = _ds_prop(D, G, AT)
                 if (D.noIF==0) ds_prop_IF(D, G, a, b)

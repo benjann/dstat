@@ -1,5 +1,5 @@
 {smcl}
-{* 07nov2025}{...}
+{* 16nov2025}{...}
 {vieweralsosee "twoway dstat" "help twoway_dstat"}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
@@ -108,6 +108,12 @@ help for {hi:dstat}{...}
         {it:{help newvar:newvar1}} {it:{help newvar:newvar2}} {cmd:...}{c )-} {ifin}
         [{cmd:,} {it:{help dstat##predict_opts:predict_options}} ]
 
+{pmore}
+    Include distribution estimates from {cmd:dstat} in two-way graph
+
+{p 12 17 2}
+    [{cmdab:gr:aph}] {helpb twoway_dstat:{ul:tw}oway dstat} {it:...}
+
 
 {synoptset 26 tabbed}{...}
 {marker opts}{col 5}{help dstat##options:{it:options}}{col 33}Description
@@ -122,6 +128,9 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{cmdab:bal:ance(}{help dstat##balance:{it:spec}}{cmd:)}}balance
     covariates using reweighting; requires {cmd:over()}
+    {p_end}
+{synopt:{opt gr:aph}[{cmd:(}{help dstat##gropt:{it:spec}}{cmd:)}]}displays
+    results in a graph using {helpb coefplot}
     {p_end}
 {synopt:{help dstat##repopts:{it:reporting_options}}}reporting options
     {p_end}
@@ -179,10 +188,9 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:[{cmd:l}|{cmd:r}]{cmd:tight}}use tight evaluation grid
     {p_end}
-{synopt:{opt range(a b)}}use grid from {it:a} to {it:b}; default is to determine
-    grid range from data
+{synopt:{opt range(a b)}}set range of evaluation grid
     {p_end}
-{synopt:{opth at(numlist)}}custom grid of evaluation points
+{synopt:{opth at(numlist)}}use custom evaluation grid
     {p_end}
 {synopt:{cmdab:unc:onditional}}rescale results by relative size of subpopulation
     {p_end}
@@ -203,7 +211,9 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt com:mon}}use common bin definitions across subpopulations
     {p_end}
-{synopt:{opth at(numlist)}}custom bin definitions
+{synopt:{opt range(a b)}}set overall range of histogram bins
+    {p_end}
+{synopt:{opth at(numlist)}}use custom histogram bins
     {p_end}
 {synopt:{opt disc:rete}}treat data as discrete (calls {cmd:dstat proportion})
     {p_end}
@@ -215,7 +225,9 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt freq:uency}}estimate frequencies instead of proportions
     {p_end}
-{synopt:{opth at(numlist)}}custom list of levels to be included
+{synopt:{opt range(a b)}}set range of included levels
+    {p_end}
+{synopt:{opth at(numlist)}}use custom list of levels
     {p_end}
 {synopt:{opt nocat:egorical}}allow variables that do not comply to Stata's rules
     for factor variables
@@ -236,10 +248,9 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt com:mon}}use common evaluation points across subpopulations
     {p_end}
-{synopt:{opt range(a b)}}use grid from {it:a} to {it:b}; default is to determine
-    grid range from data
+{synopt:{opt range(a b)}}set range of evaluation grid
     {p_end}
-{synopt:{opth at(numlist)}}custom grid of evaluation points
+{synopt:{opth at(numlist)}}use custom evaluation grid
     {p_end}
 {synopt:{opt disc:rete}}treat data as discrete
     {p_end}
@@ -251,10 +262,9 @@ help for {hi:dstat}{...}
 {syntab:{help dstat##quantile:Subcommand {bf:quantile}}}
 {synopt:{opt n(#)}}size of evaluation grid; default is {cmd:n(99)}
     {p_end}
-{synopt:{opt range(a b)}}use grid within range from {it:a} to {it:b}, {it:a} and {it:b}
-    in [0,1]; default is {cmd:range(0 1)}
+{synopt:{opt range(a b)}}set range of evaluation grid; {it:a} and {it:b} in [0,1]
     {p_end}
-{synopt:{opth at(numlist)}}custom grid of evaluation points
+{synopt:{opth at(numlist)}}use custom evaluation grid
     {p_end}
 {synopt:{it:{help dstat##quantopts:quantile_options}}}details of quantile estimation
     {p_end}
@@ -276,10 +286,9 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt n(#)}}size of evaluation grid; default is {cmd:n(101)}
     {p_end}
-{synopt:{opt range(a b)}}use grid from {it:a} to {it:b}, {it:a} and {it:b}
-    in [0,1]; default is {cmd:range(0 1)}
+{synopt:{opt range(a b)}}set range of evaluation grid; {it:a} and {it:b} in [0,1]
     {p_end}
-{synopt:{opth at(numlist)}}custom grid of evaluation points
+{synopt:{opth at(numlist)}}use custom evaluation grid
     {p_end}
 
 {syntab:{help dstat##pshare:Subcommand {bf:pshare}}}
@@ -297,7 +306,9 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt n(#)}}number of bins; default is {cmd:n(20)}
     {p_end}
-{synopt:{opth at(numlist)}}custom bin definitions
+{synopt:{opt range(a b)}}set overall range of bins; {it:a} and {it:b} in [0,1]
+    {p_end}
+{synopt:{opth at(numlist)}}use custom bins
     {p_end}
 
 {syntab:{help dstat##tip:Subcommand {bf:tip}}}
@@ -309,10 +320,9 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt n(#)}}size of evaluation grid; default is {cmd:n(101)}
     {p_end}
-{synopt:{opt range(a b)}}use grid from {it:a} to {it:b}, {it:a} and {it:b}
-    in [0,1]; default is {cmd:range(0 1)}
+{synopt:{opt range(a b)}}set range of evaluation grid; {it:a} and {it:b} in [0,1]
     {p_end}
-{synopt:{opth at(numlist)}}custom grid of evaluation points
+{synopt:{opth at(numlist)}}use custom evaluation grid
     {p_end}
 {synoptline}
 {pstd}
@@ -385,13 +395,17 @@ help for {hi:dstat}{...}
     account of the uncertainty induced by the balancing.
 
 {pstd}
-    Basic functionality for graphing results is provided through the
-    {cmd:graph()} option or by applying command {cmd:dstat graph}
-    after estimation. {cmd:dstat} employs {helpb coefplot} for
-    graphing, which needs to be installed on the system; see
-    {net "describe coefplot, from(http://fmwww.bc.edu/repec/bocode/c/)":{bf:ssc describe coefplot}}. Furthermore,
-    {cmd:dstat} requires the {helpb moremata} package; see
-    {net "describe moremata, from(http://fmwww.bc.edu/repec/bocode/m/)":{bf:ssc describe moremata}}.
+    Basic functionality for graphing results using {helpb coefplot} is provided through the
+    {helpb dstat##gropt:graph()} option or by applying command {cmd:dstat graph}
+    after estimation. Further graphing functionality is provided by
+    {helpb twoway dstat}.
+
+{pstd}
+    {cmd:dstat} requires the {helpb moremata} package to be installed on the system; see
+    {net "describe moremata, from(http://fmwww.bc.edu/repec/bocode/m/)":{bf:ssc describe moremata}}. Furthermore,
+    {helpb coefplot} needs to be installed if you want to use
+    {cmd:dstat graph} or the {cmd:graph()} option; see
+    {net "describe coefplot, from(http://fmwww.bc.edu/repec/bocode/c/)":{bf:ssc describe coefplot}}.
 
 
 {marker statistics}{...}
@@ -945,6 +959,14 @@ help for {hi:dstat}{...}
     sample as defined in the description of the {cmd:casewise} option; the weights
     will not be recomputed for each variable individually.
 
+{marker gropt}{...}
+{phang}
+    {opt graph}[{cmd:(}{help dstat##graph_options:{it:graph_options}}{cmd:)}]
+    displays the results in a graph using {helpb coefplot}. The coefficients
+    table will be suppressed in this case (unless option {cmd:table} is
+    specified). Alternatively, use command {cmd:dstat graph} to display the
+    graph after estimation.
+
 {marker repopts}{...}
 {phang}
     {it:reporting_options} are options affecting how results are reported. The options
@@ -1014,13 +1036,6 @@ help for {hi:dstat}{...}
     {it:display_options} are standard reporting options such as {cmd:eform},
     {cmd:cformat()}, or {cmd:coeflegend}; see {help eform_option:{bf:[R]} {it:eform_option}} and
     the Reporting options in {helpb estimation options:[R] Estimation options}.
-
-{phang2}
-    {opt gr:aph}[{cmd:(}{help dstat##graph_options:{it:graph_options}}{cmd:)}]
-    displays the results in a graph using {helpb coefplot}. The coefficients
-    table will be suppressed in this case (unless option {cmd:table} is
-    specified). Alternatively, use command {cmd:dstat graph} to display the
-    graph after estimation.
 
 {phang}
     {opt novalues} prevents using the values of the evaluation points as
@@ -1222,14 +1237,16 @@ help for {hi:dstat}{...}
     is specified.
 
 {phang}
-    {opt range(a b)} specifies the range of the evaluation grid. The default is
-    is to determine the range of the grid from the data; see option {cmd:n()}. Option
-    {cmd:range()} overrides {cmd:common}. Only one of {cmd:range()} and
-    {cmd:at()} is allowed.
+    {opt range(a [b])} specifies the range of the evaluation grid. The default
+    is is to determine the range of the grid from the data; see option
+    {cmd:n()}. Argument {it:a} can be specified as {cmd:.} (missing) to select
+    the default lower limit; argument {it:b} can be omitted or specified as
+    {cmd:.} (missing) to select the default upper limit. Only one of
+    {cmd:range()} and {cmd:at()} is allowed.
 
 {phang}
-    {opth at(numlist)} specifies a custom grid of evaluation points. Only
-    one of {cmd:n()} and {cmd:at()} is allowed.
+    {opth at(numlist)} specifies a custom grid of evaluation points. Options
+    {cmd:n()} and {cmd:range()} are not allowed if {cmd:at()} is specified.
 
 {phang}
     {cmd:unconditional} rescales results such that the
@@ -1373,12 +1390,23 @@ help for {hi:dstat}{...}
     specified, the bin definitions will be based on the data in the total population.
 
 {phang}
+    {opt range(a [b])} specifies the overall range of the histogram bins. The
+    default range is from the minimum to the maximum of the data. Argument
+    {it:a} can be specified as {cmd:.} (missing) to select
+    the default lower limit; argument {it:b} can be omitted or specified as
+    {cmd:.} (missing) to select the default upper limit. Option {cmd:range()}
+    does not restrict the data that will be used in the computations, it just
+    restricts the range of reported histogram bins. Only one of
+    {cmd:range()} and {cmd:at()} is allowed.
+
+{phang}
     {opth at(numlist)} specifies custom cutpoints for the bins (in ascending
     order). If {it:numlist} contains {it:n} numbers, {it:n}-1 bins will be
     created. Note that the constructed bins will cover all data only if the first
     cutpoint is smaller than or equal to the minimum of the data and the last
     cutpoint is larger than or equal to the maximum ({cmd:dstat} does {it:not} check
-    this condition and does not display a warning if the condition is violated).
+    this condition and does not display a warning if the condition is violated). Options
+    {cmd:n()}, {cmd:ep}, and {cmd:range()} are not allowed if {cmd:at()} is specified.
 
 {phang}
     {cmd:discrete} treats the data as discrete and estimates the probability of
@@ -1402,9 +1430,19 @@ help for {hi:dstat}{...}
     {opt frequency} estimates frequencies instead of proportions.
 
 {phang}
+    {opt range(a [b])} sets the range of levels for which to estimate
+    proportions. The default range is from the minimum to the maximum of the
+    data. Argument {it:a} can be specified as {cmd:.} (missing) to select
+    the default lower limit; argument {it:b} can be omitted or specified as
+    {cmd:.} (missing) to select the default upper limit. Option {cmd:range()}
+    does not restrict the data that will be used in the computations, it just
+    restricts the range of levels for which results are reported. Only one of
+    {cmd:range()} and {cmd:at()} is allowed.
+
+{phang}
     {opth at(numlist)} provides a custom list of levels for which to estimate
     proportions. The default is to use all levels observed in the data (across
-    subpopulations).
+    subpopulations). Only one of {cmd:at()} and {cmd:range()} is allowed.
 
 {phang}
     {opt nocategorical} allows outcome variables that do not comply to
@@ -1455,14 +1493,17 @@ help for {hi:dstat}{...}
     evaluation points will be based on the data range in the total population.
 
 {phang}
-    {opt range(a b)} specifies the range of the evaluation grid. The default is
-    is to determine the range of the grid from the data; see option {cmd:n()}. Option
-    {cmd:range()} overrides {cmd:common}. Only one of {cmd:range()} and
-    {cmd:at()} is allowed.
+    {opt range(a [b])} specifies the range of the evaluation grid. The default
+    is is to determine the range of the grid from the data; see option
+    {cmd:n()}. Argument {it:a} can be specified as {cmd:.} (missing) to select
+    the default lower limit; argument {it:b} can be omitted or specified as
+    {cmd:.} (missing) to select the default upper limit. Only one of
+    {cmd:range()} and {cmd:at()} is allowed.
 
 {phang}
     {opth at(numlist)} provides a custom list of points at which to evaluate
-    the CDF. Only one of {cmd:n()} and {cmd:at()} is allowed.
+    the CDF. Options {cmd:n()} and {cmd:range()} are not allowed if {cmd:at()}
+    is specified.
 
 {phang}
     {cmd:discrete} treats the data as discrete. In this case, the CDF will
@@ -1495,14 +1536,14 @@ help for {hi:dstat}{...}
     {cmd:n(99)}. Only one of {cmd:n()} and {cmd:at()} is allowed.
 
 {phang}
-    {opt range(a b)} specifies the range of the evaluation grid, {it:a} and
-    {it:b} in [0,1]. The default is {cmd:range(0 1)}. Only one of {cmd:range()}
-    and {cmd:at()} is allowed.
+    {opt range(a b)} specifies the range of the evaluation grid, with arguments
+    {it:a} and {it:b} in [0,1]. The default is {cmd:range(0 1)}. Only one of
+    {cmd:range()} and {cmd:at()} is allowed.
 
 {phang}
     {opth at(numlist)} provides a custom list of probabilities at which to
-    compute quantiles. The specified values must be within [0,1]. Only one of
-    {cmd:n()} and {cmd:at()} is allowed.
+    compute quantiles. The specified values must be within [0,1]. Options
+    {cmd:n()} and {cmd:range()} are not allowed if {cmd:at()} is specified.
 
 {marker quantopts}{...}
 {phang}
@@ -1602,14 +1643,14 @@ help for {hi:dstat}{...}
     {cmd:n()} and {cmd:at()} is allowed.
 
 {phang}
-    {opt range(a b)} specifies the range of the evaluation grid, {it:a} and
-    {it:b} in [0,1]. The default is {cmd:range(0 1)}. Only one of {cmd:range()}
-    and {cmd:at()} is allowed.
+    {opt range(a b)} specifies the range of the evaluation grid, with arguments
+    {it:a} and {it:b} in [0,1]. The default is {cmd:range(0 1)}. Only one of
+    {cmd:range()} and {cmd:at()} is allowed.
 
 {phang}
-    {opth at(numlist)} provides a custom list of points at which to
-    estimate Lorenz ordinates. The specified values must be within [0,1]. Only one of
-    {cmd:n()} and {cmd:at()} is allowed.
+    {opth at(numlist)} provides a custom list of points at which to estimate
+    Lorenz ordinates. The specified values must be within [0,1]. Options
+    {cmd:n()} and {cmd:range()} are not allowed if {cmd:at()} is specified.
 
 {marker pshare}{...}
 {dlgtab:Subcommand pshare}
@@ -1635,14 +1676,21 @@ help for {hi:dstat}{...}
 
 {phang}
     {opt n(#)} sets the number of bins. A regular grid of {it:#} bins between
-    0 an 1 will be used. The default is {cmd:n(20)}.
+    {it:a} and {it:b} will be used, with {it:a} and {it:b}
+    as set by option {cmd:range()}. The default is {cmd:n(20)}.
+
+{phang}
+    {opt range(a b)} specifies the overall range of the reported bins, with
+    arguments {it:a} and {it:b} in [0,1]. The default is {cmd:range(0 1)}. Only
+    one of {cmd:range()} and {cmd:at()} is allowed.
 
 {phang}
     {opth at(numlist)} specifies custom cutpoints for the bins (in ascending
     order). The specified values must be within [0,1]. If {it:numlist} contains
     {it:n} numbers, {it:n}-1 bins will be created. Note that the constructed
     bins will cover all data only if the first cutpoint is 0 and the last
-    cutpoint is 1.
+    cutpoint is 1. Options {cmd:n()} and {cmd:range()} are not allowed if
+    {cmd:at()} is specified.
 
 {marker tip}{...}
 {dlgtab:Subcommand tip}
@@ -1669,14 +1717,14 @@ help for {hi:dstat}{...}
     and {cmd:at()} is allowed.
 
 {phang}
-    {opt range(a b)} specifies the range of the evaluation grid, {it:a} and
-    {it:b} in [0,1]. The default is {cmd:range(0 1)}. Only one of {cmd:range()}
-    and {cmd:at()} is allowed.
+    {opt range(a b)} specifies the range of the evaluation grid, with arguments
+    {it:a} and {it:b} in [0,1]. The default is {cmd:range(0 1)}. Only one of
+    {cmd:range()} and {cmd:at()} is allowed.
 
 {phang}
-    {opth at(numlist)} provides a custom list of points at which to
-    estimate the ordinates. The specified values must be within [0,1]. Only one of
-    {cmd:n()} and {cmd:at()} is allowed.
+    {opth at(numlist)} provides a custom list of points at which to estimate
+    the TIP ordinates. The specified values must be within [0,1]. Options
+    {cmd:n()} and {cmd:range()} are not allowed if {cmd:at()} is specified.
 
 {marker graph_options}{...}
 {dlgtab:Graph options}

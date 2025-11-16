@@ -39,6 +39,16 @@ Installation from GitHub:
 
 Main changes:
 
+    16nov2025 (version 1.5.3)
+    - argument b in range(a b) is now optional; the default upper limit is used if
+      b is omitted
+    - arguments a and b in range(a b) can now be specified as . (missing) to select
+      default limits
+    - option range() is now also available in -dstat histogram-, -dstat proportion-,
+      and -dstat pshare-
+    - specifying the legend() option in -dstat graph- had no effect if the graph
+      only included a single plot; this is fixed
+
     07nov2025 (version 1.5.2)
     - command -twoway dstat- added (required Stata 16 or newer)
     - command -dstat save- added

@@ -6,6 +6,8 @@
 {viewerjumpto "Description" "twoway_dstat##description"}{...}
 {viewerjumpto "Options" "twoway_dstat##options"}{...}
 {viewerjumpto "Examples" "twoway_dstat##examples"}{...}
+{viewerjumpto "Author" "twoway_dstat##author"}{...}
+{viewerjumpto "Also see" "twoway_dstat##also_see"}{...}
 {hline}
 help for {hi:twoway dstat}{...}
 {right:{browse "http://github.com/benjann/dstat/"}}
