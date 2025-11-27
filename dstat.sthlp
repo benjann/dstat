@@ -1,5 +1,5 @@
 {smcl}
-{* 16nov2025}{...}
+{* 20nov2025}{...}
 {vieweralsosee "twoway dstat" "help twoway_dstat"}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
@@ -858,14 +858,14 @@ help for {hi:dstat}{...}
     {opt contr:ast}[{cmd:(}{it:#}|{cmd:lag}|{cmd:lead}{cmd:)}] computes contrasts between
     subpopulations or between subpopulations and the total population. If
     {cmd:contrast} is specified without argument, the total population or
-    the first subpopulation (possibly after applying {cmd:select()})
+    the first reported subpopulation (after applying {cmd:select()})
     will be used as the basis for the contrasts, depending on whether option
     {cmd:total} has been specified or not. Alternatively, specify
     the value of the reference subpopulation in parentheses (this may also be
     a subpopulation that has been excluded by {cmd:select()}) or
     type {cmd:contrast(lag)} or {cmd:contrast(lead)} to take stepwise contrasts
-    with respect to the previous or next subpopulation, respectively. {cmd:contrast}
-    implies {cmd:common} (if relevant).
+    with respect to the previous or next reported subpopulation,
+    respectively. {cmd:contrast} implies {cmd:common} (if relevant).
 
 {pmore2}
     The estimates from the reference (sub)population will be included among the

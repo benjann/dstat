@@ -39,15 +39,20 @@ Installation from GitHub:
 
 Main changes:
 
+    27nov2025 (version 1.5.4)
+    - fixed a typo in the influence function of statistic winsor(p1,p2); thanks to
+      chiungming for reporting the bug
+
     16nov2025 (version 1.5.3)
-    - argument b in range(a b) is now optional; the default upper limit is used if
-      b is omitted
-    - arguments a and b in range(a b) can now be specified as . (missing) to select
-      default limits
-    - option range() is now also available in -dstat histogram-, -dstat proportion-,
-      and -dstat pshare-
+    - option range(a b)
+      o now also available in -dstat histogram-, -dstat proportion-, and
+        -dstat pshare-
+      o argument a can now be specified as . (missing); the default lower limit will
+        be used in this case
+      o argument b can now be omitted or specified as . (missing); the default upper
+        limit will be used in this case
     - specifying the legend() option in -dstat graph- had no effect if the graph
-      only included a single plot; this is fixed
+      contained only a single plot; this is fixed
 
     07nov2025 (version 1.5.2)
     - command -twoway dstat- added (required Stata 16 or newer)

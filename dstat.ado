@@ -1,4 +1,4 @@
-*! version 1.5.3  16nov2025  Ben Jann
+*! version 1.5.4  27nov2025  Ben Jann
 
 capt mata: assert(mm_version()>=205)
 if _rc {
@@ -8055,7 +8055,7 @@ void ds_sum_winsor(`Data' D, `Grp' G, `Int' i, `RR' o)
     // note: winsorized mean = weighted sum of trimmed mean and quantiles
     z = (1-plo-pup) * (z :- ds_mean(z, G.w(), G.W))              // trimmed mean
     if (p1>0) z = z + plo * _ds_sum_q_IF(D, G, p1, q[1], D.qdef) // lower quantile
-    if (p2<1) z = z + plo * _ds_sum_q_IF(D, G, p2, q[2], D.qdef) // upper quantile
+    if (p2<1) z = z + pup * _ds_sum_q_IF(D, G, p2, q[2], D.qdef) // upper quantile
     ds_set_IF(D, G, i, z / G.W)
 }
 
