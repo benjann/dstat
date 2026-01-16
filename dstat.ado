@@ -1,8 +1,8 @@
-*! version 1.5.4  27nov2025  Ben Jann
+*! version 1.5.5  11jan2026  Ben Jann
 
-capt mata: assert(mm_version()>=205)
+capt mata: assert(mm_version()>=206)
 if _rc {
-    di as error "{bf:moremata} version 2.0.5 or newer is required; " _c
+    di as error "{bf:moremata} version 2.0.6 or newer is required; " _c
     di as error "type {stata ssc install moremata, replace}"
     error 499
 }
@@ -734,11 +734,11 @@ program _Replay, rclass
             di as txt _col(`c1') "Bandwidth" _col(`c2') "= " as res `bwidth'
         }
         else if "`subcmd'"=="quantile" {
-            local qdef = e(qdef)
-            if `qdef'==10      local qdef "hdquantile"
-            else if `qdef'==11 local qdef "mquantile"
-            else               local qdef "qdef(`qdef')"
-            di as txt _col(`c1') "Quantile type" _col(`c2') "= " as res %10s "`qdef'"
+            local j = e(qdef) + 1
+            local qdef: word `j' of high invcdf avginvcdf closest parzen hazen/*
+                */ weibull gumbel tukey blom hd mid california beard benard/*
+                */ cooper gringorten
+            di as txt _col(`c1') "Quantile method" _col(`c2') "= " as res %10s "`qdef'"
         }
         else if "`subcmd'"=="lorenz" | "`subcmd'"=="pshare" {
             if `"`e(byvar)'"'!="" {
@@ -755,6 +755,10 @@ program _Replay, rclass
             if `"`e(pline)'"'!="" {
                 di as txt _col(`c1') "Poverty line" _col(`c2') "= " as res %10s e(pline)
             }
+        }
+        if inlist(`"`e(total)'"',"mean","wmean") {
+            di as txt _col(`c1') "Type of total" _col(`c2') "= " as res %10s /*
+                */ `"`e(total)'"'
         }
         if `"`contrast'"'!="" {
             if real(`"`contrast'"')>=. local clbl `"`contrast'"'
@@ -1923,18 +1927,39 @@ program _Estimate, eclass
     else exit 499
     syntax `lhs' [if] [in] [fw iw pw/], [ ///
         NOVALues VFormat(str) NOCASEwise ///
-        qdef(numlist max=1 int >=0 <=11) ///
-        HDQuantile HDTrim HDTrim2(numlist max=1) MQuantile MQOPTs(str) ///
-        Over(str) TOTal BALance(str) ///
+        qdef(str) HDQuantile HDTrim HDTrim2(str) MQuantile MQOPTs(str) ///
+        Over(str) TOTal TOTal2(str) BALance(str) ///
         vce(str) NOSE NOCOV COV Level(cilevel) ///
         Generate(passthru) rif(str) Replace ///
         noBWFIXed /// does nothing at this point
         markesample(name) /// undocumented: mark estimation sample and exit
         `opts' * ]
     if "`byvar'"=="" local byvar `zvar' // support for old syntax
+    if "`hdquantile'"!="" { // support for old syntax
+        if "`qdef'"=="" {
+            if `"`hdtrim2'"'!=""   local qdef 10, trim(`hdtrim2')
+            else if "`hdtrim'"!="" local qdef 10, trim
+            else                   local qdef 10
+        }
+        local hdquantile
+        local hdtrim
+        local hdtrim2
+    }
+    else if "`mquantile'"!="" { // support for old syntax
+        if "`qdef'"=="" {
+            if `"`mqopts'"'!="" local qdef 11, `mqopts'
+            else                local qdef 11
+        }
+        local mquantile
+        local mqopts
+    }
+    Parse_qdef `qdef'
     Parse_over `over'
     if "`over_accumulate'"!="" local common common
     if "`over_contrast'"!=""   local common common
+    if "`total'"!="" & `"`total2'"'=="" local total2 "pooled"
+    Parse_total, `total2'
+    if inlist("`total'","mean","wmean") local common common
     if `"`generate'"'!="" & `"`rif'"'!="" {
         di as err "{bf:generate()} and {bf:rif()} not both allowed"
         exit 198
@@ -1943,28 +1968,6 @@ program _Estimate, eclass
         confirm format `vformat'
     }
     else local vformat %9.0g
-    if "`hdquantile'"!="" {
-        if "`mquantile'"!="" {
-            di as err "{bf:mquantile} and {bf:hdquantile} not both allowed"
-            exit 198
-        }
-        if "`qdef'"!="" & "`qdef'"!="10" {
-            di as err "{bf:qdef()} and {bf:hdquantile} not both allowed"
-            exit 198
-        }
-        local qdef 10
-    }
-    else if "`mquantile'"!="" {
-        if "`qdef'"!="" & "`qdef'"!="11" {
-            di as err "{bf:qdef()} and {bf:miduantile} not both allowed"
-            exit 198
-        }
-        local qdef 11
-    }
-    else {
-        if "`qdef'"=="" local qdef 2
-    }
-    Parse_mqopts, `mqopts'
     if "`subcmd'"=="proportion" {
         if "`nocategorical'"=="" local categorical "categorical"
     }
@@ -2095,8 +2098,8 @@ program _Estimate, eclass
             exit 198
         }
         Parse_balance `balance'
-        if "`bal_ref'"!="" & "`total'"!="" {
-            di as err "{bf:total} not allowed with {bf:balance(, reference())}"
+        if "`bal_ref'"!="" & "`total'"=="pooled" {
+            di as err "{bf:total(pooled)} not allowed with {bf:balance(, reference())}"
             exit 198
         }
         if "`bal_wvar'"!="" {
@@ -2115,6 +2118,12 @@ program _Estimate, eclass
         local common
     }
     if "`compact'"!="" {
+        if inlist("`subcmd'","density","histogram","cdf","ccdf") & /*
+            */ "`common'"=="" {
+            di as err "{bf:compact} not allowed with {bf:dstat `subcmd'}"/*
+                */ " unless option {bf:common} has been specified"
+            exit 198
+        }
         if `"`bal_method'"'!="" {
             di as err "{bf:compact} not allowed with {bf:balance()}"
             exit 198
@@ -2219,10 +2228,12 @@ program _Estimate, eclass
             exit 452
         }
         qui levelsof `over' if `touse', local(overlevels)
+        local N_over0: list sizeof overlevels
         if `"`bal_method'"'!="" {
             if "`bal_ref'"!="" {
                 if `:list bal_ref in overlevels'==0 {
-                    di as err "{bf:balance()}: no observations in reference distribution"
+                    di as err "{bf:balance()}: no observations in reference"/*
+                        */ " distribution"
                     exit 2000
                 }
             }
@@ -2236,7 +2247,8 @@ program _Estimate, eclass
         }
         if !inlist("`over_contrast'","","contrast","lag","lead") {
             if `:list over_contrast in overlevels'==0 {
-                di as err "{bf:over(, contrast())}: no observations in reference distribution"
+                di as err "{bf:over(, contrast())}: no observations in"/*
+                    */ " reference subpopulation"
                 exit 2000
             }
             if `"`over_select'"'!="" {
@@ -2253,18 +2265,20 @@ program _Estimate, eclass
                 }
             }
             local overlevels: list uniq tmp
-            if `:list sizeof overlevels'==0 {
+            local N_over: list sizeof overlevels
+            if `N_over'==0 {
                 di as err "{bf:over(, select())}: must select at least one existing group"
                 exit 499
             }
             local over_select "`overlevels'"
         }
+        else local N_over `N_over0'
         if "`over_contrast'"=="contrast" {
             if `"`total'"'!="" local over_contrast "total"
             else gettoken over_contrast : overlevels // use first subpop
         }
         if "`over_contrast'"!="" {
-            if (`:list sizeof overlevels' + ("`total'"!=""))<2 {
+            if (`N_over' + ("`total'"!=""))<2 {
                 di as err "{bf:over(, contrast)}: need at least one comparison group"
                 exit 499
             }
@@ -2275,7 +2289,6 @@ program _Estimate, eclass
             local over_labels `"`over_labels' `"`olab'"'"'
         }
         local over_labels: list clean over_labels
-        local N_over: list sizeof overlevels
     }
     
     // estimate
@@ -2285,12 +2298,11 @@ program _Estimate, eclass
     if "`generate'"!="" {
         local coln: colfullnames `b'
         if "`compact'"!="" {
-            local CIFs
+            local CIF
+            local CIFtot
             local i 0
-            local j 0
-            local gid0 ""
+            local j = colsof(`b') / (`N_over' + ("`total'"!=""))
             foreach IF of local IFs {
-                gettoken nm coln : coln
                 local ++i
                 if `IFtot'[1,`i']!=0 {
                     di as err "{bf:compact} not supported for statistics" ///
@@ -2298,45 +2310,60 @@ program _Estimate, eclass
                         " (frequencies, totals)"
                     exit 499
                 }
+                if `i'<=`j' {
+                    local CIF `CIF' `IF'
+                    continue
+                }
+                if `i' <= (`N_over'*`j') continue
+                local CIFtot `CIFtot' `IF'
+            }
+            local i 0
+            local j 0
+            local gid0 ""
+            local IFS: copy local IFs
+            local IFs
+            foreach IF of local IFS {
+                local ++i
+                gettoken nm coln : coln
                 local gid = `id'[1, `i']
                 if "`gid'"!="`gid0'" {
                     local ++j
                     if "`gid'"=="." { // total
-                        local k `i'
                         local ifexp `touse'
+                        local Wexp  `W'
+                        local CIFs: copy local CIFtot
                     }
                     else {
-                        local k 1
                         local ifexp `touse' & `over'==`gid'
+                        local Wexp  `_W'[1,`j']
+                        local CIFs: copy local CIF
                     }
                     local gid0 `gid' 
                 }
-                mata: st_local("CIF", tokens(st_local("IFs"))[`k'])
+                gettoken cIF CIFs : CIFs
                 if "`rif'"!="" {
                     if "`scaling'"=="total" {
-                        qui replace `CIF' = `IF' ///
-                            + `b'[1,`i'] / `_W'[1,`j'] if `ifexp'
+                        qui replace `cIF' = `IF' + `b'[1,`i']/`Wexp' if `ifexp'
                     }
                     else {
-                        qui replace `CIF' = `IF' * `_W'[1,`j'] ///
-                            + `b'[1,`i'] if `ifexp'
+                        qui replace `cIF' = `IF'*`Wexp' + `b'[1,`i'] if `ifexp'
                     }
                 }
                 else {
                     if "`scaling'"=="mean" {
-                        qui replace `CIF' = `IF' * `_W'[1,`j'] if `ifexp'
+                        qui replace `cIF' = `IF'*`Wexp' if `ifexp'
                     }
-                    else if "`CIF'"!="`IF'" {
-                        qui replace `CIF' = `IF' if `ifexp'
+                    else if "`cIF'"!="`IF'" {
+                        qui replace `cIF' = `IF' if `ifexp'
                     }
                 }
-                mata: ds_fix_nm("nm", "`gid'", "`total'"!="")
-                if "`rif'"!="" lab var `CIF' "RIF of _b[`nm']"
-                else           lab var `CIF' "IF of _b[`nm']"
-                local CIFs `CIFs' `CIF'
-                local ++k
+                if `j'==1 | "`gid'"=="." {
+                    mata: ds_fix_nm("nm", "`gid'", "`total'"!="")
+                    if "`rif'"!="" lab var `cIF' "RIF of _b[`nm']"
+                    else           lab var `cIF' "IF of _b[`nm']"
+                    local IFs `IFs' `cIF'
+                }
             }
-            local IFs: list uniq CIFs
         }
         else if "`rif'"!="" {
             local i 0
@@ -2412,9 +2439,9 @@ program _Estimate, eclass
     eret matrix sumw = `sumw'
     eret matrix omit = `omit'
     eret scalar qdef = `qdef'
-    if      "`hdtrim2'"!="" eret local hdtrim hdtrim(`hdtrim2')
-    else if "`hdtrim'"!=""  eret local hdtrim hdtrim
-    if `"`mqopts'"'!=""     eret local mqopts mqopts(`mqopts')
+    if "`qdef_trim'"!=""    eret scalar qdef_trim = `qdef_trim'
+    if "`qdef_usmooth'"!="" eret scalar qdef_usmooth = `qdef_usmooth'
+    if "`qdef_cdf'"!=""     eret scalar qdef_cdf = `qdef_cdf'
     eret local nocasewise "`nocasewise'"
     eret local percent "`percent'"
     eret local proportion "`proportion'"
@@ -2598,6 +2625,70 @@ program _Estimate, eclass
     }
 end
 
+program Parse_qdef
+    _parse comma qdef 0 : 0
+    if `"`qdef'"'=="" local qdef 2
+    if `: list sizeof qdef'>1 {
+        di as err "only one {it:method} allowed"
+        di as err "error in option {bf:qdef()}"
+        exit 198
+    }
+    capt confirm number `qdef'
+    if _rc==1 exit _rc
+    if !_rc {
+        capt n numlist `"`qdef'"', max(1) int range(>=0 <=16)
+        if _rc==1 exit _rc
+        if _rc {
+            di as err "error in option {bf:qdef()}"
+            exit 198
+        }
+        local qdef = r(numlist)
+    }
+    else {
+        capt n _Parse_qdef, `qdef'
+        if _rc==1 exit _rc
+        if _rc {
+            di as err "error in option {bf:qdef()}"
+            exit 198
+        }
+    }
+    syntax [, Trim Trim2(numlist max=1) USmooth(numlist max=1 <1)/*
+        */ CDF CDF2(numlist max=1 >=0) ]
+    if `qdef'==10 { // hd
+        if "`trim'"!="" & "`trim2'"=="" local trim2 0 // use 1/sqrt(n)
+        else if "`trim2'"==""           local trim2 1 // untrimmed
+    }
+    else local trim2
+    if `qdef'==11 { // mid
+        if "`cdf'"!="" & "`cdf2'"=="" local cdf2 .
+        if "`cdf2'"!="" {
+            if "`usmooth'"!="" {
+                di as err "{bf:qdef()}: {bf:cdf()} and {bf:usmooth()} not both allowed"
+                exit 198
+            }
+        }
+        else if "`usmooth'"=="" local usmooth .2 // default
+    }
+    c_local qdef         `qdef'
+    c_local qdef_trim    `trim2'
+    c_local qdef_cdf     `cdf2'
+    c_local qdef_usmooth `usmooth'
+end
+
+program _Parse_qdef
+    local opts HIgh INVcdf AVGinvcdf closest PARZen HAZen WEIBull GUMBel/*
+        */ TUKey blom hd mid CALIfornia beard benard cooper GRINGorten
+    syntax [, LOw `opts' ]
+    if "`low'"!="" local invcdf invcdf
+    local opts = strlower("`opts'")
+    local j 0
+    foreach opt of local opts {
+        if "``opt''"!="" local qdef `j'
+        local ++j
+    }
+    c_local qdef `qdef'
+end
+
 program Parse_over
     capt n syntax [varname(numeric default=none)] [, SELect(numlist int >=0) ///
         ACCUMulate CONTRast CONTRast2(str) ratio LNRatio ]
@@ -2635,6 +2726,17 @@ program Parse_over
     c_local over_accumulate `accumulate'
     c_local over_contrast `contrast'
     c_local over_ratio `ratio'
+end
+
+program Parse_total
+    syntax [, Pooled Mean Wmean ]
+    local total `pooled' `mean' `wmean'
+    if `:list sizeof total'>1 {
+        di as err "{bf:total()}: only one of {bf:pooled}, {bf:mean}, and"/*
+            */ " {bf:wmean} allowed"
+        exit 198
+    }
+    c_local total `total'
 end
 
 program Parse_rif
@@ -3006,19 +3108,6 @@ program Parse_boundary // returns: boundary
         exit 198
     }
     c_local boundary `boundary'
-end
-
-program Parse_mqopts
-    syntax [, USmooth(numlist max=1 <1) CDF CDF2(numlist max=1 >=0) ]
-    if "`cdf2'"!="" local cdf cdf
-    if "`cdf'"!="" & "`usmooth'"!="" {
-        di as err "{bf:mqopts()}: {bf:cdf()} and {bf:usmooth()} not both allowed"
-        exit 198
-    }
-    if "`usmooth'"=="" local usmooth .2 // default
-    c_local mq_cdf "`cdf'"
-    c_local mq_bw  "`cdf2'"
-    c_local mq_us  "`usmooth'"
 end
 
 program Parse_balance
@@ -5168,8 +5257,9 @@ struct `DATA' {
     `SS'    ovar       // name of over variable
     `RC'    over       // view on over() variable
     `IntR'  overlevels // levels of over()
-    `Int'   nover      // number of over groups (including total)
-    `Bool'  total      // include total across over groups
+    `Int'   nover      // number of (selected) over groups (including total)
+    `Int'   novernot   // number of excluded over groups
+    `Int'   total      // include total across groups (1:pooled,2:mean,3:wmean)
     `IntR'  _N         // number of obs per group
     `RR'    _W         // sum of weights per group
     `Bool'  accum      // accumulate results across subpopulations
@@ -5244,11 +5334,10 @@ void dstat()
     D.novalues  = st_local("novalues")!=""
     D.vfmt      = st_local("vformat")
     D.qdef      = strtoreal(st_local("qdef"))
-    D.hdtrim    = st_local("hdtrim2")!="" ? strtoreal(st_local("hdtrim2")) :
-                  (st_local("hdtrim")!="" ? 0 : .)
-    D.mqopt.cdf = st_local("mq_cdf")!=""
-    D.mqopt.bw  = strtoreal(st_local("mq_bw"))
-    D.mqopt.us  = strtoreal(st_local("mq_us"))
+    D.hdtrim    = strtoreal(st_local("qdef_trim"))
+    D.mqopt.cdf = st_local("qdef_cdf")!=""
+    D.mqopt.bw  = strtoreal(st_local("qdef_cdf"))
+    D.mqopt.us  = strtoreal(st_local("qdef_usmooth"))
     D.common    = st_local("common")!=""
     D.ipolate   = st_local("ipolate")!=""
     D.mid       = st_local("mid")!=""
@@ -5304,8 +5393,11 @@ void dstat()
         st_view(D.over, ., D.ovar, D.touse)
         D.overlevels = strtoreal(tokens(st_local("overlevels")))
         D.nover    = cols(D.overlevels)
-        D.total    = st_local("total")!=""
-        D.nover    = D.nover + D.total
+        D.novernot = strtoreal(st_local("N_over0")) - D.nover
+        D.total    = (st_local("total")=="pooled" ? 1 :
+                     (st_local("total")=="mean"   ? 2 :
+                     (st_local("total")=="wmean"  ? 3 : 0)))
+        D.nover    = D.nover + (D.total==1)
         D.uncond   = (st_local("unconditional")!="")
         D.accum    = st_local("over_accumulate")!=""
         if (st_local("over_contrast")=="total")     D.contrast = .a
@@ -5316,7 +5408,7 @@ void dstat()
     }
     else {
         D.nover    = 1
-        D.total    = `FALSE'
+        D.total    = 0
         D.uncond   = 0
         D.accum    = `FALSE'
         D.ratio    = 0
@@ -5375,6 +5467,9 @@ void dstat()
     else if (D.cmd=="pshare")     dstat_pshare(D)
     else if (D.cmd=="tip")        dstat_tip(D)
     else if (D.cmd=="summarize")  dstat_sum(D)
+    
+    // add grand mean across subpopulations
+    if (D.total>1) ds_grandmean(D)
     
     // compute contrasts
     if (D.contrast!=.) {
@@ -5503,13 +5598,104 @@ void ds_store_eqvec(`Data' D, `RR' vec, `SS' nm)
     st_matrixcolstripe(nm, cs)
 }
 
+void ds_grandmean(`Data' D)
+{
+    `Int'   i, k, l, a, b, N
+    `RS'    W
+    `RR'    w
+    `RC'    B
+    `BoolC' omit, touse
+    `IntC'  nobs
+    `RC'    sumw, IFtot
+    `RM'    IF, IFp
+    `SR'    vnm
+    `SM'    tmp
+
+    if (D.novernot) {; N = sum(D._N); W = sum(D._W); } // over(, select())
+    else            {; N = D.N; W = D.W; }
+    k = D.nover
+    l = D.K / k
+    if (D.total==3) { // wmean
+        // b     = sum_i (w_i * b_i)
+        // IF(b) = sum_i (w_i * IF(b_i) + b_i * IF(w_i))
+        // w_i   = W_i / W
+        w = D._W / W
+        if (D.noIF==0) {
+            if (D.novernot) {   // over(, select())
+                touse = J(D.N,1,0)
+                for (i=1;i<=k;i++) touse = touse :| (D.over:==D.overlevels[i])
+            }
+            else touse = 1
+            IFp = J(D.N,k,.)
+            for (i=1;i<=k;i++) 
+                IFp[,i] = touse :* ((D.over:==D.overlevels[i]) :- w[i]) / W
+        }
+        nobs = J(l,1,N); sumw = J(l,1,W)
+    }
+    else {
+        w = J(1, k, 1/k)
+        nobs = sumw = J(l,1,0)
+    }
+    B = J(l,1,0)
+    omit = J(l,1,`FALSE')
+    if (D.noIF==0) {
+        IF = J(D.N,l,0)
+        IFtot = J(l,1,0)
+    }
+    b = 0
+    for (i=1;i<=k;i++) {
+        a = b + 1; b = b + l
+        B = B + w[i] * D.b[|a \ b|]
+        if (D.noIF==0) {
+            IF = IF + w[i] * D.IF[|1,a \ .,b|]
+            if (D.total==3) IF = IF + IFp[,i] * D.b[|a \ b|]'
+            IFtot = IFtot + w[i] * D.IFtot[|a \ b|]
+        }
+        omit = omit :| D.omit[|a \ b|]
+        if (D.total==2) {
+            nobs = nobs + D.nobs[|a \ b|]
+            sumw = sumw + D.sumw[|a \ b|]
+        }
+    }
+    
+    // reset if statistic is missing in any subpop
+    if (any(omit)) _ds_reset_omit(omit, 1, l, B, IF, IFtot, D.noIF)
+    
+    // update all containers 
+    D.nover = D.nover + 1
+    tmp = D.eqs[|1 \ length(D.eqs)/k|]
+    tmp = "total" :+ substr(tmp, strpos(tmp,"~"), .)
+    D.eqs = D.eqs, tmp
+    tmp = D.cstripe[|1,1\l,.|]
+    tmp[,1] = "total" :+ substr(tmp[,1],strpos(tmp[,1],"~"),.)
+    D.cstripe = D.cstripe \ tmp
+    D.K = D.K + l
+    D._N = D._N, N
+    D._W = D._W, W
+    D.id = D.id \ J(l,1,.)
+    D.omit = D.omit \ omit
+    D.nobs = D.nobs \ nobs
+    D.sumw = D.sumw \ sumw
+    D.b = D.b \ B
+    if (D.noIF==0) {
+        vnm = st_tempname(l)
+        st_store(., st_addvar("double", vnm), D.touse, IF)
+        vnm = tokens(st_local("IFs")), vnm
+        st_view(D.IF, ., vnm, D.touse)
+        st_local("IFs", invtokens(vnm))
+        D.IFtot = D.IFtot \ IFtot
+    }
+    if (length(D.at)) D.at = D.at \ D.at[|1,1 \ l,1|]
+    if (length(D.bwidth)) D.bwidth = D.bwidth, J(1, length(D.bwidth)/k,.)
+}
+
 void ds_accum(`Data' D)
 {
     `Int' i, k, l, a, a0, b, b0
     
     k = D.nover
     l = D.K / k
-    k = k - D.total
+    k = k - (D.total!=0)
     a0 = 1; b0 = l
     for (i=2;i<=k;i++) {
         a = a0 + l
@@ -5519,7 +5705,30 @@ void ds_accum(`Data' D)
             D.IF[|1,a \ .,b|] = D.IF[|1,a \ .,b|] + D.IF[|1,a0 \ .,b0|]
             D.IFtot[|a \ b|] = D.IFtot[|a \ b|] + D.IFtot[|a0 \ b0|]
         }
+        ds_reset_omit(D, a, b, D.omit[|a0 \ b0|])
         a0 = a; b0 = b
+    }
+}
+
+void ds_reset_omit(`Data' D, `Int' a, `Int' b, `BoolC' omit)
+{
+    D.omit[|a \ b|] = D.omit[|a \ b|] :| omit
+    if (!any(D.omit[|a \ b|])) return
+    _ds_reset_omit(D.omit, a, b, D.b, D.IF, D.IFtot, D.noIF)
+}
+
+void _ds_reset_omit(`BoolC' omit, `Int' a, `Int' b, `RC' B, `RM' IF,
+    `RC' IFtot, `Bool' noIF)
+{
+    `Int' i
+    
+    for (i=a;i<=b;i++) {
+        if (!omit[i]) continue
+        B[i] = 0
+        if (noIF==0) {
+            IF[,i] = J(rows(IF), 1, 0)
+            IFtot[i] = 0
+        }
     }
 }
 
@@ -5558,6 +5767,7 @@ void ds_contrast(`Data' D)
             D.IF[|1,a \ .,b|] = D.IF[|1,a \ .,b|] - D.IF[|1,a0 \ .,b0|]
             D.IFtot[|a \ b|] = D.IFtot[|a \ b|] - D.IFtot[|a0 \ b0|]
         }
+        ds_reset_omit(D, a, b, D.omit[|a0 \ b0|])
     }
     D.cref = J(D.K, 1, 0)
     D.cref[|a0 \ b0|] = J(l, 1, 1)
@@ -5566,32 +5776,23 @@ void ds_contrast(`Data' D)
 void ds_ratio(`Data' D)
 {
     `Bool' hasmis
-    `Int'  i, j, k, l, r, a, a0, b, b0
+    `Int'  i, k, l, r, a, a0, b, b0
     `RC'   B0, B1, IFtot
     `RM'   IF0, IF1
 
     hasmis = 0
     k = D.nover
     l = D.K / k
-    if (D.contrast!=.b & D.contrast!=.c)  {
-        if (D.contrast==.a) r = D.nover  // total
-        else                r = selectindex(D.overlevels:==D.contrast)
-        a0 = (r-1)*l + 1; b0 = r*l
-        a0 = (r-1)*l + 1; b0 = r*l
-        B0 = D.b[|a0 \ b0|]
-        if (D.noIF==0) {
-            IF0 = D.IF[|1,a0 \ .,b0|]
-            IFtot = D.IFtot[|a0 \ b0|]
-            if (any(IFtot)) { // recenter IFs of unnormalized stats at zero
-                IF0 = IF0 :- (IFtot'/D.W)
-            }
-        }
-    }
     // take ratios
     for (i=1;i<=k;i++) {
-        if (D.contrast==.b | D.contrast==.c) {
-            if (i==k) break
-            if (D.contrast==.b) { // lag
+        if (D.contrast<.b ? i==1 : i!=k) {
+            if (D.contrast<.b) {
+                if (D.contrast==.a) r = D.nover  // total
+                else                r = selectindex(D.overlevels:==D.contrast)
+                a0 = (r-1)*l + 1; b0 = r*l
+                a0 = (r-1)*l + 1; b0 = r*l
+            }
+            else if (D.contrast==.b) { // lag
                 a = (k-i)*l + 1
                 b = a + l - 1
                 a0 = a - l; b0 = a - 1
@@ -5610,11 +5811,13 @@ void ds_ratio(`Data' D)
                 }
             }
         }
-        else {
+        if (D.contrast<.b) {
             if (i==r) continue
             a = (i-1)*l + 1
             b = a + l - 1
+            
         }
+        else if (i==k) break
         B1 = D.b[|a \ b|]
         if (D.noIF==0) {
             IF1 = D.IF[|1,a \ .,b|]
@@ -5626,21 +5829,12 @@ void ds_ratio(`Data' D)
             D.IF[|1,a \ .,b|] = (1:/B0)' :* IF1 - (B1:/(B0:^2))' :* IF0
         }
         D.b[|a \ b|] = B1 :/ B0
-        if (hasmissing(D.b[|a \ b|])) {
-            hasmis = 1
-            for (j=a;j<=b;j++) {
-                if (D.b[j]<.) continue
-                D.b[j] = 0
-                D.omit[j] = 1
-                if (D.noIF==0) D.IF[.,j] = J(D.N, 1, 0)
-            }
-        }
+        D.omit[|a \ b|] = D.omit[|a \ b|] :| (D.b[|a \ b|]:>=.) // missing
+        ds_reset_omit(D, a, b, D.omit[|a0 \ b0|])
     }
     D.cref = J(D.K, 1, 0)
     D.cref[|a0 \ b0|] = J(l, 1, 1)
-    if (hasmis) {
-        display("{txt}(missing estimates reset to zero)")
-    }
+    if (hasmis) display("{txt}(missing estimates reset to zero)")
 }
 
 void ds_lnratio(`Data' D)
@@ -5958,7 +6152,7 @@ void _ds_get_at_dens(`Data' D)
     
     // obtain bandwidth if specified
     j = cols(D.overlevels) * D.nvars
-    if (D.total) bw = D.bwidth[|j+1 \ .|]
+    if (D.total==1) bw = D.bwidth[|j+1 \ .|]
     else if (st_local("bwidth")!="") {
         // reread because original specification may include bandwidth for total
         if (st_local("bwmat")!="") bw = st_matrix(st_local("bwidth"))[1,]
@@ -6003,7 +6197,7 @@ void _ds_get_at_dens(`Data' D)
         }
         D.AT[j] = &(rangen(ra[1], ra[2], D.n)) 
     }
-    if (D.total) { // store bandwidth to avoid double work
+    if (D.total==1) { // store bandwidth to avoid double work
         D.bwidth[|cols(D.overlevels)*D.nvars + 1 \ .|] = bw
     }
 }
@@ -7179,7 +7373,7 @@ void ds_quantile_IF(`Data' D, `Grp' G, `Int' a, `Int' b)
     `Int' i, l
     `RC'  h, fx
     
-    if (D.qdef<10) {
+    if (D.qdef!=10 & D.qdef!=11) {
         fx = _ds_sum_d(D, G, D.b[|a \ b|])
         l = 0
     }

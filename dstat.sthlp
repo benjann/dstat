@@ -1,5 +1,5 @@
 {smcl}
-{* 20nov2025}{...}
+{* 10jan2026}{...}
 {vieweralsosee "twoway dstat" "help twoway_dstat"}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
@@ -124,7 +124,8 @@ help for {hi:dstat}{...}
 {synopt:{cmdab:o:ver(}{help dstat##over:{it:spec}}{cmd:)}}compute
     results for subpopulations; not allowed with {cmd:dstat pw}
     {p_end}
-{synopt:{opt tot:al}}include results for total population
+{synopt:{cmdab:tot:al}[{cmd:(}{help dstat##total:{it:totaltype}}{cmd:)}]}include
+    results for total population
     {p_end}
 {synopt:{cmdab:bal:ance(}{help dstat##balance:{it:spec}}{cmd:)}}balance
     covariates using reweighting; requires {cmd:over()}
@@ -168,9 +169,9 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opt pstr:ong}}use "strong" poverty definition
     {p_end}
-{synopt:{it:{help dstat##densopts:density_options}}}details of density estimation
+{synopt:{cmd:qdef(}{help dstat##qdef:{it:method}}{cmd:)}}quantile estimation method
     {p_end}
-{synopt:{it:{help dstat##quantopts:quantile_options}}}details of quantile estimation
+{synopt:{it:{help dstat##densopts:density_options}}}details of density estimation
     {p_end}
 
 {syntab:{help dstat##pw:Subcommand {bf:pw}}}
@@ -266,7 +267,7 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{opth at(numlist)}}use custom evaluation grid
     {p_end}
-{synopt:{it:{help dstat##quantopts:quantile_options}}}details of quantile estimation
+{synopt:{cmd:qdef(}{help dstat##qdef:{it:method}}{cmd:)}}quantile estimation method
     {p_end}
 {synopt:{it:{help dstat##densopts:density_options}}}details of density estimation
     {p_end}
@@ -855,17 +856,17 @@ help for {hi:dstat}{...}
     for estimation will always be the total sample including all subpopulations.
 
 {phang2}
-    {opt contr:ast}[{cmd:(}{it:#}|{cmd:lag}|{cmd:lead}{cmd:)}] computes contrasts between
-    subpopulations or between subpopulations and the total population. If
-    {cmd:contrast} is specified without argument, the total population or
-    the first reported subpopulation (after applying {cmd:select()})
-    will be used as the basis for the contrasts, depending on whether option
-    {cmd:total} has been specified or not. Alternatively, specify
-    the value of the reference subpopulation in parentheses (this may also be
-    a subpopulation that has been excluded by {cmd:select()}) or
-    type {cmd:contrast(lag)} or {cmd:contrast(lead)} to take stepwise contrasts
-    with respect to the previous or next reported subpopulation,
-    respectively. {cmd:contrast} implies {cmd:common} (if relevant).
+    {opt contr:ast}[{cmd:(}{it:#}|{cmd:lag}|{cmd:lead}{cmd:)}] computes
+    contrasts between subpopulations. If {cmd:contrast} is specified without
+    argument, the results from the first reported subpopulation or,
+    if {helpb dstat##total:total()} is specified, the
+    results from {cmd:total()} will be used as the basis for the
+    contrasts. Alternatively, specify the value of the reference subpopulation
+    in parentheses (this may also be a subpopulation that has been excluded by
+    {cmd:select()}), or type {cmd:contrast(lag)} or {cmd:contrast(lead)} to take
+    stepwise contrasts with respect to the previous or next reported
+    subpopulation, respectively. {cmd:contrast} implies {cmd:common} (if
+    relevant).
 
 {pmore2}
     The estimates from the reference (sub)population will be included among the
@@ -904,10 +905,30 @@ help for {hi:dstat}{...}
 {pmore}
     Option {cmd:over()} is not supported by {cmd:dstat pw}.
 
+{marker total}{...}
 {phang}
-    {cmd:total} reports additional results across all subpopulations, including
-    subpopulations that may have been excluded by {cmd:select()}. {cmd:total}
-    only has an effect if {cmd:over()} is specified.
+    {cmd:total}[{cmd:(}{it:totaltype}{cmd:)}] reports additional results across
+    subpopulations, where {it:totaltype} is as follows.
+
+{p2colset 13 22 24 2}{...}
+{p2col:{opt p:ooled}}results based on pooled sample; this is the default
+    {p_end}
+{p2col:{opt m:ean}}mean of subpopulation results
+    {p_end}
+{p2col:{opt w:mean}}observation-weighted mean of subpopulation results
+    {p_end}
+
+{pmore}
+    Note that {cmd:total(pooled)} will include the observations from all
+    subpopulations, including subpopulations that may have been excluded by
+    {cmd:over()}-suboption {cmd:select()}. In contrast, {cmd:total(mean)}
+    and {cmd:total(wmean)} are based on the results selected by suboption
+    {cmd:select()} only. Furthermore, if {cmd:nocasewise} or {cmd:relax} is
+    applied, the weights used by {cmd:total(wmean)} reflect the relative
+    subpopulation sizes before excluding observations due to missing values or
+    values that are out of support. {cmd:total(mean)} and {cmd:total(wmean)}
+    imply {cmd:common} (if relevant). {cmd:total()} only has an effect if
+    {cmd:over()} is specified.
 
 {marker balance}{...}
 {phang}
@@ -1545,72 +1566,101 @@ help for {hi:dstat}{...}
     compute quantiles. The specified values must be within [0,1]. Options
     {cmd:n()} and {cmd:range()} are not allowed if {cmd:at()} is specified.
 
-{marker quantopts}{...}
+{marker qdef}{...}
 {phang}
-    {it:quantile_options} set the details of quantile estimation. These
-    settings are relevant for command {cmd:dstat quantile} and various
-    statistics in {cmd:dstat summarize}. The options are as follows:
+    {cmd:qdef(}{it:method}[{cmd:,} {it:options}]{cmd:)} selects the method
+    to be used when computing quantiles. This is relevant for command
+    {cmd:dstat quantile} and various statistics in {cmd:dstat summarize}. Argument
+    {it:method} can be one of the following.
+
+{p2colset 14 31 33 2}{...}
+{p2col:{cmd:0} or {cmdab:hi:gh}}high quantile
+    {p_end}
+{p2col:{cmd:1} or {cmdab:inv:cdf}}low quantile (inverse of the ECDF);
+    can also type {cmdab:lo:w};
+    definition 1 in HF96 (Hyndman and Fan 1996)
+    {p_end}
+{p2col:{cmd:2} or {cmdab:avg:invcdf}}averaged quantile;
+    definition 2 in HF96
+    {p_end}
+{p2col:{cmd:3} or {cmd:closest}}nearest order statistic; definition 3 in HF96
+    {p_end}
+{p2col:{cmd:4} or {cmdab:parz:en}}interpolation with a=0 and b=1; definition 4 in HF96
+    {p_end}
+{p2col:{cmd:5} or {cmdab:haz:en}}interpolation with a=1/2 and b=1/2; definition 5 in HF96
+    {p_end}
+{p2col:{cmd:6} or {cmdab:weib:ull}}interpolation with a=0 and b=0; definition 6 in HF96
+    {p_end}
+{p2col:{cmd:7} or {cmdab:gumb:el}}interpolation with a=1 and b=1; definition 7 in HF96
+    {p_end}
+{p2col:{cmd:8} or {cmdab:tuk:ey}}interpolation with a=1/3 and b=1/3; definition 8 in HF96
+    {p_end}
+{p2col:{cmd:9} or {cmd:blom}}interpolation with a=3/8 and b=3/8; definition 9 in HF96
+    {p_end}
+{p2colset 13 31 33 2}{...}
+{p2col:{cmd:10} or {cmd:hd}}Harrell-Davis quantile (Harrell and Davis 1982);
+    the Harrell-Davis estimator typically leads to smoother quantile functions
+    than classical quantile definitions; standard errors do not depend on
+    density estimation and tend to be more reliable than for other quantile
+    definitions if there is heaping in the data
+    {p_end}
+{p2col:{cmd:11} or {cmd:mid}}mid-quantile by Ma et al. (2011); the mid-quantile
+    estimator typically leads to smoother quantile functions than classical
+    quantile definitions; Ma et al. (2011) suggest using the mid-quantile
+    estimator for discrete data
+    {p_end}
+{p2col:{cmd:12} or {cmdab:cali:fornia}}interpolation with a=1 and b=0
+    {p_end}
+{p2col:{cmd:13} or {cmd:beard}}interpolation with a=.31 and b=.31
+    {p_end}
+{p2col:{cmd:14} or {cmd:benard}}interpolation with a=.3 and b=.3
+    {p_end}
+{p2col:{cmd:15} or {cmd:cooper}}interpolation with a=.4075 and b=.4075
+    {p_end}
+{p2col:{cmd:16} or {cmdab:gring:orten}}interpolation with a=.44 and b=.44
+    {p_end}
+
+{pmore}
+    The default {it:method} is {cmd:avginvcdf}; this is also the method used by 
+    {helpb summarize}. Methods 4-9 and 12-16 interpoate between points (p_i, X_(i))
+    with p_i = (i - a) / (n - a - b + 1) and i = 1,...,n. Also see help
+    {helpb mf_mm_quantile:mm_quantile()} for more information on the different
+    methods. {it:options} are as follows.
 
 {phang2}
-    {opt qdef(#)} sets the quantile definition to be used when computing
-    quantiles, with {it:#} in {c -(}0,...,11{c )-}. The default is
-    {cmd:qdef(2)} (same as, e.g. {helpb summarize}). Definitions 1-9 are as
-    described in Hyndman and Fan (1996), definition 0 is the "high" quantile,
-    definition 10 is the Harrell-Davis quantile (Harrell and Davis 1982),
-    definition 11 is the mid-quantile (Ma et al. 2011); see
-    {helpb mf_mm_quantile:mm_quantile()} for more information. Apart from the
-    {cmd:dstat quantile} and statistic {cmd:quantile()}, option {cmd:qdef()} affects
-    all statistics that make use of quantiles (e.g. {cmd:trim}, {cmd:winsor},
-    {cmd:huber}, {cmd:biweight}, {cmd:mad}, etc.).
-
-{phang2}
-    {opt hdquantile} is a synonym for {cmd:qdef(10)} (Harrell-Davis
-    quantiles). Only one of {opt hdquantile}, {opt mquantile}, and {opt qdef()}
-    is allowed. The Harrell-Davis estimator typically leads to smoother
-    quantile functions than classical quantile definitions. Furthermore,
-    standard errors do not depend on density estimation and tend to be
-    more reliable than for other quantile definitions if there is heaping in the data.
-
-{phang2}
-    {opt hdtrim}[{cmd:(}{it:width}{cmd:)}] applies trimming to the Harrell-Davis
+    {opt t:rim}[{cmd:(}{it:width}{cmd:)}] applies trimming to the Harrell-Davis
     quantile estimator as suggested by Akinshin (2021). If {cmd:hdtrim} is specified without
-    argument, the width of evaluation interval is set to 1/sqrt(n), where n
+    argument, the width of the evaluation interval is set to 1/sqrt(n), where n
     is the effective sample size. Alternatively, specify a custom {it:width}. Sensible values
     for {it:width} lie between 0 and 1 ({it:width}>=1 uses the untrimmed estimator;
-    {it:width}<=0 sets the width to 1/sqrt(n)).
+    {it:width}<=0 sets the width to 1/sqrt(n)). Option {cmd:trim()} has an effect only if
+    {it:method} is equal to {cmd:10} (or {cmd:hd}).
 
 {phang2}
-    {opt mquantile} is a synonym for {cmd:qdef(11)} (mid-quantiles). Only one
-    of {opt hdquantile}, {opt mquantile}, and {opt qdef()} is allowed. The
-    mid-quantile estimator typically leads to smoother quantile
-    functions than classical quantile definitions. Ma et al. (2011) suggest
-    using the mid-quantile estimator for discrete data.
-
-{phang2}
-    {opt mqopts(options)} provides additional settings for mid-quantiles that
-    are relevant for standard error estimation. {it:options} are as follows:
-
-{phang3}
     {opt us:mooth(#)}, with {it:#}<1, sets the degree of undersmoothing that is
-    applied when determining the sparsity function via density estimation.
-    The default is {cmd:usmooth(0.2)}. The undersmoothing factor is computed as
-    n^(1/5) / n^(1/(5*(1-#)), where n is the effective sample size. Set # to 0
-    to omit undersmoothing; #<0 leads to oversmoothing. Note that
-    {help dstat##densopts:{it:density_options}} have no effect on density estimation
-    for mid-quantiles.
+    applied when determining the sparsity function via density estimation for 
+    the standard errors of mid-quantiles. The default is
+    {cmd:usmooth(0.2)}. The undersmoothing factor is computed as n^(1/5) /
+    n^(1/(5*(1-#)), where n is the effective sample size. Set # to 0 to omit
+    undersmoothing; #<0 leads to oversmoothing. Note that {help
+    dstat##densopts:{it:density_options}} have no effect on density estimation
+    for mid-quantiles. Option {cmd:usmooth()} has an effect only if
+    {it:method} is equal to {cmd:11} (or {cmd:mid}).
 
-{phang3}
+{phang2}
     {cmd:cdf}[{cmd:(}{it:#}{cmd:})], with {it:#}>=0, determines the sparsity
-    function by differencing the ECDF instead of employing density
-    estimation. This may lead to somewhat more valid results in discrete data (i.e. data
-    with relatively few distinct levels), but results may be unreliable in
-    continuous data. Optional argument {it:#} sets the width of the integration
-    window that is used to interpolate across jumps in the ECDF ({it:#} is on
-    the probability scale; for example, a value of 0.01 is equivalent to a
-    window covering 1 percent of data mass). The default is {it:#} = 1 /
-    ceil(2 * n^(2/5)), where n is the effective sample size. Set {it:#}=0 to
-    omit integration (this corresponds to the formulas given in Ma et al. 2011;
-    the sparsity function will have sharp jumps).
+    function for the standard errors of mid-quantiles by differencing the ECDF
+    instead of employing density estimation. This may lead to somewhat more
+    valid results in discrete data (i.e. data with relatively few distinct
+    levels), but results may be unreliable in continuous data. Optional
+    argument {it:#} sets the width of the integration window that is used to
+    interpolate across jumps in the ECDF ({it:#} is on the probability scale;
+    for example, a value of 0.01 is equivalent to a window covering 1 percent
+    of data mass). The default is {it:#} = 1 / ceil(2 * n^(2/5)), where n is
+    the effective sample size. Set {it:#}=0 to omit integration (this
+    corresponds to the formulas given in Ma et al. 2011; the sparsity function
+    will then have sharp jumps). Option {cmd:cdf()} has an effect only if
+    {it:method} is equal to {cmd:11} (or {cmd:mid}).
 
 {marker lorenz}{...}
 {dlgtab:Subcommand lorenz}
@@ -2175,6 +2225,9 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(df_r)}}sample degrees of freedom{p_end}
 {synopt:{cmd:e(vce_minus)}}value of k in VCE multiplier n/(n-k){p_end}
 {synopt:{cmd:e(qdef)}}quantile definition{p_end}
+{synopt:{cmd:e(qdef_trim)}}trimming value for Harrell-Davis quantiles{p_end}
+{synopt:{cmd:e(qdef_usmooth)}}degree of undersmoothing for mid-quantile standard errors{p_end}
+{synopt:{cmd:e(qdef_cdf)}}width of integration window for mid-quantile standard errors{p_end}
 {synopt:{cmd:e(adaptive)}}number of iterations of adaptive density estimator{p_end}
 {synopt:{cmd:e(napprox)}}size of density estimation grid{p_end}
 {synopt:{cmd:e(pad)}}padding of density estimation grid{p_end}
@@ -2199,7 +2252,7 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(over_ratio)}}{cmd:ratio} or {cmd:lnratio} or empty{p_end}
 {synopt:{cmd:e(over_accumulate)}}{cmd:accumulate} or empty{p_end}
 {synopt:{cmd:e(over_fixed)}}{cmd:fixed} or empty{p_end}
-{synopt:{cmd:e(total)}}{cmd:total} or empty{p_end}
+{synopt:{cmd:e(total)}}{cmd:pooled}, {cmd:mean}, {cmd:wmean}, or empty{p_end}
 {synopt:{cmd:e(unconditional)}}{cmd:unconditional} or empty{p_end}
 {synopt:{cmd:e(balance)}}list of balancing variables{p_end}
 {synopt:{cmd:e(balmethod)}}balancing method{p_end}
@@ -2209,8 +2262,6 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(kernel)}}kernel as specified in {cmd:kernel()}{p_end}
 {synopt:{cmd:e(exact)}}{cmd:exact} or empty{p_end}
 {synopt:{cmd:e(boundary)}}boundary correction method{p_end}
-{synopt:{cmd:e(hdtrim)}}{cmd:hdtrim()} as specified{p_end}
-{synopt:{cmd:e(mqopts)}}{cmd:mqopts()} as specified{p_end}
 {synopt:{cmd:e(novalues)}}{cmd:novalues} or empty{p_end}
 {synopt:{cmd:e(vformat)}}display format specified in {cmd:vformat()}{p_end}
 {synopt:{cmd:e(stats)}}list of (unique) summary statistics{p_end}

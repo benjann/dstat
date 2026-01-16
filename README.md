@@ -39,6 +39,21 @@ Installation from GitHub:
 
 Main changes:
 
+    11jan2026 (version 1.5.5)
+    - new options total(mean) and total(wmean) compute total results as averages of
+      subpopulation results
+    - over(, contrast) and over(, accumulate) now ensure that a result is set to
+      omitted if any of the estimates in the computation of the result is omitted
+    - an informative error message is now displayed if predict_option -compact- is
+      used with dstat density, histogram, cdf, or ccdf and option -common- has not
+      been specified
+    - qdef() now supports the additional quantile estimators that have been added
+      to mm_quantile() in moremata version 2.0.6; keywords rather than index now
+      supported in qdef(); suboptions strim(), cdf(), and usmooth() now available
+      within qdef(); options hdquantile, hdtrim(), mquantile, mqopts() no longer
+      documented
+    - moremata version 2.0.6 now required
+
     27nov2025 (version 1.5.4)
     - fixed a typo in the influence function of statistic winsor(p1,p2); thanks to
       chiungming for reporting the bug
