@@ -39,6 +39,15 @@ Installation from GitHub:
 
 Main changes:
 
+    23jan2026 (version 1.5.6)
+    - dstat summarize: new at(), range(), and categorical options to compute
+      conditional statistics
+    - support for -dstat summarize, at()- added in -twoway dstat-
+    - new order() option to set the order in which the results are arranged
+    - dstat proportion, range(): levels are now included in reverse order if a>b
+    - option range() caused error if specified together with vce(bootstrap); this
+      is fixed
+
     11jan2026 (version 1.5.5)
     - new options total(mean) and total(wmean) compute total results as averages of
       subpopulation results

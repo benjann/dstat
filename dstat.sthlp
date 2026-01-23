@@ -1,5 +1,5 @@
 {smcl}
-{* 10jan2026}{...}
+{* 22jan2026}{...}
 {vieweralsosee "twoway dstat" "help twoway_dstat"}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
@@ -135,6 +135,9 @@ help for {hi:dstat}{...}
     {p_end}
 {synopt:{help dstat##repopts:{it:reporting_options}}}reporting options
     {p_end}
+{synopt:{cmd:order(}{help dstat##order:{it:keywords}}{cmd:)}}set order in which
+    results are arranged; not allowed with {cmd:dstat pw}
+    {p_end}
 {synopt:{opt noval:ues}}do not use values as coefficient names
     {p_end}
 {synopt:{opth vf:ormat(fmt)}}format for coefficient name values
@@ -161,6 +164,13 @@ help for {hi:dstat}{...}
     {p_end}
 
 {syntab:{help dstat##sum:Subcommand {bf:summarize}}}
+{synopt:{cmd:at(}{it:{help varname:atvar}} [{cmd:=} {it:{help numlist}}]{cmd:)}}compute
+    conditional statistics by levels of {it:atvar}
+    {p_end}
+{synopt:{opt range(a b)}}set range of included levels from {it:atvar}
+    {p_end}
+{synopt:{opt cat:egorical}}treat {it:atvar} as categorical
+    {p_end}
 {synopt:{opt relax}}compute a statistic even if observations are out of support
     {p_end}
 {synopt:{opth by(varname)}}default secondary variable (for association and concentration measures)
@@ -1058,11 +1068,28 @@ help for {hi:dstat}{...}
     {cmd:cformat()}, or {cmd:coeflegend}; see {help eform_option:{bf:[R]} {it:eform_option}} and
     the Reporting options in {helpb estimation options:[R] Estimation options}.
 
+{marker order}{...}
+{phang}
+    {opt order(keywords)} sets the order in which the results are
+    arranged. Available keywords are {cmdab:o:ver}, {cmdab:v:ariables}, and
+    {cmdab:s:tatistics}. Keyword {cmd:statistics} is only relevant for
+    {cmd:dstat summarize}. Option {cmd:order()} is not supported by
+    {cmd:dstat pw}.
+
+{pmore}
+    In most cases the default is {cmd:order(over variables)} which means that
+    results are ordered by subpopulations and then by variables. Type
+    {cmd:order(variables over)} to flip the order. For {cmd:dstat summarize}
+    you could, for example, type {cmd:order(over statistics)} to order the
+    results by subpopulations and then by statistics, and use the variables
+    rather than the statistics as coefficient names.
+
 {phang}
     {opt novalues} prevents using the values of the evaluation points as
-    coefficient names. This is not relevant for {cmd:dstat summarize}. If {cmd:novalues}
+    coefficient names. If {cmd:novalues}
     is specified, the coefficients will be named as {it:stub#}, where
     {it:#} is consecutive number and {it:stub} is
+    {cmd:at} in case of {cmd:dstat summarize} with option {cmd:at()},
     {cmd:d} in case of {cmd:dstat density},
     {cmd:h} in case of {cmd:dstat histogram},
     {cmd:p} in case of {cmd:dstat proportion},
@@ -1075,8 +1102,7 @@ help for {hi:dstat}{...}
 
 {phang}
     {opth vformat(fmt)} sets the display format used to create coefficient names
-    from evaluation points. This is not relevant for {cmd:dstat summarize}. See
-    help {helpb format} for available formats.
+    from evaluation points. See help {helpb format} for available formats.
 
 {marker vce}{...}
 {dlgtab:SE/VCE}
@@ -1178,6 +1204,26 @@ help for {hi:dstat}{...}
 
 {marker sum}{...}
 {dlgtab:Subcommand summarize}
+
+{phang}
+    {cmd:at(}{it:{help varname:atvar}} [{cmd:=} {it:{help numlist}}]{cmd:)}
+    computes conditional statistics by levels of {it:atvar}. Use
+    {it:numlist} to specify a custom set of levels to be considered. If {it:numlist}
+    is omitted, all observed levels of {it:atvar} are used. Restricting the
+    considered levels does not change the overall estimation sample.
+
+{phang}
+    {opt range(a [b])} limits the range of levels from {it:atvar} to be
+    considered. Argument {it:a} can be specified as {cmd:.} (missing) to impose no
+    lower limit; argument {it:b} can be omitted or specified as
+    {cmd:.} (missing) to impose no upper limit. Option {cmd:range()} has no effect
+    if {it:numlist} is specified in {cmd:at()}.
+
+{phang}
+    {opt categorical} treats {it:atvar} as categorical. This requires that
+    {it:atvar} complies to Stata's rules for factor variables
+    (no negative or non-integer values) and affects how the coefficients are
+    labeled in the output.
 
 {phang}
     {opt relax} continues computations even if there are observations outside
@@ -1621,7 +1667,7 @@ help for {hi:dstat}{...}
     {p_end}
 
 {pmore}
-    The default {it:method} is {cmd:avginvcdf}; this is also the method used by 
+    The default {it:method} is {cmd:avginvcdf}; this is also the method used by
     {helpb summarize}. Methods 4-9 and 12-16 interpoate between points (p_i, X_(i))
     with p_i = (i - a) / (n - a - b + 1) and i = 1,...,n. Also see help
     {helpb mf_mm_quantile:mm_quantile()} for more information on the different
@@ -1638,7 +1684,7 @@ help for {hi:dstat}{...}
 
 {phang2}
     {opt us:mooth(#)}, with {it:#}<1, sets the degree of undersmoothing that is
-    applied when determining the sparsity function via density estimation for 
+    applied when determining the sparsity function via density estimation for
     the standard errors of mid-quantiles. The default is
     {cmd:usmooth(0.2)}. The undersmoothing factor is computed as n^(1/5) /
     n^(1/(5*(1-#)), where n is the effective sample size. Set # to 0 to omit
@@ -1830,16 +1876,17 @@ help for {hi:dstat}{...}
     specified.
 
 {phang}
-    {cmd:bystats}[{cmd:(}{cmdab:m:ain}|{cmdab:s:econdary}{cmd:)}] treats coefficients as equations and
-    equations as coefficients. This is only relevant after
-    {cmd:dstat summarize} and only has an effect if the results contain multiple
-    equations. The effect of {cmd:bystats} typically is that results are grouped
-    by statistics rather than by subpopulations or variables (the option may
-    also have the opposite effect depending on how exactly {cmd:dstat} returned its
+    {cmd:bystats}[{cmd:(}{cmdab:m:ain}|{cmdab:s:econdary}{cmd:)}] treats
+    coefficients as equations and equations as coefficients. This is only
+    relevant after {cmd:dstat summarize} and only has an effect if the results
+    contain multiple equations and if option {cmd:at()} has not been
+    specified. The effect of {cmd:bystats} typically is that results are grouped by
+    statistics rather than by subpopulations or variables (the option may also
+    have the opposite effect depending on how exactly {cmd:dstat} returned its
     results). Optional type {cmd:bystats(main)} (the default) or
     {cmd:bystats(secondary)} to specify wether coefficients should replace the
-    main dimension or the secondary dimension of the equations, respectively. This
-    is only relevant if the equations contain two dimensions
+    main dimension or the secondary dimension of the equations,
+    respectively. This is only relevant if the equations contain two dimensions
     (subpopulations and variables).
 
 {phang}
@@ -2225,9 +2272,6 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(df_r)}}sample degrees of freedom{p_end}
 {synopt:{cmd:e(vce_minus)}}value of k in VCE multiplier n/(n-k){p_end}
 {synopt:{cmd:e(qdef)}}quantile definition{p_end}
-{synopt:{cmd:e(qdef_trim)}}trimming value for Harrell-Davis quantiles{p_end}
-{synopt:{cmd:e(qdef_usmooth)}}degree of undersmoothing for mid-quantile standard errors{p_end}
-{synopt:{cmd:e(qdef_cdf)}}width of integration window for mid-quantile standard errors{p_end}
 {synopt:{cmd:e(adaptive)}}number of iterations of adaptive density estimator{p_end}
 {synopt:{cmd:e(napprox)}}size of density estimation grid{p_end}
 {synopt:{cmd:e(pad)}}padding of density estimation grid{p_end}
@@ -2262,10 +2306,15 @@ help for {hi:dstat}{...}
 {synopt:{cmd:e(kernel)}}kernel as specified in {cmd:kernel()}{p_end}
 {synopt:{cmd:e(exact)}}{cmd:exact} or empty{p_end}
 {synopt:{cmd:e(boundary)}}boundary correction method{p_end}
+{synopt:{cmd:e(qdef_trim)}}{cmd:trim()} as specified in {cmd:qdef()}{p_end}
+{synopt:{cmd:e(qdef_usmooth)}}{cmd:usmooth()} as specified in {cmd:qdef()}{p_end}
+{synopt:{cmd:e(qdef_cdf)}}{cmd:cdf()} as specified in {cmd:qdef()}{p_end}
+{synopt:{cmd:e(csinfo)}}list of keywords providing info on column stripe{p_end}
 {synopt:{cmd:e(novalues)}}{cmd:novalues} or empty{p_end}
 {synopt:{cmd:e(vformat)}}display format specified in {cmd:vformat()}{p_end}
 {synopt:{cmd:e(stats)}}list of (unique) summary statistics{p_end}
 {synopt:{cmd:e(slist)}}normalized specification of statistics and variables{p_end}
+{synopt:{cmd:e(atvar)}}name of variable specified in {cmd:at()} or empty{p_end}
 {synopt:{cmd:e(percent)}}{cmd:percent} or empty{p_end}
 {synopt:{cmd:e(proportion)}}{cmd:proportion} or empty{p_end}
 {synopt:{cmd:e(frequency)}}{cmd:frequency} or empty{p_end}

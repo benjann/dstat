@@ -1,4 +1,4 @@
-*! version 1.0.0  07nov2025  Ben Jann
+*! version 1.0.1  23jan2026  Ben Jann
 
 version 16
 
@@ -24,8 +24,13 @@ program parse
     else {
         .dstat_svexp = "b at"
     }
+    if `"`subcmd'"'=="(" {
+        local 0 `"`subcmd'`0'"'
+        local subcmd summarize
+    }
     local l = strlen(`"`subcmd'"')
-    if      `"`subcmd'"'==substr("density",1,max(1,`l'))    local subcmd density
+    if      `"`subcmd'"'==substr("summarize",1,max(2,`l'))  local subcmd summarize
+    else if `"`subcmd'"'==substr("density",1,max(1,`l'))    local subcmd density
     else if `"`subcmd'"'=="pdf"                             local subcmd density
     else if `"`subcmd'"'==substr("cdf",1,max(1,`l'))        local subcmd cdf
     else if `"`subcmd'"'==substr("ccdf",1,max(2,`l'))       local subcmd ccdf
@@ -75,7 +80,14 @@ program parse
             exit 301
         }
         local subcmd `"`e(subcmd)'"'
-        if !inlist(`"`subcmd'"',"density","histogram","proportion","cdf",/*
+        if `"`subcmd'"'=="summarize" {
+            if `"`e(atvar)'"'=="" {
+                di as err "twoway dstat: results from {bf:dstat summarize}"/*
+                    */ " without {bf:at()} option not supported"
+                exit 301
+            }
+        }
+        else if !inlist(`"`subcmd'"',"density","histogram","proportion","cdf",/*
             */"ccdf","quantile","lorenz","pshare") {
             di as err `"twoway dstat: results from {bf:dstat `subcmd'} not supported"'
             exit 301
@@ -96,7 +108,9 @@ program parse
     local OPTS SELect(passthru) EFORM AREA(real 1) RESCALE(real 1) HORizontal/*
         */ LABels(passthru) YAXis(passthru) XAXis(passthru)
     if "`ename'"=="" {
-        local LHS varlist(numeric) [fw pw iw aw] [if] [in]
+        if "`subcmd'"=="summarize" local LHS anything(id="varlist")
+        else                       local LHS varlist(numeric)
+        local LHS `LHS' [fw pw iw aw] [if] [in]
         local OPTS NOHEADer HEADer NOTABle TABle Over(str) TOTal/*
             */ VCE(str) NOSE Generate(passthru) rif(passthru) `OPTS'
     }
@@ -104,7 +118,24 @@ program parse
         local LHS
         local OPTS Level(passthru) CITYPE(passthru) `OPTS'
     }
-    if inlist("`subcmd'","cdf","ccdf") {
+    if "`subcmd'"=="summarize" {
+        if "`ename'"=="" {
+            syntax `LHS' [, `OPTS' at(passthru) * ]
+            if `"`at'"'=="" {
+                di as err "twoway dstat "_c
+                if `.dstat_ci' di as err "ci " _c
+                di as err `"`subcmd': option {bf:at()} required"'
+                exit 198
+            }
+            local options `at' `options'
+        }
+        else {
+            syntax `LHS' [, `OPTS' * ]
+        }
+        if `.dstat_ci' .viewtype = "rcap"
+        else           .viewtype = "connect"
+    }
+    else if inlist("`subcmd'","cdf","ccdf") {
         if "`ename'"=="" {
             syntax `LHS' [, `OPTS' NOSTEP STEP DISCrete IPolate * ]
             local opts `discrete' `ipolate'
@@ -179,7 +210,10 @@ program parse
             if "`ovar'"!="" local opts over(`over') `total' `opts'
         }
         else local ovar
-        local nview: list sizeof varlist
+        if "`subcmd'"=="summarize" {
+            Parse_sum_nview `anything' // nview, varlist
+        }
+        else local nview: list sizeof varlist
         if "`ovar'"!="" {
             // count number of groups so that (maximum) number of views can be
             // set; the actual number of views might be smaller because
@@ -248,7 +282,12 @@ program parse
     .dstat_svopts = `"`svopts'"'
     .dstat_hor = "`horizontal'"
     if "`ename'"=="" {
-        .varlist = `"`varlist'"'
+        if "`subcmd'"=="summarize" {
+            .varlist = `"`anything'"'
+        }
+        else {
+            .varlist = `"`varlist'"'
+        }
         .wtype = `"`weight'"'
         .wtexp = `"`exp'"'
         .if = `"`if'"'
@@ -271,6 +310,49 @@ end
 
 program parse_optionnotallowed
     syntax [, OPTIONNOTALLOWED ]
+end
+
+program Parse_sum_nview
+    // tokenizes (stats) varlist [ (stats) varlist ... ] and counts the number
+    // of combinations
+    gettoken tmp : 0, match(par)
+    if `"`par'"'!="(" { // no stats specified
+        local list `"(mean) `0'"'
+    }
+    else {
+        local list `"`0'"'
+    }
+    local vlist
+    local nview 0
+    while (`"`list'"'!="") {
+        // stats
+        local nstat 0
+        gettoken tmp list : list, match(par)
+        local tmp = strtrim(`"`tmp'"')
+        if (`"`tmp'"'=="") local tmp "mean"
+        while (`"`tmp'"'!="") {
+            gettoken stat tmp : tmp, bind
+            gettoken peek     : tmp, parse(" (")
+            if `"`peek'"'=="(" { // allow "stat (args)"
+                gettoken stat tmp : tmp, bind
+            }
+            local ++nstat
+        }
+        // vars
+        local 0
+        while (`"`list'"'!="") {
+            gettoken var list : list
+            local 0 `"`0' `var'"'
+            gettoken peek  : list, parse(" (")
+            if `"`peek'"'=="(" continue, break
+        }
+        syntax varlist(numeric)
+        local nvars: list sizeof varlist
+        local nview = `nview' + `nstat' * `nvars'
+        local vlist `vlist' `varlist'
+    }
+    c_local nview `nview'
+    c_local varlist: list uniq vlist
 end
 
 program parse_over
