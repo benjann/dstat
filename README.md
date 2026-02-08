@@ -39,6 +39,10 @@ Installation from GitHub:
 
 Main changes:
 
+    08feb2026 (version 1.5.7)
+    - -dstat graph- can now draw (diverging) stacked bar charts after
+      -dstat proportion-
+
     23jan2026 (version 1.5.6)
     - dstat summarize: new at(), range(), and categorical options to compute
       conditional statistics

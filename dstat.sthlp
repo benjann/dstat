@@ -1,5 +1,5 @@
 {smcl}
-{* 22jan2026}{...}
+{* 08feb2026}{...}
 {vieweralsosee "twoway dstat" "help twoway_dstat"}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
@@ -130,7 +130,7 @@ help for {hi:dstat}{...}
 {synopt:{cmdab:bal:ance(}{help dstat##balance:{it:spec}}{cmd:)}}balance
     covariates using reweighting; requires {cmd:over()}
     {p_end}
-{synopt:{opt gr:aph}[{cmd:(}{help dstat##gropt:{it:spec}}{cmd:)}]}displays
+{synopt:{opt gr:aph}[{cmd:(}{help dstat##graph_options:{it:graph_options}}{cmd:)}]}displays
     results in a graph using {helpb coefplot}
     {p_end}
 {synopt:{help dstat##repopts:{it:reporting_options}}}reporting options
@@ -340,12 +340,34 @@ help for {hi:dstat}{...}
 
 {marker graph_opts}{col 5}{help dstat##graph_options:{it:graph_options}}{col 33}Description
 {synoptline}
+{syntab:Main}
 {synopt:{cmdab:mer:ge}}merge results into a single subgraph
     {p_end}
 {synopt:{cmdab:overl:ay}}synonym for {cmd:merge}
     {p_end}
 {synopt:{cmd:flip}}change how results are allocated to plots and subgraphs
     {p_end}
+{synopt:{help dstat##coefplot:{it:coefplot_options}}}options to be passed through to {helpb coefplot}
+    {p_end}
+
+{syntab:{help dstat##stack:Stacked bar charts}}
+{synopt:{opt stack}}draw stacked bar chart; only allowed with {cmd:dstat proportion}
+    {p_end}
+{synopt:{opt div:erging}}align bars at midpoint (diverging stacked bar chart)
+    {p_end}
+{synopt:{opt barw:idth(#)}}set the width of the bars; default is {cmd:0.8}
+    {p_end}
+{synopt:{it:{help barlook_options}}}change overall look of the bars
+    {p_end}
+{synopt:{cmdab:col:ors(}{help dstat##colors:{it:palette}}{cmd:)}}assign colors
+    to the bar segments; requires command {helpb colorpalette}
+    {p_end}
+{synopt:{cmd:p}{it:#}{cmd:(}{help dstat##pnum:{it:options}}{cmd:)}}change settings of {it:#}th bar segment
+    {p_end}
+{synopt:{opt val:ues}[{cmd:(}{it:min}{cmd:)}]}print the values of the bar segments as marker labels
+    {p_end}
+
+{syntab:{help dstat##notstack:Other graphs}}
 {synopt:[{ul:{cmd:g}}|{ul:{cmd:p}}]{opt sel:ect(spec)}}select and order plots and subgraphs
     {p_end}
 {synopt:{opt cref}}include results from the the reference (sub)population
@@ -357,8 +379,6 @@ help for {hi:dstat}{...}
 {synopt:{cmdab:noref:line}}suppress equality line; only relevant for {cmd:dstat lorenz}
     {p_end}
 {synopt:{opth ref:line(line_options)}}affect rendition of equality line; only relevant for {cmd:dstat lorenz}
-    {p_end}
-{synopt:{help dstat##coefplot:{it:coefplot_options}}}options to be passed through to {helpb coefplot}
     {p_end}
 {synoptline}
 
@@ -1847,7 +1867,58 @@ help for {hi:dstat}{...}
     behavior. If equations are one-dimensional, {cmd:flip} has the same effect
     as {cmd:merge}.
 
+{marker coefplot}{...}
 {phang}
+    {it:coefplot_options} are options to be passed through to
+    {helpb coefplot}. Use these options, for example, to set titles and axis
+    labels or to affect the overall look and size of the graph. The options can
+    also be used to change the rendering of the plotted results (e.g. colors,
+    line patterns, marker symbols, etc.).
+
+{marker stack}{...}
+{phang}
+    {opt stack} draws a stacked bar chart; see
+    {help dstat##ex_stack:below for some examples}. Option {cmd:stack} is only
+    allowed with {cmd:dstat proportion}. The following extra options are
+    available if {cmd:stack} is specified.
+
+{phang2}
+    {opt diverging} aligns the bars at the scale midpoint. That is, specify
+    {cmd:diverging} id you want to draw a diverging stacked bar chart.
+
+{phang2}
+    {opt barwidth(#)} sets the width of the bars. Default is {cmd:barwidth(0.8)}.
+
+{phang2}
+    {it:barlook_options} are options to change the overall look of the
+    bars; see help {it:{help barlook_options}}.
+
+{marker colors}{...}
+{phang2}
+    {cmd:colors(}{help colorpalette##palette:{it:palette}}
+    [{cmd:,} {help colorpalette##opts:{it:palette_options}}]{cmd:)}
+    assigns colors to the bar segments. Command {helpb colorpalette} is
+    required; type {cmd:ssc install colrspace} and {cmd:ssc install palettes}
+    and to make {helpb colorpalette} available.
+
+{phang2}
+    {cmd:p}{it:#}{cmd:(}{it:options}{cmd:)} overrides the settings of the #th bar
+    segment, where available {it:options} are {opt barw:idth(#)},
+    {it:{help barlook_options}}, and {it:{help coefplot##plotopts:plotopts}}.
+
+{phang2}
+    {opt values}[{cmd:(}{it:min}{cmd:)}] prints the values of the bar segments
+    (proportions, percentages, or frequencies) as marker labels. Specify
+    argument {it:min} to omit values that are smaller than {it:min}. Use
+    {it:{help marker_label_options}} such as {cmd:mlabcolor()} to change the
+    look of the labels.
+
+{marker notstack}{...}
+{phang}
+    The following extra options are available unless option {cmd:stack} is
+    specified.
+
+{phang2}
     [{cmd:g}|{cmd:p}]{cmdab:sel:ect}{cmd:(}{it:{help numlist}}|{cmdab:r:everse}{cmd:)}
     selects and orders subgraphs and plots within
     subgraphs. {it:numlist} specifies the indices of the subgraphs or plots to
@@ -1857,25 +1928,25 @@ help for {hi:dstat}{...}
     first. Instead of providing {it:numlist}, type {cmd:select(reverse)}
     to reverse the order of subgraphs or plots.
 
-{pmore}
+{pmore2}
     {cmd:select()} applies to both, subgraphs and plots within subgraphs. If a
     graph contains multiple subgraphs and multiple plots within subgraphs, use option
     {cmd:gselect()} to select and order subgraphs, and use option {cmd:pselect()}
     to select and order plots.
 
-{pmore}
+{pmore2}
     {cmd:select()}, {cmd:gselect()}, and {cmd:pselect()} only have an effect if
     there are multiple elements to choose from. That is,
     single subgraphs or single plots will always be displayed, irrespective of
     what you type in these options.
 
-{phang}
+{phang2}
     {opt cref} causes results from the reference (sub)population to be
     included in the graph. The default is to suppress these
     results. {cmd:cref} is only relevant if {cmd:over(, contrast())} has been
     specified.
 
-{phang}
+{phang2}
     {cmd:bystats}[{cmd:(}{cmdab:m:ain}|{cmdab:s:econdary}{cmd:)}] treats
     coefficients as equations and equations as coefficients. This is only
     relevant after {cmd:dstat summarize} and only has an effect if the results
@@ -1889,7 +1960,7 @@ help for {hi:dstat}{...}
     respectively. This is only relevant if the equations contain two dimensions
     (subpopulations and variables).
 
-{phang}
+{phang2}
     [{cmd:no}]{cmd:step} enforces or prevents using a step function to display
     the distribution function. This is only relevant after {cmd:dstat cdf}
     and {cmd:dstat ccdf}. The default is to display the CDF as a step function
@@ -1897,29 +1968,15 @@ help for {hi:dstat}{...}
     else use straight lines. Specify {cmd:nostep} or {cmd:step}, respectively,
     to override the default.
 
-{phang}
+{phang2}
     {cmd:norefline} suppresses the equality line (diagonal) that is printed
     when plotting results from {cmd:dstat lorenz} (unless option
     {cmd:generalized}, {cmd:gap}, or {cmd:absolute} has been specified).
 
-{phang}
+{phang2}
     {opt refline(line_options)} specifies options to affect the rendition of
-    the equality line; see {it:{help line_options}}. This is only relevant after
+    the equality line; see help {it:{help line_options}}. This is only relevant after
     {cmd:dstat lorenz}.
-
-{marker coefplot}{...}
-{phang}
-    {it:coefplot_options} are options to be passed through to
-    {helpb coefplot}. Use these options, for example, to set titles and axis
-    labels or to affect the overall look and size of the graph. The options can
-    also be used to change the rendering of the plotted results (e.g. colors,
-    line patterns, marker symbols, etc.). If a graph contains multiple plots
-    (multiple series of results displayed in a common style), option
-    {cmd:p}{it:#}{cmd:()} can be used to address the {it:#}th plot. For example,
-    you could type {cmd:p2(recast(dropline) pstyle(p5) noci)} to change the
-    {it:plottype} of the 2nd plot to {cmd:dropline}, change its {it:pstyle}
-    to {cmd:p5} (instead of the default {cmd:p2}), and suppress its confidence
-    intervals.
 
 {marker save_options}{...}
 {dlgtab:Arguments and options for dstat save}
@@ -2065,6 +2122,7 @@ help for {hi:dstat}{...}
         {help dstat##ex_dist:Distribution functions}
         {help dstat##ex_cov:Covariate balancing}
         {help dstat##ex_inf:Influence functions}
+        {help dstat##ex_stack:Stacked bar charts}
 
 {marker ex_sum}{...}
 {dlgtab:Summary statistics}
@@ -2250,6 +2308,27 @@ help for {hi:dstat}{...}
         . {stata generate explained   = RIF0c - RIF0}
         . {stata generate unexplained = RIF1  - RIF0c}
         . {stata mean difference explained unexplained}
+
+{marker ex_stack}{...}
+{dlgtab:Stacked bar charts}
+
+{pstd}
+    When plotting results from {cmd:dstat proportion} using {cmd:dstat graph},
+    specify option {helpb dstat##stack:stack} to creat a stacked bar chart.
+
+        . {stata webuse nhanes2f, clear}
+        . {stata separate health, by(sex)}
+{p 8 12 2}
+        . {stata dstat proportion health?, over(agegrp) percent nocasewise}
+        {p_end}
+{p 8 12 2}
+        . {stata dstat graph, stack vertical flip values(5) mlabcolor(black) colors(cet d03, reverse) bylabels("Mean" "Women")}
+
+{pstd}
+    Diverging stacked bar charts can be created by adding option {cmd:diverging}.
+
+{p 8 12 2}
+        . {stata dstat graph, stack diverging merge xline(0) colors(cet d03, reverse) coeflabels(health1 = "Men" health2 = "Women") legend(position(6) rows(1))}
 
 
 {marker saved_results}{...}

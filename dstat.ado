@@ -1,4 +1,4 @@
-*! version 1.5.6  23jan2026  Ben Jann
+*! version 1.5.7  08feb2026  Ben Jann
 
 capt mata: assert(mm_version()>=206)
 if _rc {
@@ -930,6 +930,17 @@ program Graph
     }
     local subcmd `"`e(subcmd)'"'
     
+    // check whether stacked bar chart
+    syntax [, STACK * ]
+    if `"`stack'"'!="" {
+        if `"`subcmd'"'!="proportion" {
+            di as err `"option {bf:stack} not allowed after {bf:dstat `subcmd'}"'
+            exit 198
+        }
+        Graph_stack, `options'
+        exit
+    }
+    
     // syntax
     syntax [, Level(passthru) citype(passthru) VERTical HORizontal ///
         MERge OVERLay flip BYStats BYStats2(str) NOSTEP STEP ///
@@ -1483,6 +1494,279 @@ program _Graph_Get_CI, eclass
     if "`e(percent)'"!="" local scale 100
     else                  local scale 1
     mata: ds_Get_CI("`CI'", `level', "`citype'", `scale')
+end
+
+program Graph_stack
+    // syntax
+    syntax [, MERge OVERLay flip DIVerging VERTical HORizontal noLABels/*
+        */ VALues VALues2(numlist max=1) MLabel MLabel2(passthru)/*
+        */ MLABFormat(str) MLABPosition(passthru)/*
+        */ COLors(str asis) EQLabels(str asis) COEFLabels(str asis)/*
+        */ noRECycle * ] // norecycle will be ignored
+    if "`overlay'"!=""  local merge merge
+    if `"`mlabel'`values2'"'!="" local values values
+    if `"`mlabformat'"'!="" confirm format `mlabformat'
+    Graph_stack_baropts, `options'
+    if "`barwidth'"=="" local barwidth barwidth(0.8)
+    local options `vertical' `horizontal' `labels' `options'
+    local labels = "`labels'"==""
+
+    // copy estimates
+    tempname b
+    matrix `b' = e(b)
+    local r = colsof(`b')
+
+    // parse cstripe and determine levels
+    local cat = `"`e(categorical)'"'!="" & `"`e(novalues)'"'==""
+    local csinfo `"`e(csinfo)'"'
+    local overeq: list posof "over" in csinfo
+    local over `"`e(over)'"'
+    local coefs: colnames `b'
+    local eqs: coleq `b'
+    local subeqs
+    local eqdim 1
+    if `cat' {
+        mata: ds_graph_subeqs(`overeq') // eqs, subeqs, vars, coefs, eqdim
+    }
+    else if `:list sizeof csinfo'>2 {
+        mata: ds_graph_eqsplit() // eqs, subeqs
+        local eqdim 2
+    }
+    if `eqdim'==2 & "`flip'"!="" {
+        local tmp   : copy local eqs
+        local eqs   : copy local subeqs
+        local subeqs: copy local tmp
+        if      `overeq'==1 local overeq 2
+        else if `overeq'==2 local overeq 1
+    }
+    local EQS: copy local eqs
+    local SUBEQS: copy local subeqs
+    
+    // get levels
+    if `"`e(novalues)'"'!="" local atvals: list uniq coefs
+    else {
+        mata: ds_graph_getlevels(`eqdim')
+    }
+    local n: list sizeof atvals
+
+    // get colors
+    if `"`colors'"'!="" {
+        Graph_stack_colors `n' `colors'
+        local i 0
+        forv j=1/`n' {
+            if `i'>=r(n) local i 0 // recycle if necessary
+            local ++i
+            local p`j'color color("`r(p`i')'")
+        }
+    }
+    
+    // collect results
+    forv j=1/`n' {
+        tempname b`j'
+    }
+    local eq0 "."
+    local subeq0 "."
+    tempname tmp lo p
+    local k 0
+    forv i=1/`r' {
+        gettoken eq    eqs    : eqs
+        gettoken subeq subeqs : subeqs
+        gettoken var   vars   : vars
+        gettoken coef  coefs  : coefs
+        if `"`eq'"'!=`"`eq0'"' | `"`subeq'"'!=`"`subeq0'"' {
+            local ++k
+            scalar `lo' = 0
+            if `eqdim'==2 local coln`k' `"`eq':`subeq'"'
+            else          local coln`k' `"`eq'"'
+            local j 0
+            local atv: copy local atvals
+        }
+        scalar `p' = `b'[1,`i']
+        mat `tmp' = (`lo' + `p'/2, `lo', `lo' + `p', `p')'
+        mat coln `tmp' = `"`coln`k''"'
+        gettoken at atv : atv
+        local ++j
+        while (`"`at'"'!=`"`coef'"') {
+            gettoken at atv : atv
+            local ++j
+            if (`"`at'"'=="") exit(499) // should never happen
+        }
+        mat `b`j'' = nullmat(`b`j''), `tmp'
+        scalar `lo' = `lo' + `p'
+        local eq0    `"`eq'"'
+        local subeq0 `"`subeq'"'
+        if `cat' & `labels' {
+            // use value label of at-level; only if consistent across vars
+            local lbl: label (`var') `coef'
+            if `"`lab_`j''"'==""             local lab_`j' `"`lbl'"'
+            else if `"`lbl'"'!=`"`lab_`j''"' local lab_`j' `coef'
+        }
+    }
+    local K `k'
+    if `eqdim'==1 local merge merge
+    
+    // center results
+    if "`diverging'"!="" {
+        local jmid = int(`n'/ 2) + 1
+        local i    = 2 - mod(`n',2)
+        forv k=1/`K' {
+            local c = colnumb(`b`jmid'', `"`coln`k''"')
+            if `c'<. {
+                scalar `p' = `b`jmid''[`i', `c']
+            }
+            else { // fallback if mid-level does not exist in equation
+                scalar `p' = 0
+                forv j=`jmid'(-1)1 {
+                    local c = colnumb(`b`j'', `"`coln`k''"')
+                    if `c'<. {
+                        scalar `p' = `b`j''[3, `c']
+                        continue, break
+                    }
+                }
+            }
+            forv j=1/`n' {
+                local c = colnumb(`b`j'', `"`coln`k''"')
+                if `c'>=. continue
+                matrix `b`j''[1,`c'] = `b`j''[1,`c'] - `p'
+                matrix `b`j''[2,`c'] = `b`j''[2,`c'] - `p'
+                matrix `b`j''[3,`c'] = `b`j''[3,`c'] - `p'
+            }
+        }
+    }
+    
+    // marker labels
+    if "`values'"!="" {
+        if `"`mlabformat'"'=="" {
+            if `"`e(percent)'"'!=""        local mlabformat %9.1f
+            else if `"`e(frequency)'"'!="" local mlabformat %9.0g
+            else                           local mlabformat %9.3f
+        }
+        if `"`mlabel2'"'=="" {
+            if "`values2'"!="" {
+                local mlabel mlabel(cond(@aux>=`values2',/*
+                     */ string(@aux,"`mlabformat'"), ""))
+                local mlabformat
+            }
+            else local mlabel mlabel(@aux)
+        }
+        if `"`mlabposition'"'=="" local mlabposition mlabposition(0)
+    }
+    if `"`mlabformat'"'!="" {
+        local mlabel `mlabel' mlabformat(`mlabformat')
+    }
+    local mlabel `mlabel' `mlabposition' `mlabcolor'
+    
+    // order
+    if `eqdim'==1         local order: list uniq EQS
+    else if "`merge'"=="" local order: list uniq SUBEQS
+    else {
+        // make sure that equations are tied together
+        local order
+        local eqs: list uniq EQS
+        local subeqs: list uniq SUBEQS
+        foreach eq of local eqs {
+            foreach subeq of local subeqs {
+                local order `order' `eq':`subeq'
+            }
+        }
+    }
+    
+    // collect plots
+    forv j=1/`n' {
+        gettoken at atvals : atvals
+        if `"`lab_`j''"'=="" local lab_`j' `"`at'"'
+        Graph_stack_baropts p`j', `options'
+        local p`j'ciopts
+        foreach opt in barwidth color fcolor fintensity lcolor lwidth/*
+            */ lpattern lalign lstyle bstyle {
+            if `"`p`j'`opt''"'=="" local p`j'`opt' ``opt''
+            local p`j'ciopts `p`j'ciopts' `p`j'`opt''
+        }
+        if `"`p`j'label'"'=="" local p`j'label label(`lab_`j'')
+        local p`j'options `p`j'label' `p`j'options'
+        if "`values'"!="" {
+            if `"`p`j'mlabcolor'`mlabcolor'"'=="" {
+                if `"`p`j'color'"'!="" local p`j'mlabcolor mlab`p`j'color'
+            }
+        }
+        local p`j'options `p`j'mlabcolor' `p`j'options'
+    }
+    if `overeq' & `labels' _Graph_overlabels
+    if "`vertical'"!="" local tmp `n'(-1)1
+    else                local tmp 1/`n'
+    local popts
+    local plots
+    local i 0
+    forv j=`tmp' {
+        local ++i
+        local plots `plots' matrix(`b`j'')
+        local popts `popts' p`i'(ciopts(`p`j'ciopts') `p`j'options')
+    }
+    if "`merge'"=="" {
+        local eqs: list uniq EQS
+        if `overeq'==1 local bylbls: copy local overlabels
+        local PLOTS: copy local plots
+        local plots
+        foreach eq of local eqs {
+            gettoken bylbl bylbls : bylbls
+            if `"`bylbl'"'=="" local bylbl `"`eq'"'
+            local plots `plots' `PLOTS', keep(`eq':) bylabel(`"`bylbl'"') ||
+        }
+    }
+    else local keep keep(*:)
+    if `overeq' & `labels' {
+        if "`merge'"!="" & `eqdim'==2 & `overeq'==1 {
+            _parse comma lhs rhs : eqlabels
+            if `"`lhs'"'=="" local eqlabels `"`overlabels'`rhs'"'
+        }
+        else if "`merge'"!="" | ("`merge'"=="" & `overeq'==2) {
+            _parse comma lhs rhs : coeflabels
+            if `"`lhs'"'=="" {
+                if `eqdim'==1 local vals: list uniq EQS
+                else          local vals: list uniq SUBEQS
+                foreach val of local vals {
+                    gettoken lbl overlabels : overlabels
+                    local lhs `"`lhs'`val'=`"`lbl'"' "'
+                }
+                local coeflabels `"`lhs'`rhs'"'
+            }
+        }
+    }
+    
+    // draw graph
+    if `"`eqlabels'"'!=""   local eqlabels eqlabels(`eqlabels')
+    if `"`coeflabels'"'!="" local coeflabels coeflabels(`coeflabels')
+    coefplot `plots', nooffset key(ci) ci((2 3)) order(`order')/*
+        */ cirecast(rbar) /*
+        */ `keep' `popts' `eqlabels' `coeflabels'/*
+        */ aux(4) ms(i) `mlabel' `options'
+end
+
+program Graph_stack_baropts
+    _parse comma pj 0 : 0
+    if `"`pj'"'!="" {
+        syntax [, `pj'(str) * ]
+        if `"``pj''"'=="" exit
+        c_local options `options'
+        local 0 , ``pj''
+    }
+    syntax [, BARWidth(passthru) COLor(passthru) FColor(passthru)/*
+        */ FIntensity(passthru) LColor(passthru) LWidth(passthru)/*
+        */ LPattern(passthru) LAlign(passthru) LSTYle(passthru)/*
+        */ BSTYle(passthru) MLABColor(passthru) LABel(passthru) * ]
+    foreach opt in barwidth color fcolor fintensity lcolor lwidth/*
+        */ lpattern lalign lstyle bstyle mlabcolor label {
+        if `"``opt''"'=="" continue
+        c_local `pj'`opt' ``opt''
+    }
+    c_local `pj'options `options'
+end
+
+program Graph_stack_colors
+    _parse comma lhs 0 : 0
+    syntax [, n(passthru) NOGRaph GRAPH * ]
+    gettoken n lhs : lhs
+    colorpalette `lhs', n(`n') nograph `options'
 end
 
 program Save, rclass
@@ -4186,6 +4470,77 @@ void ds_graph_eqsplit()
     p   = strpos(eqs, "~")
     st_local("subeqs", invtokens(substr(eqs, p:+1, .)))
     st_local("eqs", invtokens(substr(eqs, 1, p:-1)))
+}
+
+void ds_graph_subeqs(`Int' overeq)
+{
+    `SR'   coefs, vars
+    `IntR' p
+    
+    coefs = tokens(st_local("coefs"))
+    p = strpos(coefs, ".")
+    vars = substr(coefs, p:+1, .)
+    st_local("vars", invtokens(vars))
+    if (overeq) {
+        if (_mm_nunique(vars)>1) {
+            st_local("subeqs", invtokens(vars))
+            st_local("eqdim","2")
+        }
+    }
+    else st_local("eqs", invtokens(vars))
+    coefs = subinstr(substr(coefs, 1, p:-1),"bn","")
+    st_local("coefs", invtokens(coefs))
+}
+
+void ds_graph_getlevels(`Int' eqdim)
+{
+    `Int'  i, a, b, r, n, dif, dir
+    `IntC' p
+    `SC'   eqs, coefs, at0, at
+    pragma unset at0
+    
+    coefs = tokens(st_local("coefs"))'
+    eqs = tokens(st_local("eqs"))'
+    if (eqdim==2) eqs = eqs :+ ":" :+ tokens(st_local("subeqs"))'
+    p = selectindex(_mm_unique_tag(eqs))
+    n = rows(p)
+    // single equation
+    if (n==1) {
+        if (mm_nunique(coefs)!=rows(coefs)) {
+            errprintf("duplicat levels within equation not allowed\n")
+            exit(9)
+        }
+        st_local("atvals", st_local("coefs"))
+        return
+    }
+    // multiple equations
+    dif = dir = 0
+    a = rows(eqs) + 1
+    for (i=n;i;i--) {
+        b = a - 1; a = p[i]; r = b - a + 1
+        at = coefs[|a \ b|]
+        if (mm_nunique(at)!=r) {
+            errprintf("duplicat levels within equation not allowed\n")
+            exit(9)
+        }
+        if (i<n) { // check whether levels are different across equations
+            if (!dif) {
+                if (at!=at0) dif = 1
+            }
+        }
+        if (r>1) { // determine sort order of levels
+            if (!dir) {
+                if      (at==sort(at, 1)) dir = 1
+                else if (at==sort(at,-1)) dir = -1
+            }
+        }
+        at0 = at
+    }
+    if (dif) {
+        at = mm_unique(coefs)
+        if (dir==-1) at = at[rows(at)::1] // use reverse order
+    }
+    st_local("atvals", invtokens(at'))
 }
 
 void ds_graph_droplast(`SR' M)
