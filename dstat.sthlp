@@ -1,5 +1,5 @@
 {smcl}
-{* 08feb2026}{...}
+{* 09feb2026}{...}
 {vieweralsosee "twoway dstat" "help twoway_dstat"}{...}
 {viewerjumpto "Syntax" "dstat##syntax"}{...}
 {viewerjumpto "Description" "dstat##description"}{...}
@@ -1884,7 +1884,7 @@ help for {hi:dstat}{...}
 
 {phang2}
     {opt diverging} aligns the bars at the scale midpoint. That is, specify
-    {cmd:diverging} id you want to draw a diverging stacked bar chart.
+    {cmd:diverging} if you want to draw a diverging stacked bar chart.
 
 {phang2}
     {opt barwidth(#)} sets the width of the bars. Default is {cmd:barwidth(0.8)}.
