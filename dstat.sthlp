@@ -436,7 +436,11 @@ help for {hi:dstat}{...}
     {net "describe moremata, from(http://fmwww.bc.edu/repec/bocode/m/)":{bf:ssc describe moremata}}. Furthermore,
     {helpb coefplot} needs to be installed if you want to use
     {cmd:dstat graph} or the {cmd:graph()} option; see
-    {net "describe coefplot, from(http://fmwww.bc.edu/repec/bocode/c/)":{bf:ssc describe coefplot}}.
+    {net "describe coefplot, from(http://fmwww.bc.edu/repec/bocode/c/)":{bf:ssc describe coefplot}}. Finally,
+    option {helpb dstat##colors:colors()} of {cmd:dstat graph, stack}
+    requires {helpb palettes} and {helpb colrspace}; see 
+    {net "describe palettes, from(http://fmwww.bc.edu/repec/bocode/p/)":{bf:ssc describe palettes}} and
+    {net "describe colrspace, from(http://fmwww.bc.edu/repec/bocode/c/)":{bf:ssc describe colrspace}}.
 
 
 {marker statistics}{...}

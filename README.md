@@ -21,11 +21,18 @@ To install `dstat` from the SSC Archive, type
 
     . ssc install dstat, replace
 
-in Stata. Stata version 14 or newer is required. Furthermore, `moremata` and
-`coefplot` are required. To install these packages from the SSC Archive, type
+in Stata. Stata version 14 or newer is required. Furthermore,
+[`moremata`](https://github.com/benjann/moremata) is required and, for full
+functionality,
+[`coefplot`](https://github.com/benjann/coefplot),
+[`palettes`](https://github.com/benjann/palettes), and
+[`colrspace`](https://github.com/benjann/colrspace). To install these packages
+from the SSC Archive, type
 
     . ssc install moremata, replace
     . ssc install coefplot, replace
+    . ssc install palettes, replace
+    . ssc install colrspace, replace
 
 ---
 
@@ -34,6 +41,8 @@ Installation from GitHub:
     . net install dstat, replace from(https://raw.githubusercontent.com/benjann/dstat/main/)
     . net install moremata, replace from(https://raw.githubusercontent.com/benjann/moremata/master/)
     . net install coefplot, replace from(https://raw.githubusercontent.com/benjann/coefplot/master/)
+    . net install palettes, replace from(https://raw.githubusercontent.com/benjann/palettes/master/)
+    . net install colrspace, replace from(https://raw.githubusercontent.com/benjann/colrspace/master/)
 
 ---
 
